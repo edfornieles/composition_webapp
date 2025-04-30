@@ -1,0 +1,357 @@
+{% extends "layouts/admin.html" %}
+
+{% block content %}
+
+<!-- Content Wrapper. Contains page content -->
+<div class="content-wrapper">
+    <!-- Content Header (Page header) -->
+
+
+    <!-- Main content -->
+    <section class="content">
+        <div class="container-fluid">
+            <div class="row">
+                {% if messages %}
+                {% for message in messages %}
+                <p
+                    class="{% if message.tags == 'success' %}text-success{% elif message.tags == 'error' %}text-danger{% else %}text-dark{% endif %} text-end">
+                    {{ message }}
+                </p>
+                {% endfor %}
+                {% endif %}
+
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Add New Composition</h3>
+                        </div>
+                        <!-- /.card-header -->
+                        <div class="card-body">
+                            <form method="POST" action="{% url 'composition-add' %}" enctype="multipart/form-data">
+                                {% csrf_token %}
+                                <div class="row d-flex justify-content-center align-items-center text-center">
+                                    <div class="col-md-6 d-flex justify-content-center align-items-center">
+                                        <label class="fw-bold me-2">Type:</label>
+                                        <select name="type" id="stype" class="form-control " style="max-width: 250px;"
+                                            required>
+                                            <option value="">Select</option>
+                                            <option value="classic">Classic</option>
+                                            <option value="tunnel">Tunnel</option>
+                                            <option value="left-to-right">Left To Right</option>
+                                            <option value="right-to-left">Right To Left</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6 d-flex justify-content-center align-items-center">
+                                        <label class="fw-bold me-2">Source Type:</label>
+                                        <div class=" align-items-center">
+                                            <input type="radio" name="source_type" value="s3" id="s3Radio" checked
+                                                onclick="toggleSource('s3')" class="me-2">
+                                            <label for="s3Radio" class="me-3">S3 Buckets</label>
+                                            <input type="radio" name="source_type" value="upload" id="uploadRadio"
+                                                onclick="toggleSource('upload')" class="me-2">
+                                            <label for="uploadRadio" id="uploadRadiol">Uploads</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row mt-4">
+                                    <div class="col-md-6" id="bgs">
+                                        <div class="card mb-4 card-primary shadow-lg">
+                                            <div class="card-header">
+                                                <h3 class="card-title" id="bg">Background</h3>
+                                            </div>
+                                            <input type="hidden" name="background_type" class="form-control mb-2"
+                                                value="background">
+                                            <div class="card-body">
+                                                <div class="s3-options">
+                                                    <label>Buckets:</label>
+                                                    <div class="row ">
+
+                                                        <div class="col-md-3">
+                                                            <select name="background_sources1"
+                                                                class="form-control mb-2">
+                                                                <option value="">Select a Bucket</option>
+                                                                {% for bucket in buckets %}
+                                                                <option value="{{ bucket }}">{{ bucket }}</option>
+                                                                {% endfor %}
+                                                            </select>
+                                                        </div>
+
+                                                        <div class="col-md-3">
+                                                            <select name="background_sources2"
+                                                                class="form-control mb-2">
+                                                                <option value="">Select a Bucket</option>
+                                                                {% for bucket in buckets %}
+                                                                <option value="{{ bucket }}">{{ bucket }}</option>
+                                                                {% endfor %}
+                                                            </select>
+                                                        </div>
+
+                                                        <div class="col-md-3">
+                                                            <select name="background_sources3"
+                                                                class="form-control mb-2">
+                                                                <option value="">Select a Bucket</option>
+                                                                {% for bucket in buckets %}
+                                                                <option value="{{ bucket }}">{{ bucket }}</option>
+                                                                {% endfor %}
+                                                            </select>
+                                                        </div>
+
+                                                        <div class="col-md-3">
+                                                            <select name="background_sources4"
+                                                                class="form-control mb-2">
+                                                                <option value="">Select a Bucket</option>
+                                                                {% for bucket in buckets %}
+                                                                <option value="{{ bucket }}">{{ bucket }}</option>
+                                                                {% endfor %}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-group mt-2 upload-options d-none">
+                                                    <label>Upload Video:</label>
+                                                    <input type="file" name="background_video" class="form-control">
+                                                </div>
+
+                                                <h5 class="mt-3">Effects</h5>
+                                                <div class="row">
+                                                    <div class="col-md-4">
+                                                        <label>Brightness</label>
+                                                        <input type="range" name="brightness" min="0" max="100"
+                                                            class="form-control-range">
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <label>Saturation</label>
+                                                        <input type="range" name="saturation" min="0" max="100"
+                                                            class="form-control-range">
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <label>Opacity</label>
+                                                        <input type="range" name="opacity" min="0" max="100"
+                                                            class="form-control-range">
+                                                    </div>
+                                                </div>
+
+                                                <h5 class="mt-3">Transition</h5>
+                                                <select name="background_transition" class="form-control">
+                                                    <option value="fade">Fade</option>
+                                                    <option value="crossfade">Crossfade</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Foreground Section -->
+                                    <div class="col-md-6" id="fgs">
+                                        <div class="card mb-4 card-primary shadow-lg">
+                                            <div class="card-header">
+                                                <h3 class="card-title" id="fg">Foreground</h3>
+                                            </div>
+                                            <input type="hidden" name="foreground_type" class="form-control mb-2"
+                                                value="foreground">
+                                            <div class="card-body">
+                                                <div class="s3-options">
+                                                    <label>Buckets:</label>
+                                                    <div class="row ">
+
+                                                        <div class="col-md-3">
+                                                            <select name="foreground_sources1"
+                                                                class="form-control mb-2">
+                                                                <option value="">Select a Bucket</option>
+                                                                {% for bucket in buckets %}
+                                                                <option value="{{ bucket }}">{{ bucket }}</option>
+                                                                {% endfor %}
+                                                            </select>
+                                                        </div>
+
+                                                        <div class="col-md-3">
+                                                            <select name="foreground_sources2"
+                                                                class="form-control mb-2">
+                                                                <option value="">Select a Bucket</option>
+                                                                {% for bucket in buckets %}
+                                                                <option value="{{ bucket }}">{{ bucket }}</option>
+                                                                {% endfor %}
+                                                            </select>
+                                                        </div>
+
+                                                        <div class="col-md-3">
+                                                            <select name="foreground_sources3"
+                                                                class="form-control mb-2">
+                                                                <option value="">Select a Bucket</option>
+                                                                {% for bucket in buckets %}
+                                                                <option value="{{ bucket }}">{{ bucket }}</option>
+                                                                {% endfor %}
+                                                            </select>
+                                                        </div>
+
+                                                        <div class="col-md-3">
+                                                            <select name="foreground_sources4"
+                                                                class="form-control mb-2">
+                                                                <option value="">Select a Bucket</option>
+                                                                {% for bucket in buckets %}
+                                                                <option value="{{ bucket }}">{{ bucket }}</option>
+                                                                {% endfor %}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group mt-2 upload-options d-none">
+                                                    <label>Upload Video:</label>
+                                                    <input type="file" name="foreground_video" class="form-control">
+                                                </div>
+
+                                                <h5 class="mt-3">Effects</h5>
+                                                <div class="row">
+                                                    <div class="col-md-4">
+                                                        <label>Brightness</label>
+                                                        <input type="range" name="brightness" min="0" max="100"
+                                                            class="form-control-range">
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <label>Saturation</label>
+                                                        <input type="range" name="saturation" min="0" max="100"
+                                                            class="form-control-range">
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <label>Opacity</label>
+                                                        <input type="range" name="opacity" min="0" max="100"
+                                                            class="form-control-range">
+                                                    </div>
+                                                </div>
+
+
+                                                <h5 class="mt-3">Transition</h5>
+                                                <select name="background_transition" class="form-control">
+                                                    <option value="fade">Fade</option>
+                                                    <option value="crossfade">Crossfade</option>
+                                                </select>
+
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+
+
+                                <!-- Audio Section -->
+                                <div class="card mb-4 card-primary shadow-lg">
+                                    <div class="card-header">
+                                        <h3 class="card-title">Audio</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="form-group">
+                                            <label for="audio_file">Choose Audio:</label>
+                                            <input type="file" name="audio_file" id="audio_file"
+                                                class="form-control mb-3">
+                                        </div>
+
+                                        <div class="d-flex space-x-4 mt-2">
+                                            <!-- <button type="submit" class="btn btn-success btn-sm">Upload Audio</button> -->
+                                            <button type="button" class="btn btn-danger btn-sm">Delete Audio</button>
+                                        </div>
+
+                                        <!-- <div class="form-group mt-3">
+                                    <label class="d-flex align-items-center">
+                                        <span class="mr-2">On/Off:</span>
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="audioToggle"
+                                                name="audio_enabled">
+                                            <label class="form-check-label" for="audioToggle"></label>
+                                        </div>
+                                    </label>
+                                </div> -->
+                                    </div>
+                                </div>
+
+
+                                <!-- URL Section -->
+                                <div class="card mb-4 card-primary shadow-lg">
+                                    <div class="card-header">
+                                        <h3 class="card-title">Link to</h3>
+                                    </div>
+                                    <div class="card-body">
+                                        <h4 class="mt-3">URL</h4>
+                                        <div class="input-group mb-3">
+                                            <span class="input-group-text">http://{{ request.get_host }}/</span>
+                                            <input type="hidden" name="base_url" value="http://{{ request.get_host }}/">
+                                            <input type="text" class="form-control" name="url_slug"
+                                                placeholder="enter-page-slug">
+                                        </div>
+
+                                        <div class="d-flex justify-content-end">
+                                            <button class="btn btn-danger btn-sm mr-2">Delete</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+
+                                <!-- Launch Button -->
+                                <div class="d-flex justify-content-end">
+                                    <button type="submit" class="btn btn-success btn-sm">Launch</button>
+                                </div>
+                            </form>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+    function toggleSource(sourceType) {
+        document.querySelectorAll(".s3-options").forEach(el => el.classList.toggle("d-none", sourceType !== "s3"));
+        document.querySelectorAll(".upload-options").forEach(el => {
+            el.classList.toggle("d-none", sourceType === "s3");
+            if (el.querySelector("input")) el.querySelector("input").disabled = (sourceType === "s3");
+        });
+    }
+
+    window.onload = function () {
+        toggleSource(document.getElementById("s3Radio").checked ? "s3" : "upload");
+    };
+
+    $(document).ready(function () {
+        // Your code here
+        $('#stype').change(function () {
+            var selectedValue = $(this).val(); // Get the selected value
+
+            // Show or hide the slider based on the selected value
+            if (selectedValue === 'left-to-right') {
+                $('#bg').text('Left Side Bucket'); // Show slider
+                $('#fg').text('Right Side Bucket');
+                $('#bgs').show();
+                $('#fgs').show();
+                $('#uploadRadio').hide();
+                $('#uploadRadiol').hide();
+            } else if (selectedValue === 'right-to-left') {
+                $('#bg').text('Left Side Bucket'); // Show slider
+                $('#fg').text('Right Side Bucket');
+                $('#bgs').show();
+                $('#fgs').show();
+                $('#uploadRadio').hide();
+                $('#uploadRadiol').hide();
+            }
+            else if (selectedValue === 'classic') {
+                $('#bg').text('Background'); // Show slider fgs
+                $('#fg').text('Foreground');
+                $('#bgs').show();
+                $('#fgs').show();
+                $('#uploadRadio').show();
+                $('#uploadRadiol').show();
+
+            }
+            else if (selectedValue === 'tunnel') {
+                $('#bg').text('Tunnel Buckets');
+                $('#bgs').show();
+                $('#fgs').hide();
+                $('#uploadRadio').hide();
+                $('#uploadRadiol').hide();
+            }
+        });
+    });
+</script>
+
+
+{% endblock %}

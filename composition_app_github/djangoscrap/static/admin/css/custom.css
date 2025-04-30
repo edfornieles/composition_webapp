@@ -1,0 +1,22 @@
+.card-primary:not(.card-outline)>.card-header {
+    background-color: #d44a7b !important;
+}
+.card-header {
+    background-color: #d44a7b !important;
+    border-bottom: 1px solid rgba(0, 0, 0, .125);
+    padding: .75rem 1.25rem;
+    position: relative;
+    border-top-left-radius: .25rem;
+    border-top-right-radius: .25rem;
+}
+
+.card-title {
+    float: left;
+    font-size: 1.1rem;
+    font-weight: 400;
+    margin: 0;
+    color: #fff !important;
+}
+.sidebar-dark-primary {
+    background-color: #d44a7b !important;
+}

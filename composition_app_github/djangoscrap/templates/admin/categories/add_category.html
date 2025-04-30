@@ -1,0 +1,11 @@
+{% extends "admin.html" %}
+{% block content %}
+    <h3>Add Category</h3>
+    <form method="POST">
+        {% csrf_token %}
+        <input type="text" name="category" class="form-control mb-2">
+        <input type="text" name="description" class="form-control mb-2">
+        <button type="submit">Save</button>
+    </form>
+    
+{% endblock %}
