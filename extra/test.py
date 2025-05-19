@@ -1,7 +1,5 @@
-import os
-import subprocess
-from flask import Flask, request, jsonify
-from celery_app import long_running_task
+from flask import Flask
+from djangoscrap.celery_app import long_running_task
 
 app = Flask(__name__)
 

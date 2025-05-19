@@ -19,3 +19,11 @@ python-dotenv==1.0.1
 sqlparse==0.5.3
 tqdm==4.67.1
 tzdata==2025.1
+
+boto3==1.38.16
+django-storages==1.14.6
+ffmpeg==1.4
+#opencv-python==4.11.0.86
+django-ajax-datatable==4.5.0
+celery==5.5.2
+

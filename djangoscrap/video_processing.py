@@ -1,12 +1,7 @@
-from moviepy.editor import VideoFileClip, AudioFileClip, CompositeVideoClip, ImageClip, concatenate_videoclips
-import subprocess
-from PIL import Image
+from moviepy import VideoFileClip, AudioFileClip, CompositeVideoClip, ImageClip, concatenate_videoclips, vfx
+
+from pathlib import Path
 import os
-from django.core.exceptions import ValidationError
-import ffmpeg
-import glob
-import cv2
-import numpy as np
 
 MERGED_IMAGE_DIR = "media/merged_images"  # Change path as needed
 os.makedirs(MERGED_IMAGE_DIR, exist_ok=True)  # Ensure directory exists
@@ -94,10 +89,6 @@ def combine_video_with_audio(background_video, foreground_video, audio_path, out
         print(f"Error combining videos: {e}")
         raise RuntimeError(f"Error combining videos with audio: {e}")
 
-
-from pathlib import Path
-from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips, vfx
-import os
 
 def create_video_ffmpegNew(
     input_dir,

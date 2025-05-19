@@ -9,15 +9,15 @@ from django.core.paginator import Paginator
 from django.core.files.base import ContentFile
 from django.conf import settings
 from django.core.files.storage import default_storage
-from .models import Composition, Profile, S3Bucket, Bucket
-from .video_processing import create_final_video
+from djangoscrap.models import Composition, Profile, S3Bucket, Bucket
+from djangoscrap.video_processing import create_final_video
 import ffmpeg
 from django.core.files import File
 from django.core.files.temp import NamedTemporaryFile
 from PIL import Image
 import io
 from ajax_datatable.views import AjaxDatatableView
-from .forms import BucketForm
+from djangoscrap.forms import BucketForm
 from botocore.exceptions import ClientError
 import uuid
 import re

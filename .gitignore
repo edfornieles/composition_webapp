@@ -1,0 +1,15 @@
+*.pyc
+*.sqlite3
+
+venv/
+venv2/
+.env
+
+media_temp/
+media/
+
+migrations/
+
+pyvenv.cfg
+
+.idea/

@@ -1,12 +1,8 @@
-from django.contrib import admin
 from django.urls import path
-from django.contrib.auth.views import LoginView, LogoutView
-from .views import list_buckets, bucket_contents, upload_file,create_video,user_logout,delete_compositions
+from django.contrib.auth.views import LoginView
 from django.conf import settings
 from django.conf.urls.static import static
 from . import views
-from django.urls import reverse_lazy
-from .views import S3BucketAjaxView,create_bucket
 
 urlpatterns = [
     path('', views.home, name='home'),
@@ -35,13 +31,13 @@ urlpatterns = [
     path('logout/', views.user_logout, name='logout'),  # Use your custom logout view
 
     # S3 Bucket URLs
-    path('s3/', list_buckets, name='list_buckets'),
-    path('s3/<str:bucket_name>/', bucket_contents, name='bucket_contents'),
-    path('s3/<str:bucket_name>/upload/', upload_file, name='upload_file'),
-    path("create-bucket/", create_bucket, name="create_bucket"),
+    path('s3/', views.list_buckets, name='list_buckets'),
+    path('s3/<str:bucket_name>/', views.bucket_contents, name='bucket_contents'),
+    path('s3/<str:bucket_name>/upload/', views.upload_file, name='upload_file'),
+    path("create-bucket/", views.create_bucket, name="create_bucket"),
 
 
-    path("create-video/", create_video, name="create-video"),
+    path("create-video/", views.create_video, name="create-video"),
      
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

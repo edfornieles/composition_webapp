@@ -12,23 +12,11 @@ from djangoscrap.video_processing import (
     create_video_ffmpegNew
 )
 # 🔹 Set the Django settings module
-from moviepy.editor import ImageSequenceClip ,VideoFileClip, ImageClip, CompositeVideoClip,AudioFileClip, concatenate_videoclips
-import moviepy.editor as mp
+from moviepy import ImageSequenceClip ,VideoFileClip, ImageClip, CompositeVideoClip,AudioFileClip, concatenate_videoclips
 import random
 import string
 from datetime import datetime
-import uuid
-import requests
-import re
-import json
-from django.views.decorators.csrf import csrf_exempt
-from django.core.exceptions import ValidationError
-import glob
-import cv2
-import time
-import numpy as np
 import django
-from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 from celery import shared_task
  
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "djangoscrap.settings")
