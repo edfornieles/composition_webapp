@@ -15,71 +15,85 @@
           <div class="col-md-12">
             <div class="card">
               <div class="card-header">
-                <h3 class="card-title">New Source</h3>
+                <h3 class="card-title">{% if is_edit %}Edit Source{% else %}New Source{% endif %}</h3>
               </div>
               <!-- /.card-header -->
              
               <div class="card-body">
                 <div class="p-4 bg-white shadow-lg rounded-lg border border-purple-500">
-                   
-                        <form class="mb-4" method="POST" action="{% url 'create_bucket' %}">
-                            {% csrf_token %}
+                    <form class="mb-4" method="POST" action="">
+                        {% csrf_token %}
                         <div class="row">
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label">Name:</label>
-                                <input type="text" name="name" class="form-control" >
+                                {{ form.name }}
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Type:</label>
-                                <select class="form-select" name="type">
-                                    <option value="Instagram-tag">Instagram tag</option>
-                                    <option value="Instagram-account">Instagram account</option>
-                                    <option value="Instagram-location">Instagram location</option>
-                                    
-                                </select>
-                            </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label">ID:</label>
-                                <input type="text" class="form-control" name="source_id" >
+                                {{ form.source_id }}
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Type:</label>
+                                {{ form.type }}
+                            </div>
+
+                            <div class="col-md-3" id="custom-type-wrapper" style="display: none;">
+                                <label class="form-label">Custom Type (if "Other"):</label>
+                                {{ form.custom_type }}
                             </div>
                         </div>
                         <div class="row mt-3">
                             <div class="col-md-3">
                                 <label class="form-label">Last Scraped:</label>
-                                <input type="date" name="last_scraped" class="form-control" >
+                                {{ form.last_scraped }}
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Query No.:</label>
-                                <input type="text" name="query_no" class="form-control">
+                                {{ form.query_no }}
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Initial:</label>
-                                <input type="number" name="initial" class="form-control" >
+                                {{ form.initial }}
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Max Num:</label>
-                                <input type="number" name="max_num" class="form-control" >
+                                {{ form.max_num }}
                             </div>
                         </div>
                         <div class="text-center mt-4">
                             <button type="submit" class="btn btn-success">
-                                <i class="fas fa-plus-circle"></i> Create Bucket
+                              <i class="fas fa-save"></i>
+                              {% if is_edit %}Update Source{% else %}Create Source{% endif %}
                             </button>
-                            <a href="{% url 'list_buckets' %}" class="btn btn-secondary">
-                                <i class="fas fa-arrow-left"></i> Back to Buckets
+                            <a href="{% url 'source_library' %}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Back to Source
                             </a>
                         </div>
                     </form>
-
-                    
                 </div>
-            </div>
-              
+              </div>
             </div>
           </div>
         </div>
       </div>
     </section>
   </div>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const typeSelect = document.querySelector('select[name="type"]');
+    const customTypeWrapper = document.getElementById('custom-type-wrapper');
+
+    function toggleCustomType() {
+      if (typeSelect.value === 'Other') {
+        customTypeWrapper.style.display = 'block';
+      } else {
+        customTypeWrapper.style.display = 'none';
+      }
+    }
+
+    typeSelect.addEventListener('change', toggleCustomType);
+    toggleCustomType();  // Run on load in case editing
+  });
+</script>
 
 {% endblock %}

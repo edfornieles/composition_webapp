@@ -13,33 +13,54 @@
                 <div class="col-md-12">
                     <div class="card shadow-lg">
                         <div class="card-header  text-white">
-                            <h3 class="card-title"> S3 Buckets</h3>
+                            <h3 class="card-title">Sources</h3>
                         </div>
 
                         <div class="card-body">
                             <div class="table-responsive">
                                 
                                 <!-- Bucket List -->
-                                {% if buckets %}
+                                {% if sources %}
                                     <table id="bucketsTable" class="table table-striped table-bordered">
                                         <thead class="table-primary">
                                             <tr>
+                                                <th>Image Sample</th>
                                                 <th>Name</th>
                                                 <th>Created At</th>
                                                 <th>View Contents</th>
                                                 <th>Upload Files</th>
+                                                <th>Delete</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {% for bucket in buckets %}
+                                            {% for source in sources %}
                                             <tr>
-                                                <td>{{ bucket.Name }}</td>
-                                                <td>{{ bucket.CreationDate }}</td>
                                                 <td>
-                                                    <a href="{% url 'bucket_contents' bucket.Name %}" class="text-primary">View Files</a>
+                                                    <img src="{{ source.image_url }}" alt="No preview available"
+                                                         style="height: 50px; width: 50px; object-fit: cover;
+                                                         border-radius: 5px;">
+                                                </td>
+                                                <td>{{ source.Name }}</td>
+                                                <td>{{ source.CreationDate }}</td>
+                                                <td>
+                                                    <a href="{% url 'source_contents' source.Name %}" class="text-primary">View Files</a>
                                                 </td>
                                                 <td>
-                                                    <a href="{% url 'upload_file' bucket.Name %}" class="text-success fw-bold">Upload Files</a>
+                                                    <a href="{% url 'upload_file' source.Name %}" class="text-success fw-bold">Upload Files</a>
+                                                </td>
+
+                                                <td>
+                                                  <form method="post" action="{% url 'delete_source' %}" class="d-inline">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="source" value="{{ source.Name }}">
+                                                    <button
+                                                      type="submit"
+                                                      class="btn btn-sm btn-danger"
+                                                      onclick="return confirm('Really delete {{ source.Name }}?');"
+                                                    >
+                                                      <i class="fas fa-trash-alt"></i>
+                                                    </button>
+                                                  </form>
                                                 </td>
                                             </tr>
                                             {% endfor %}

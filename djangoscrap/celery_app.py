@@ -322,7 +322,7 @@ def classic_task(**params):
             s3.upload_fileobj(video_file, BUCKET_NAME, s3_key)
 
         # ✅ Construct Public S3 URL
-        s3_video_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{s3_key}"
+        s3_video_url = f"{os.getenv('R2_PUBLIC_URL')}/{s3_key}"
         print(f"✅ S3 Upload Successful: {s3_video_url}")
         
         # ✅ Upload Audio File (if exists)
@@ -331,7 +331,7 @@ def classic_task(**params):
             audio_key = f"{os.path.basename(audio_path)}"
             with open(audio_path, "rb") as audio_file_obj:
                 s3.upload_fileobj(audio_file_obj, BUCKET_NAME, audio_key)
-            s3_audio_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{audio_key}"
+            s3_audio_url = f"{os.getenv('R2_PUBLIC_URL')}/{audio_key}"
             print(f"✅ S3 Audio Upload Successful: {s3_audio_url}")
     
         # ✅ Update Composition Status After S3 Upload
@@ -415,7 +415,7 @@ def tunnel_task(self, params_tunnel):
     try:
         with open(output_path, "rb") as video_file:
             s3.upload_fileobj(video_file, BUCKET_NAME, s3_key)
-        s3_video_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{s3_key}"
+        s3_video_url = f"{os.getenv('R2_PUBLIC_URL')}/{s3_key}"
         print(f"✅ Video uploaded to S3: {s3_video_url}")
     except (BotoCoreError, ClientError) as e:
         print(f"❌ Video upload to S3 failed: {e}")
@@ -428,7 +428,7 @@ def tunnel_task(self, params_tunnel):
             audio_key = os.path.basename(audio_path)
             with open(audio_path, "rb") as audio_file_obj:
                 s3.upload_fileobj(audio_file_obj, BUCKET_NAME, audio_key)
-            s3_audio_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{audio_key}"
+            s3_audio_url = f"{os.getenv('R2_PUBLIC_URL')}/{s3_key}"
             print(f"✅ Audio uploaded to S3: {s3_audio_url}")
         except Exception as e:
             print(f"❌ Audio upload failed: {e}")
@@ -504,7 +504,7 @@ def left_to_right_task(params_left):
         with open(final_video_path, "rb") as video_file:
             s3.upload_fileobj(video_file, BUCKET_NAME, s3_key)
 
-        s3_video_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{s3_key}"
+        s3_video_url = f"{os.getenv('R2_PUBLIC_URL')}/{s3_key}"
         print(f"✅ S3 Upload Successful: {s3_video_url}")
         
         # ✅ Upload Audio File (if exists)
@@ -513,7 +513,7 @@ def left_to_right_task(params_left):
             audio_key = f"{os.path.basename(audio_path)}"
             with open(audio_path, "rb") as audio_file_obj:
                 s3.upload_fileobj(audio_file_obj, BUCKET_NAME, audio_key)
-            s3_audio_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{audio_key}"
+            s3_audio_url = f"{os.getenv('R2_PUBLIC_URL')}/{audio_key}"
             print(f"✅ S3 Audio Upload Successful: {s3_audio_url}")
 
         # ✅ Save the correct S3 URL in the DB
@@ -581,7 +581,7 @@ def right_to_left_task(params_right):
         with open(final_video_path, "rb") as video_file:
             s3.upload_fileobj(video_file, BUCKET_NAME, s3_key)
 
-        s3_video_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{s3_key}"
+        s3_video_url = f"{os.getenv('R2_PUBLIC_URL')}/{s3_key}"
         print(f"✅ (RTL) S3 Upload Successful: {s3_video_url}")
         
         # ✅ Upload Audio File (if exists)
@@ -590,7 +590,7 @@ def right_to_left_task(params_right):
             audio_key = f"{os.path.basename(audio_path)}"
             with open(audio_path, "rb") as audio_file_obj:
                 s3.upload_fileobj(audio_file_obj, BUCKET_NAME, audio_key)
-            s3_audio_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{audio_key}"
+            s3_audio_url = f"{os.getenv('R2_PUBLIC_URL')}/{audio_key}"
             print(f"✅ S3 Audio Upload Successful: {s3_audio_url}")
 
         # ✅ Save the correct S3 URL in the DB

@@ -1,6 +1,5 @@
-import os
+import os, dj_database_url
 from pathlib import Path
-import pymysql
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -19,7 +18,7 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 # Security 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "your-default-secret-key")
-DEBUG = os.getenv("DEBUG", "True") == "True"
+DEBUG = os.getenv("DEBUG", True)
 #ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "44.217.102.158,localhost").split(",")
 ALLOWED_HOSTS = ["44.217.102.158", "localhost", "127.0.0.1", "edfornieles.com", "www.edfornieles.com"]
 
@@ -69,31 +68,13 @@ TEMPLATES = [
 # WSGI Application
 WSGI_APPLICATION = "djangoscrap.wsgi.application"
 
-# AWS S3 Configuration ✅ Fixed
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "us-east-1")
-AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
-
-AWS_S3_CUSTOM_DOMAIN = f"https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com"
-DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
-
-MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/"
-
 # Database Configuration
-pymysql.install_as_MySQLdb()
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.mysql",
-        "NAME": os.getenv("DB_NAME", "mydb"),
-        "USER": os.getenv("DB_USER", "imguser"),
-        "PASSWORD": os.getenv("DB_PASSWORD", "Welcome@1"),
-        "HOST": os.getenv("DB_HOST", "127.0.0.1"),
-        "PORT": os.getenv("DB_PORT", "3306"),
-        "OPTIONS": {
-            "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
-        },
-    }
+    "default": dj_database_url.parse(
+        os.getenv("DB_URL"),
+        conn_max_age=600,
+        ssl_require=True
+    )
 }
 
 # Default Primary Key Field Type

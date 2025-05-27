@@ -1,36 +1,25 @@
-import io, json, random, string, zipfile
+import io, json, zipfile
 
-from ajax_datatable.views import AjaxDatatableView
 from botocore.exceptions import BotoCoreError
-from datetime import datetime
+from django.db.models import Q
 from moviepy import ImageClip, CompositeVideoClip,AudioFileClip
 
-from django.core.files.base import ContentFile
-from django.conf import settings
 from django.core.paginator import Paginator
-from django.core.files.storage import default_storage
 
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.models import User
 from django.contrib.auth import login, authenticate,logout
 from django.db import transaction
-from django.http import JsonResponse,HttpResponseRedirect, FileResponse
+from django.http import JsonResponse, HttpResponseRedirect, FileResponse, HttpResponse
 from django.shortcuts import render, redirect,get_object_or_404
-from django.utils.crypto import get_random_string
 from django.views.decorators.csrf import csrf_exempt
 
 from .celery_app import classic_task,left_to_right_task,tunnel_task
-from .models import Composition, Profile, S3Bucket, Bucket,VideoComposition, BackgroundImage, ForegroundImage
+from .models import Composition, Profile, Source, VideoComposition, BackgroundImage, ForegroundImage
 from .video_processing import combine_video_with_audio
-from .forms import BucketForm
+from .forms import SourceForm
 from .utils import *
 
-
-# Ensure media directories exist
-UPLOAD_DIR = "media/uploads/"
-VIDEO_DIR = "media/videos/"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(VIDEO_DIR, exist_ok=True)
 
 def create_video(request):
     if request.method == "POST" and request.FILES:
@@ -86,151 +75,23 @@ def create_video(request):
 
     return render(request, "admin/upload_file.html")
 
-
-@staff_member_required
-def create_bucket(request):
-    if request.method == "POST":
-        form = BucketForm(request.POST)
-        if form.is_valid():
-            bucket_name_raw = form.cleaned_data["name"]
-            new_bucket_name = bucket_name_raw.lower().replace(" ", "-")
-
-            # 🔁 Check if bucket exists locally (in DB)
-            if Bucket.objects.filter(name__iexact=bucket_name_raw).exists():
-                form.add_error("name", "A bucket with this name already exists!.")
-                return render(request, "admin/new-source.html", {"form": form})
-
-            # ✅ Initialize S3 client
-            s3 = boto3.client(
-                "s3",
-                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-                region_name=settings.AWS_S3_REGION_NAME,
-            )
-
-            # 🔁 Check if bucket exists on AWS S3
-            try:
-                s3.head_bucket(Bucket=new_bucket_name)
-                # If no exception, bucket exists
-                form.add_error("name", "A bucket with this name already exists on AWS S3.")
-                return render(request, "admin/new-source.html", {"form": form})
-            except ClientError as e:
-                error_code = int(e.response['Error']['Code'])
-                if error_code == 404:
-                    pass  # Bucket does not exist — continue
-                elif error_code == 403:
-                    # The bucket exists but you don't own it (still a conflict)
-                    form.add_error("name", "A bucket with this name already exists!")
-                    return render(request, "admin/new-source.html", {"form": form})
-                else:
-                    # Unknown error
-                    messages.error(request, f"Unexpected error checking S3: {e}")
-                    return redirect("list_buckets")
-
-            # ✅ Save to DB now that everything checks out
-            bucket = form.save(commit=False)
-            bucket.name = bucket_name_raw  # or new_bucket_name if you want the slugified one
-            bucket.save()
-
-            # ✅ Create the bucket on S3
-            try:
-                if settings.AWS_S3_REGION_NAME == "us-east-1":
-                    response = s3.create_bucket(Bucket=new_bucket_name)
-                else:
-                    response = s3.create_bucket(
-                        Bucket=new_bucket_name,
-                        CreateBucketConfiguration={
-                            "LocationConstraint": settings.AWS_S3_REGION_NAME
-                        },
-                    )
-                print(f"S3 bucket creation response: {response}")
-                messages.success(request, f"S3 Bucket '{new_bucket_name}' created successfully!")
-            except ClientError as e:
-                print(f"Error creating bucket: {e}")
-                messages.error(request, f"Error creating S3 bucket: {e}")
-                return redirect("list_buckets")
-
-            # ✅ Disable block public access
-            try:
-                s3.put_public_access_block(
-                    Bucket=new_bucket_name,
-                    PublicAccessBlockConfiguration={
-                        "BlockPublicAcls": False,
-                        "IgnorePublicAcls": False,
-                        "BlockPublicPolicy": False,
-                        "RestrictPublicBuckets": False,
-                    },
-                )
-                messages.success(request, f"Disabled 'Block Public Access' for '{new_bucket_name}'!")
-            except ClientError as e:
-                print("Error disabling Block Public Access:", e)
-                messages.error(request, f"Error disabling Block Public Access: {e}")
-                return redirect("list_buckets")
-
-            # ✅ Add public read policy
-            bucket_policy = {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "PublicReadGetObject",
-                        "Effect": "Allow",
-                        "Principal": "*",
-                        "Action": "s3:GetObject",
-                        "Resource": f"arn:aws:s3:::{new_bucket_name}/*",
-                    }
-                ],
-            }
-
-            try:
-                s3.put_bucket_policy(
-                    Bucket=new_bucket_name,
-                    Policy=json.dumps(bucket_policy),
-                )
-                messages.success(request, f"Public access enabled for '{new_bucket_name}'!")
-            except ClientError as e:
-                print("Error applying bucket policy:", e)
-                messages.error(request, f"Error setting bucket policy: {e}")
-                return redirect("list_buckets")
-
-            return redirect("list_buckets")
-
-    else:
-        form = BucketForm()
-
-    return render(request, "admin/new-source.html", {"form": form})
-   
-@staff_member_required
-def new_source(request):
-    return render(request, "admin/new-source.html")
-
-
 @staff_member_required
 def source_library(request):
-    sources = Bucket.objects.all().order_by('-last_scraped')
+    search_query = request.GET.get("search", "").strip()
 
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=aws_access_key,
-        aws_secret_access_key=aws_secret_key,
-        region_name=aws_region,
-    )
-
-    local_buckets = Bucket.objects.values_list('name', flat=True)
-
-    try:
-        s3_buckets = s3.list_buckets()["Buckets"]
-        s3_bucket_names = [bucket["Name"] for bucket in s3_buckets]
-    except ClientError as e:
-        messages.error(request, f"Error fetching S3 buckets: {e}")
-        s3_bucket_names = []
-
-    matching_buckets = set(local_buckets) & set(s3_bucket_names)
-    #print("✅ Matching S3 Buckets:", matching_buckets)
+    sources = Source.objects.all().order_by('last_scraped')
+    if search_query:
+        sources = sources.filter(
+            Q(name__icontains=search_query) |
+            Q(type__icontains=search_query) |
+            Q(source_id__icontains=search_query)
+        )
+    s3_buckets = os.getenv("R2_BUCKETS_NAME").split(",")
 
     bucket_thumbnails = {}
     all_available_images = []  # For fallback
 
-    for bucket_name in matching_buckets:
+    for bucket_name in s3_buckets:
         try:
             response = s3.list_objects_v2(Bucket=bucket_name)
             contents = response.get("Contents", [])
@@ -239,125 +100,199 @@ def source_library(request):
                 # Save random image for this bucket
                 image_file = random.choice(image_files)
                 image_key = image_file["Key"]
-                image_url = f"https://{bucket_name}.s3.amazonaws.com/{image_key}"
+
+                image_url = f"{os.getenv('R2_PUBLIC_URL')}/{image_key}"
                 bucket_thumbnails[bucket_name] = image_url
 
                 # Save all image URLs for fallback
                 for img in image_files:
-                    all_available_images.append(f"https://{bucket_name}.s3.amazonaws.com/{img['Key']}")
+                    all_available_images.append(f"{os.getenv('R2_PUBLIC_URL')}/{img['Key']}")
         except ClientError as e:
             print(f"Error accessing bucket {bucket_name}: {e}")
             continue
 
     # Assign thumbnails
-    for bucket in sources:
-        if bucket.name in bucket_thumbnails:
-            bucket.thumbnail = bucket_thumbnails[bucket.name]
+    for source in sources:
+        if source.name in bucket_thumbnails:
+            source.thumbnail = bucket_thumbnails[source.name]
         elif all_available_images:
-            bucket.thumbnail = random.choice(all_available_images)
+            source.thumbnail = random.choice(all_available_images)
         else:
-            bucket.thumbnail = None  # fallback to placeholder in template
+            source.thumbnail = None  # fallback to placeholder in template
 
-    return render(request, "admin/source-library.html", {"compositions": sources})
+    paginator = Paginator(sources, 10)  # Show 10 per page
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+
+    return render(request, "admin/source-library.html", {"page_obj": page_obj})
 
 
-def list_buckets(request):
+def list_sources(request):
     """ List all S3 buckets with sample image """
-    response = s3.list_buckets()
-    buckets_data = []
+    source_names = os.getenv("R2_BUCKETS_NAME", "").split(",")  # comma-separated list
+    all_sources = []
 
-    for bucket in response.get("Buckets", []):
-        image_url = get_sample_image_url(bucket["Name"])
-        buckets_data.append({
-            "Name": bucket["Name"],
-            "CreationDate": bucket["CreationDate"],
+    for source in source_names:
+        image_url = get_sample_image_url(source)
+        all_sources.append({
+            "Name": source,
+            # "CreationDate": source["CreationDate"],
             "image_url": image_url
         })
 
-    return render(request, 'admin/s3_buckets.html', {'buckets': buckets_data})
- 
-def bucket_contents(request, bucket_name):
-    """ Get contents of a selected bucket """
-    objects = s3.list_objects_v2(Bucket=bucket_name).get("Contents", [])
-    return render(request, 'admin/bucket_contents.html', {'objects': objects, 'bucket_name': bucket_name})
+    return render(request, 'admin/sources.html', {'sources': all_sources})
 
-@csrf_exempt
-def delete_bucket(request):
-    if request.method == 'POST':
-        bucket_name = request.POST.get('bucket_name')
-        if bucket_name:
-            s3 = boto3.client('s3')
-            try:
-                # First delete all objects inside the bucket
-                objects = s3.list_objects_v2(Bucket=bucket_name)
-                if 'Contents' in objects:
-                    for obj in objects['Contents']:
-                        s3.delete_object(Bucket=bucket_name, Key=obj['Key'])
-                
-                # Then delete the bucket
-                s3.delete_bucket(Bucket=bucket_name)
-                messages.success(request, f"Bucket '{bucket_name}' deleted successfully.")
-            except Exception as e:
-                messages.error(request, f"Error deleting bucket: {e}")
-    return redirect('list_buckets')  # replace with your actual bucket list view name
-     
+
+def source_contents(request, source_name):
+    """ Get contents of a selected bucket """
+    objects = s3.list_objects_v2(Bucket=source_name).get("Contents", [])
+    paginator = Paginator(objects, 25)  # Show 25 objects per page
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+
+    return render(request, 'admin/source_contents.html', {
+        'page_obj': page_obj,
+        'source_name': source_name,
+        'prefix_url': os.getenv('R2_PUBLIC_URL'),
+    })
+
+
+@staff_member_required
+def create_or_edit_source(request, source_id=None):
+    is_edit = source_id is not None
+    source = get_object_or_404(Source, id=source_id) if is_edit else None
+
+    form = SourceForm(request.POST or None, instance=source)
+
+    if request.method == "POST":
+        if form.is_valid():
+            bucket_name_raw = form.cleaned_data["name"]
+            new_bucket_name = bucket_name_raw.lower().replace(" ", "-")
+
+            if not is_edit:
+                # Check if bucket name exists in DB
+                if Source.objects.filter(name__iexact=bucket_name_raw).exists():
+                    form.add_error("name", "A bucket with this name already exists!")
+                    return render(request, "admin/new-update-source.html", {
+                        "form": form,
+                        "is_edit": False,
+                    })
+
+                # Check if bucket exists in Cloudflare
+                try:
+                    s3.head_bucket(Bucket=new_bucket_name)
+                    form.add_error("name", "A bucket with this name already exists on the storage provider.")
+                    return render(request, "admin/new-update-source.html", {
+                        "form": form,
+                        "is_edit": False,
+                    })
+                except ClientError as e:
+                    error_code = int(e.response['Error']['Code'])
+                    if error_code == 404:
+                        pass  # Bucket doesn't exist
+                    elif error_code == 403:
+                        form.add_error("name", "Bucket exists but is not accessible (likely owned by someone else).")
+                        return render(request, "admin/new-update-source.html", {
+                            "form": form,
+                            "is_edit": False,
+                        })
+                    else:
+                        messages.error(request, f"Unexpected error checking bucket: {e}")
+                        return redirect("list_sources")
+
+            # Save to DB
+            bucket = form.save(commit=False)
+            bucket.name = bucket_name_raw
+            bucket.save()
+
+            if not is_edit:
+                # Create the bucket on Cloudflare
+                try:
+                    s3.create_bucket(Bucket=new_bucket_name)
+                    messages.success(request, f"Bucket '{new_bucket_name}' created successfully.")
+                except ClientError as e:
+                    messages.error(request, f"Error creating bucket: {e}")
+                    return redirect("list_sources")
+            else:
+                messages.success(request, f"Source '{bucket_name_raw}' updated successfully.")
+
+            return redirect("list_sources")
+
+    return render(request, "admin/new-update-source.html", {
+        "form": form,
+        "is_edit": is_edit,
+        "source": source,
+    })
+
+
 @csrf_exempt
 @staff_member_required
-def delete_buckets(request):
-    if request.method == "POST":
-        selected = request.POST.getlist("buckets")
-        s3 = boto3.client('s3', aws_access_key_id=aws_access_key,
-                          aws_secret_access_key=aws_secret_key,
-                          region_name=aws_region)
-        for bucket_name in selected:
-            try:
-                # Delete all objects in the bucket
-                objects = s3.list_objects_v2(Bucket=bucket_name)
-                for obj in objects.get('Contents', []):
-                    s3.delete_object(Bucket=bucket_name, Key=obj['Key'])
+def delete_source(request):
+    errors = []
+    selected = request.POST.getlist("source") or [request.POST.get("source")]
+    for source in selected:
+        try:
+            delete_bucket_objects(source)
+            s3.delete_bucket(Bucket=source)
+            Source.objects.filter(name=source).delete()
+        except Exception as e:
+            errors.append(f"{source}: {e}")
+            messages.error(request, f"Error deleting {source}: {e}")
 
-                # Delete bucket
-                s3.delete_bucket(Bucket=bucket_name)
+    if errors:
+        messages.warning(request, "Some sources could not be deleted.")
+    else:
+        messages.success(request, "Selected sources deleted successfully.")
 
-                # Delete from local DB
-                Bucket.objects.filter(name=bucket_name).delete()
-
-            except Exception as e:
-                messages.error(request, f"Error deleting {bucket_name}: {e}")
-        messages.success(request, "Selected buckets deleted successfully.")
     return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
 
 
 @csrf_exempt
 @staff_member_required
-def download_buckets(request):
-    if request.method == "POST":
-        selected = request.POST.getlist("buckets")
-        s3 = boto3.client('s3', aws_access_key_id=aws_access_key,
-                          aws_secret_access_key=aws_secret_key,
-                          region_name=aws_region)
+def download_source(request):
+    selected = request.POST.getlist('source')
+    zip_buffer = io.BytesIO()
 
-        zip_buffer = io.BytesIO()
+    try:
         with zipfile.ZipFile(zip_buffer, "w") as zip_file:
-            for bucket_name in selected:
+            for source in selected:
                 try:
-                    objects = s3.list_objects_v2(Bucket=bucket_name)
-                    for obj in objects.get('Contents', []):
-                        key = obj['Key']
-                        file_obj = s3.get_object(Bucket=bucket_name, Key=key)
-                        content = file_obj['Body'].read()
-                        zip_path = f"{bucket_name}/{key}"
-                        zip_file.writestr(zip_path, content)
-                except Exception as e:
-                    messages.error(request, f"Failed to download from {bucket_name}: {e}")
+                    objects = s3.list_objects_v2(Bucket=source)
+                    contents = objects.get('Contents', [])
 
+                    for obj in contents:
+                        key = obj['Key']
+                        file_obj = s3.get_object(Bucket=source, Key=key)
+                        content = file_obj['Body'].read()
+                        zip_path = f"{source}/{key}"
+                        zip_file.writestr(zip_path, content)
+
+                except Exception as e:
+                    messages.error(request, f"Failed to download from {source}: {e}")
+
+        # Finalize the ZIP file and seek to the start of the buffer
         zip_buffer.seek(0)
-        return FileResponse(zip_buffer, as_attachment=True, filename="buckets.zip")
+
+        # Ensure the buffer is actually a valid zip file
+        try:
+            with zipfile.ZipFile(zip_buffer, "r") as check_zip:
+                print(f"ZIP contains: {check_zip.namelist()}")
+        except zipfile.BadZipFile:
+            print("The generated file is not a valid ZIP file")
+            raise
+
+    except Exception as e:
+        print(f"Error creating ZIP: {e}")
+        return HttpResponse(status=500)  # Return 500 if ZIP creation failed
+
+    # Return the zip buffer as a downloadable file
+    zip_buffer.seek(0)  # Ensure we're back at the start
+    return FileResponse(zip_buffer, as_attachment=True, filename="buckets.zip")
 
 
 @csrf_exempt
 @staff_member_required
-def upload_file(request, bucket_name):
+def upload_file(request, source_name):
     if request.method == 'POST':
         files = request.FILES.getlist('files')
 
@@ -365,64 +300,34 @@ def upload_file(request, bucket_name):
             messages.error(request, "You can upload a maximum of 50 files at once.")
             return redirect(request.path)
 
-        s3 = boto3.client(
-            's3',
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            region_name=settings.AWS_S3_REGION_NAME
-        )
-
-        has_error = False
-
         for file in files:
             try:
                 s3.upload_fileobj(
                     file,
-                    bucket_name,
+                    source_name,
                     file.name,
                     ExtraArgs={'ContentType': file.content_type}
                 )
                 messages.success(request, f"Uploaded: {file.name}")
             except Exception as e:
-                has_error = True
                 messages.error(request, f"Error uploading {file.name}: {e}")
+                return redirect('source_contents', source_name=source_name)
 
-        # ✅ Redirect to bucket_contents if all uploaded successfully
-        if not has_error:
-            return redirect('bucket_contents', bucket_name=bucket_name)
+        return redirect("sources")
 
-    return render(request, 'admin/upload.html', {'bucket_name': bucket_name})
+    return render(request, 'admin/upload.html', {'source_name': source_name})
 
 
 @csrf_exempt
 @staff_member_required
-def delete_file_from_bucket(request, bucket_name, file_name):
-    if request.method == 'POST':
-        s3 = boto3.client(
-            's3',
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            region_name=settings.AWS_S3_REGION_NAME
-        )
-        try:
-            s3.delete_object(Bucket=bucket_name, Key=file_name)
-            messages.success(request, f"{file_name} deleted.")
-        except Exception as e:
-            messages.error(request, f"Failed to delete {file_name}: {e}")
-        
-        return redirect('bucket_contents', bucket_name=bucket_name)
-     
-class S3BucketAjaxView(AjaxDatatableView):
-    model = S3Bucket
-    initial_order = [["created_at", "desc"]]
+def delete_file_from_source(request, source_name, file_name):
+    try:
+        s3.delete_object(Bucket=source_name, Key=file_name)
+        messages.success(request, f"{file_name} deleted.")
+    except Exception as e:
+        messages.error(request, f"Failed to delete {file_name}: {e}")
 
-    column_defs = [
-        {"name": "id", "title": "ID"},
-        {"name": "name", "title": "Bucket Name"},
-        {"name": "created_at", "title": "Created At"},
-    ]
-
-### **User Registration & Authentication**
+    return redirect('source_contents', source_name=source_name)
 
 def register(request):
     if request.method == "POST":
@@ -449,7 +354,6 @@ def register(request):
         return redirect("login")
 
     return render(request, "register.html")
-### **Admin & Composition Management**
  
 def home(request):
     return render(request, 'home.html')
@@ -480,620 +384,134 @@ def admin_login(request):
 def admin_dashboard(request):
     return render(request, "admin/dashboard.html")
 
+
 @staff_member_required
 def add_composition(request):
-    # Define paths for downloaded images & videos 
-    TEMP_BG_FOLDER = "media/temp_s3_back_files"
-    TEMP_FG_FOLDER = "media/temp_s3_fore_files"
-    VIDEO_DIR = "media/videos"
-    TEMP_IMAGE_FOLDER = "media/temp_images"
-    THUMBNAIL_DIR = "static/composition_thumbnails"
-    AUDIO_DIR = "compositions/audios"
-    MERGED_IMAGE_DIR = "media/merged_images"
-    
-    # Ensure necessary directories exist
-    os.makedirs(TEMP_BG_FOLDER, exist_ok=True)
-    os.makedirs(TEMP_FG_FOLDER, exist_ok=True)
-    os.makedirs(VIDEO_DIR, exist_ok=True)
-    os.makedirs(THUMBNAIL_DIR, exist_ok=True)
-    os.makedirs(AUDIO_DIR, exist_ok=True)
-    os.makedirs(MERGED_IMAGE_DIR, exist_ok=True)  
-    os.makedirs(TEMP_IMAGE_FOLDER, exist_ok=True)
+    local_buckets = Source.objects.values_list('name', flat=True)
 
-    # Fetch all bucket names from the database
-    local_buckets = Bucket.objects.values_list('name', flat=True)
+    buckets = os.getenv("R2_BUCKETS_NAME").split(",")
 
-    # Fetch all existing S3 buckets from AWS
-    try:
-        s3_buckets = s3.list_buckets()["Buckets"]
-        s3_bucket_names = [bucket["Name"] for bucket in s3_buckets]
-    except ClientError as e:
-        messages.error(request, f"Error fetching S3 buckets: {e}")
-        s3_bucket_names = []
-
-    # Filter only matching buckets
-    matching_buckets = list(set(local_buckets) & set(s3_bucket_names))
-    #print("✅ S3 Buckets:", matching_buckets)
+    matching_buckets = list(set(local_buckets) & set(buckets))
    
     if request.method == "POST":
-        if request.POST.get("type") == "classic":
-            # Retrieve form data
-            if request.POST.get("source_type") == "s3":
-                selected_type = request.POST.get("type")  # classic, tunnel, right-to-left, left-to-right
-                selected_background_bucket = request.POST.get("bg_bucket1")
-                selected_foreground_bucket = request.POST.get("fg_bucket1")
-                audio_file = request.FILES.get("audio_file")
-                background_brightness = request.POST.get("background_brightness")
-                background_saturation = request.POST.get("background_saturation")
-                background_opacity = request.POST.get("background_opacity")
-                background_transition = request.POST.get("background_transition")
-                foreground_brightness = request.POST.get("foreground_brightness")
-                foreground_saturation = request.POST.get("foreground_saturation")
-                foreground_opacity = request.POST.get("foreground_opacity")
-                foreground_transition = request.POST.get("foreground_transition")
-                bg_bucket2 = request.POST.get("bg_bucket2")
-                bg_bucket3 = request.POST.get("bg_bucket3")
-                bg_bucket4 = request.POST.get("bg_bucket4")
+        ensure_directories()
+        composition_type = request.POST.get("type")
+        source_type = request.POST.get("source_type")
 
-                fg_bucket2 = request.POST.get("fg_bucket2")
-                fg_bucket3 = request.POST.get("fg_bucket3")
-                fg_bucket4 = request.POST.get("fg_bucket4")
-                
-                base_url = request.POST.get("base_url", "").rstrip("/")
-                url_slug = request.POST.get("url_slug", "").lstrip("/")
-                linkto = request.POST.get("linkto", "").lstrip("/")
-                
-                # 🔁 Validate slug manually (don't auto-generate)
-                if url_slug and Composition.objects.filter(slug=url_slug).exists():
-                    messages.error(request, f"Error: The slug '{url_slug}' already exists. Please choose a different one.")
-                    return redirect("composition-add")
-                
-                # ✅ Construct full URL and slug
-                full_url = f"{base_url}/{url_slug}" if base_url and url_slug else None
-                slug = url_slug or ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-                
-                downloaded_background_files = []
+        base_url = request.POST.get("base_url", "").rstrip("/")
+        url_slug = request.POST.get("url_slug", "").lstrip("/")
+        link_to = request.POST.get("linkto", "").lstrip("/")
+        slug = url_slug or generate_auto_name()
+        full_url = f"{base_url}/{url_slug}" if base_url and url_slug else None
 
-                # ✅ Download Background Images
-                if selected_background_bucket:
-                    downloaded_background_files = download_s3_files(selected_background_bucket, TEMP_BG_FOLDER)
-                    print(f"✅ Downloaded Background Files: {downloaded_background_files}")
+        if url_slug and Composition.objects.filter(slug=url_slug).exists():
+            messages.error(request, f"Error: The slug '{url_slug}' already exists. Please choose a different one.")
+            return redirect("composition-add")
 
-                # ✅ Save Audio File
-                audio_path = None
-                if audio_file:
-                    audio_path = os.path.join(AUDIO_DIR, audio_file.name)
-                    with open(audio_path, "wb") as f:
-                        f.write(audio_file.read())
-                
-                def generate_auto_name():
-                    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-                    random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
-                    return f"composition_{timestamp}_{random_str}"
+        selected_background_bucket = request.POST.get("bg_bucket1")
+        selected_foreground_bucket = request.POST.get("fg_bucket1")
 
-                auto_name = generate_auto_name()
+        background_video = request.FILES.get("background_video")
+        foreground_video = request.FILES.get("foreground_video")
+        audio_file = request.FILES.get("audio_file")
+
+        bg_bucket2 = request.POST.get("bg_bucket2")
+        bg_bucket3 = request.POST.get("bg_bucket3")
+        bg_bucket4 = request.POST.get("bg_bucket4")
+
+        fg_bucket2 = request.POST.get("fg_bucket2")
+        fg_bucket3 = request.POST.get("fg_bucket3")
+        fg_bucket4 = request.POST.get("fg_bucket4")
+
+        downloaded_background_files = []
+
+        # ✅ Download Background Images
+        if selected_background_bucket:
+            downloaded_background_files = download_s3_files(selected_background_bucket, TEMP_BG_FOLDER)
+            print(f"✅ Downloaded Background Files: {downloaded_background_files}")
+
+        auto_name = generate_auto_name()
+
+        # ✅ Generate Thumbnail from first background image (safe)
+        thumbnail_path = generate_thumbnail(downloaded_background_files[0], os.path.join(THUMBNAIL_DIR, f"thumbnail_{auto_name}.jpg")) if downloaded_background_files else None
+        audio_path = None
+        if audio_file:
+            audio_path = os.path.join(AUDIO_DIR, audio_file.name)
+            if source_type == "upload":
+                background_path = os.path.join(VIDEO_DIR, background_video.name)
+                foreground_path = os.path.join(VIDEO_DIR, foreground_video.name)
+
+                with open(background_path, "wb") as f:
+                    f.write(background_video.read())
+
+                with open(foreground_path, "wb") as f:
+                    f.write(foreground_video.read())
+
                 output_path = f"{VIDEO_DIR}/{auto_name}.mp4"
-                video_filename = f"{auto_name}.mp4"
-                audio_filename = f"{audio_file}"
-                
-                # ✅ Generate Thumbnail from first background image (safe)
-                thumbnail_path = os.path.join(THUMBNAIL_DIR, f"thumbnail_{auto_name}.jpg")
-                first_bg_image = downloaded_background_files[0] if downloaded_background_files else None
-
-                if first_bg_image:
-                    try:
-                        os.makedirs(os.path.dirname(thumbnail_path), exist_ok=True)
-                        ext = os.path.splitext(first_bg_image)[1].lower()
-                        from PIL import Image
-
-                        if ext in [".jpg", ".jpeg", ".png", ".webp"]:
-                            img = Image.open(first_bg_image).convert("RGB")
-                            img.save(thumbnail_path, "JPEG")
-                            print(f"✅ Thumbnail (image) saved at: {thumbnail_path}")
-
-                        elif ext == ".gif":
-                            img = Image.open(first_bg_image)
-                            img.seek(0)  # Use the first frame of the GIF
-                            img.convert("RGB").save(thumbnail_path, "JPEG")
-                            print(f"✅ Thumbnail (GIF) saved at: {thumbnail_path}")
-
-                        elif ext == ".mp4":
-                            with VideoFileClip(first_bg_image) as clip:
-                                frame = clip.get_frame(0)  # Get the first frame
-                                img = Image.fromarray(frame).convert("RGB")
-                                img.save(thumbnail_path, "JPEG")
-                                print(f"✅ Thumbnail (video) saved at: {thumbnail_path}")
-
-                        else:
-                            print(f"❌ Unsupported format for thumbnail: {ext}")
-                            thumbnail_path = None
-
-                    except Exception as e:
-                        print(f"❌ Error saving thumbnail: {e}")
-                        thumbnail_path = None
+                combine_video_with_audio(background_path, foreground_path, audio_path, output_path)
+            with open(audio_path, "wb") as f:
+                f.write(audio_file.read())
+            if os.path.exists(audio_path):
                 try:
-                    
-                    # ✅ Upload Audio File (if exists)
-                    s3_audio_url = None
-                    if audio_path and os.path.exists(audio_path):
-                        audio_key = f"{os.path.basename(audio_path)}"
-                        print("audio key files:",audio_key)
-                        with open(audio_path, "rb") as audio_file_obj:
-                            s3.upload_fileobj(audio_file_obj, BUCKET_NAME, audio_key)
-                        s3_audio_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{audio_key}"
-                        print(f"✅ S3 Audio Upload Successful: {s3_audio_url}")
+                    audio_key = f"{os.path.basename(audio_path)}"
+                    print("audio key files:",audio_key)
+
+                    with open(audio_path, "rb") as audio_file_obj:
+                        s3.upload_fileobj(audio_file_obj, os.getenv("IDRIVE_BUCKET"))
+
+                    s3_audio_url = f"{os.getenv('R2_PUBLIC_URL')}/{audio_key}"
+                    print(f"✅ S3 Audio Upload Successful: {s3_audio_url}")
 
                 except (BotoCoreError, ClientError) as e:
                     print(f"❌ S3 Upload Failed: {e}")
                     messages.error(request, f"Error uploading media to S3: {e}")
                     return redirect("composition-add")
-                
-                comps = Composition.objects.create(
-                    name=auto_name,
-                    type=selected_type,
-                    background_video="null",
-                    foreground_video="null",
-                    audio_file=audio_path,
-                    background_brightness=background_brightness,
-                    background_saturation=background_saturation,
-                    background_opacity=background_opacity,
-                    background_transition=background_transition,
-                    foreground_brightness=foreground_brightness,
-                    foreground_opacity=foreground_opacity,
-                    foreground_saturation=foreground_saturation,
-                    foreground_transition=foreground_transition,
-                    img=thumbnail_path,  # you may want to upload this too
-                    url=full_url,
-                    page_url=linkto,
-                    slug=slug,  # 🔥 Added
-                    bg_bucket1=selected_background_bucket,
-                    bg_bucket2=bg_bucket2,
-                    bg_bucket3=bg_bucket3,
-                    bg_bucket4=bg_bucket4,
 
-                    fg_bucket1=selected_foreground_bucket,
-                    fg_bucket2=fg_bucket2,
-                    fg_bucket3=fg_bucket3,
-                    fg_bucket4=fg_bucket4,
-                    status="uncompleted"
-                )
+        comps = Composition.objects.create(
+            name=auto_name,
+            type=source_type if source_type else composition_type.title(),
+            background_video="null",
+            foreground_video="null",
+            audio_file=audio_path,
+            background_brightness=request.POST.get("background_brightness"),
+            background_saturation=request.POST.get("background_saturation"),
+            background_opacity=request.POST.get("background_opacity"),
+            background_transition=request.POST.get("background_transition"),
+            foreground_brightness=request.POST.get("foreground_brightness"),
+            foreground_opacity=request.POST.get("foreground_opacity"),
+            foreground_saturation=request.POST.get("foreground_saturation"),
+            foreground_transition=request.POST.get("foreground_transition"),
+            img=thumbnail_path,
+            url=full_url,
+            page_url=link_to,
+            slug=slug,
+            bg_bucket1=selected_background_bucket,
+            bg_bucket2=bg_bucket2,
+            bg_bucket3=bg_bucket3,
+            bg_bucket4=bg_bucket4,
 
-                comID = comps.id  # ✅ Ensure `comID` is an integer
-             
-                params_dict = {
-                    "selected_type": str(selected_type),
-                    "selected_background_bucket": str(selected_background_bucket),
-                    "selected_foreground_bucket": str(selected_foreground_bucket),
-                    "audio_file_path": str(audio_path),
-                    "ids": int(comID)  # Ensure it's an integer
-                }
-                
-                
+            fg_bucket1=selected_foreground_bucket,
+            fg_bucket2=fg_bucket2,
+            fg_bucket3=fg_bucket3,
+            fg_bucket4=fg_bucket4,
+            status="uncompleted" if source_type == "s3" else "completed"
+        )
 
-                    # ✅ Correct way to pass the dictionary
-                    #classic_task.delay(**params_dict)
-            
-                #classic_task.delay(selected_background_bucket, selected_foreground_bucket, saved_path);
+        comID = comps.id  # ✅ Ensure `comID` is an integer
 
-                messages.success(request, "🎉 Composition added successfully!")
-                return redirect("composition-view")
-            
-            #Uploads
-            else:
-               selected_type = request.POST.get("upload")
-            # Retrieve files from request
-            stype = request.POST.get("type")
-            background_video = request.FILES.get("background_video")
-            foreground_video = request.FILES.get("foreground_video")
-            audio_file = request.FILES.get("audio_file")
-            background_brightness = request.POST.get("background_brightness")
-            background_saturation = request.POST.get("background_saturation")
-            background_opacity = request.POST.get("background_opacity")
-            background_transition = request.POST.get("background_transition")
-            foreground_brightness = request.POST.get("foreground_brightness")
-            foreground_saturation = request.POST.get("foreground_saturation")
-            foreground_opacity = request.POST.get("foreground_opacity")
-            foreground_transition = request.POST.get("foreground_transition")
-            base_url = request.POST.get("base_url", "").rstrip("/")
-            url_slug = request.POST.get("url_slug", "").lstrip("/")
-            linkto = request.POST.get("linkto", "").lstrip("/")
+        params_dict = {
+            "selected_type": str(composition_type),
+            "selected_background_bucket": str(selected_background_bucket),
+            "selected_foreground_bucket": str(selected_foreground_bucket),
+            "audio_file_path": str(audio_path),
+            "ids": int(comID)  # Ensure it's an integer
+        }
+        #classic_task.delay(**params_dict)
+        #classic_task.delay(selected_background_bucket, selected_foreground_bucket, saved_path);
 
-            # 🔁 Validate slug manually (don't auto-generate)
-            if url_slug and Composition.objects.filter(slug=url_slug).exists():
-                messages.error(request, f"Error: The slug '{url_slug}' already exists. Please choose a different one.")
-                return redirect("composition-add")
+        messages.success(request, "🎉 Composition added successfully!")
+        return redirect("composition-view")
 
-            # ✅ Construct full URL and slug
-            full_url = f"{base_url}/{url_slug}" if base_url and url_slug else None
-            slug = url_slug or ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-
-            # Debugging print
-            print(f"Background Video: {background_video}, Foreground Video: {foreground_video}, Audio : {audio_file}")
-
-            # Validate required files
-            if not background_video or not foreground_video:
-                messages.error(request, "Error: Missing background or foreground video.")
-                return redirect("composition-add")
-
-            if not audio_file:
-                messages.error(request, "Error: No audio file uploaded.")
-                return redirect("composition-add")
-
-            # Generate unique filename
-            def generate_auto_name():
-                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-                random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
-                return f"composition_{timestamp}_{random_str}"
-
-            auto_name = generate_auto_name()
-
-            # Save files to disk
-            background_path = os.path.join(VIDEO_DIR, background_video.name)
-            #print("Video Bc" , background_path)
-            foreground_path = os.path.join(VIDEO_DIR, foreground_video.name)
-            #print("Video Fc" , foreground_path)
-            audio_path = os.path.join(AUDIO_DIR, audio_file.name)
-
-            with open(background_path, "wb") as f:
-                f.write(background_video.read())
-
-            with open(foreground_path, "wb") as f:
-                f.write(foreground_video.read())
-
-            with open(audio_path, "wb") as f:
-                f.write(audio_file.read())
-
-            # Define Output Path
-            output_path = f"{VIDEO_DIR}/{auto_name}.mp4"
-            video_filename = f"{auto_name}.mp4"
-            audio_filename = f"{audio_file}"
-
-            # ✅ Pass file paths (strings) instead of TemporaryUploadedFile objects
-            combine_video_with_audio(background_path, foreground_path, audio_path, output_path)
-
-            # Generate Thumbnail
-            thumbnail_path = os.path.join(THUMBNAIL_DIR, f"thumbnail_{auto_name}.jpg")
-            generate_video_thumbnail(output_path, thumbnail_path)
-
-            if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
-                    messages.error(request, f"Error: Final video not found or empty at {output_path}")
-                    return redirect("composition-add")
-
-            s3_key = f"{os.path.basename(output_path)}"
-
-            try:
-                    with open(output_path, "rb") as video_file:
-                        s3.upload_fileobj(video_file, BUCKET_NAME, s3_key)
-
-                    # ✅ Construct Public S3 URL
-                    s3_video_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{s3_key}"
-                    print(f"✅ S3 Upload Successful: {s3_video_url}")
-
-            except (BotoCoreError, ClientError) as e:
-                    print(f"❌ S3 Upload Failed: {e}")
-                    messages.error(request, f"Error uploading video to S3: {e}")
-                    return redirect("composition-add")
-
-            # Save Composition in Database
-            Composition.objects.create(
-                name=auto_name,
-                type=stype,
-                background_video="null",
-                foreground_video="null",
-                audio_file=audio_path,
-                final_video=video_filename,
-                img=thumbnail_path,
-                background_brightness=background_brightness,
-                background_saturation=background_saturation,
-                background_opacity=background_opacity,
-                background_transition=background_transition,
-                foreground_brightness=foreground_brightness,
-                foreground_opacity=foreground_opacity,
-                foreground_saturation=foreground_saturation,
-                foreground_transition=foreground_transition,
-                url=full_url,
-                page_url=linkto,
-                slug=slug,  # 🔥 Added
-                status="Completed"
-            )
-
-            messages.success(request, "🎉 Composition added successfully!")
-            return redirect("composition-view")
-
-                
-            
-        #Tunnel  Buckets
-        elif request.POST.get("type") == "tunnel":
-            
-            selected_background_buckets = request.POST.getlist("bg_bucket1")
-            background_brightness = request.POST.get("background_brightness")
-            background_saturation = request.POST.get("background_saturation")
-            background_opacity = request.POST.get("background_opacity")
-            background_transition = request.POST.get("background_transition")
-            audio_file = request.FILES.get("audio_file")
-            bg_bucket1 = request.POST.get("bg_bucket1")
-            bg_bucket2 = request.POST.get("bg_bucket2")
-            bg_bucket3 = request.POST.get("bg_bucket3")
-            bg_bucket4 = request.POST.get("bg_bucket4")
-
-            base_url = request.POST.get("base_url", "").rstrip("/")
-            url_slug = request.POST.get("url_slug", "").lstrip("/")
-            linkto = request.POST.get("linkto", "").lstrip("/")
-
-            # 🔁 Validate slug manually (don't auto-generate)
-            if url_slug and Composition.objects.filter(slug=url_slug).exists():
-                messages.error(request, f"Error: The slug '{url_slug}' already exists. Please choose a different one.")
-                return redirect("composition-add")
-
-            # ✅ Construct full URL and slug
-            full_url = f"{base_url}/{url_slug}" if base_url and url_slug else None
-            slug = url_slug or ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-            
-            downloaded_background_files = []
-
-            # ✅ Download Background Images
-            if selected_background_buckets:
-                for bucket_name in selected_background_buckets:
-                    if bucket_name:
-                        files = download_s3_files(bucket_name, TEMP_BG_FOLDER)
-                        downloaded_background_files.extend(files)
-                print(f"✅ Downloaded Background Files: {downloaded_background_files}")
-
-           
-            if not selected_background_buckets:
-                print("❌ No S3 bucket selected.")
-                return
-
-            
-            # ✅ Generate unique name for video
-            def generate_auto_name():
-                    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")  # Get current timestamp
-                    random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=6))  # Random 6-character string
-                    return f"composition_{timestamp}_{random_str}"
-
-            auto_name = generate_auto_name()
-            
-            
-            # ✅ Create Video from Merged Images
-            output_path = os.path.join(VIDEO_DIR, f"{auto_name}.mp4")
-            video_filename = f"{auto_name}.mp4"
-            
-            # ✅ Save Audio File
-            audio_path = None
-            if audio_file:
-                audio_path = os.path.join(AUDIO_DIR, audio_file.name)
-                with open(audio_path, "wb") as f:
-                    f.write(audio_file.read())
-                    
-            # ✅ Generate Thumbnail from first background image (safe)
-            thumbnail_path = os.path.join(THUMBNAIL_DIR, f"thumbnail_{auto_name}.jpg")
-            first_bg_image = downloaded_background_files[0] if downloaded_background_files else None
-
-            if first_bg_image:
-                try:
-                    os.makedirs(os.path.dirname(thumbnail_path), exist_ok=True)
-                    ext = os.path.splitext(first_bg_image)[1].lower()
-                    from PIL import Image
-
-                    if ext in [".jpg", ".jpeg", ".png", ".webp"]:
-                        img = Image.open(first_bg_image).convert("RGB")
-                        img.save(thumbnail_path, "JPEG")
-                        print(f"✅ Thumbnail (image) saved at: {thumbnail_path}")
-
-                    elif ext == ".gif":
-                        img = Image.open(first_bg_image)
-                        img.seek(0)  # Use the first frame of the GIF
-                        img.convert("RGB").save(thumbnail_path, "JPEG")
-                        print(f"✅ Thumbnail (GIF) saved at: {thumbnail_path}")
-
-                    elif ext == ".mp4":
-                        with VideoFileClip(first_bg_image) as clip:
-                            frame = clip.get_frame(0)  # Get the first frame
-                            img = Image.fromarray(frame).convert("RGB")
-                            img.save(thumbnail_path, "JPEG")
-                            print(f"✅ Thumbnail (video) saved at: {thumbnail_path}")
-
-                    else:
-                        print(f"❌ Unsupported format for thumbnail: {ext}")
-                        thumbnail_path = None
-
-                except Exception as e:
-                    print(f"❌ Error saving thumbnail: {e}")
-                    thumbnail_path = None
-            
-            # ✅ Save Audio File Securely
-            saved_path = None
-            if audio_file:
-                # Generate a secure, unique filename
-                filename = get_random_string(12) + os.path.splitext(audio_file.name)[1]
-                file_path = os.path.join("uploads", filename)  # Relative path inside MEDIA_ROOT
-                
-                # Save the file securely
-                saved_path = default_storage.save(file_path, ContentFile(audio_file.read()))
-           
-            # ✅ Save Composition in Database
-            comps = Composition.objects.create(
-                        name=auto_name,
-                        type="Tunnel",
-                        background_video="null",
-                        foreground_video="null",
-                        background_brightness=background_brightness,
-                        background_saturation=background_saturation,
-                        background_opacity=background_opacity,
-                        background_transition=background_transition,
-                        img=thumbnail_path,
-                        url=full_url,
-                        audio_file=audio_path,
-                        slug=slug,  # 🔥 Added
-                        bg_bucket1=bg_bucket1,
-                        bg_bucket2=bg_bucket2,
-                        bg_bucket3=bg_bucket3,
-                        bg_bucket4=bg_bucket4,
-                        status="uncompleted",
-                        page_url=linkto,
-                    )
-
-            comID = comps.id  # ✅ Ensure `comID` is an integer
-            params_tunnel = {
-                "selected_background_buckets": selected_background_buckets, 
-                "audio_file_path": str(saved_path),
-                "ids": int(comID)
-            }
-            # ✅ Correct way to pass the dictionary
-            #tunnel_task.delay(params_tunnel)
-            
-            print("🎉 Tunnel composition added successfully!")
-            return redirect("composition-view")
-            
-            # LEFT  TO RIGHT
-        elif request.POST.get("type") == "left-to-right":
-            bg_bucket = request.POST.get("bg_bucket1")
-            fg_bucket = request.POST.get("fg_bucket1")
-            audio_file = request.FILES.get("audio_file")
-            background_brightness = request.POST.get("background_brightness")
-            background_saturation = request.POST.get("background_saturation")
-            background_opacity = request.POST.get("background_opacity")
-            background_transition = request.POST.get("background_transition")
-            foreground_brightness = request.POST.get("foreground_brightness")
-            foreground_saturation = request.POST.get("foreground_saturation")
-            foreground_opacity = request.POST.get("foreground_opacity")
-            foreground_transition = request.POST.get("foreground_transition")
-            bg_bucket2 = request.POST.get("bg_bucket2")
-            bg_bucket3 = request.POST.get("bg_bucket3")
-            bg_bucket4 = request.POST.get("bg_bucket4")
-
-            fg_bucket2 = request.POST.get("fg_bucket2")
-            fg_bucket3 = request.POST.get("fg_bucket3")
-            fg_bucket4 = request.POST.get("fg_bucket4")
-            base_url = request.POST.get("base_url", "").rstrip("/")
-            url_slug = request.POST.get("url_slug", "").lstrip("/")
-            linkto = request.POST.get("linkto", "").lstrip("/")
- 
-
-            # 🔁 Validate slug manually (don't auto-generate)
-            if url_slug and Composition.objects.filter(slug=url_slug).exists():
-                messages.error(request, f"Error: The slug '{url_slug}' already exists. Please choose a different one.")
-                return redirect("composition-add")
-
-            # ✅ Construct full URL and slug
-            full_url = f"{base_url}/{url_slug}" if base_url and url_slug else None
-            slug = url_slug or ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-            
-            downloaded_background_files = []
-            downloaded_foreground_files = []
-
-            # ✅ Download Background Images
-            if bg_bucket:
-                downloaded_background_files = download_s3_files(bg_bucket, TEMP_BG_FOLDER)
-                print(f"✅ Downloaded Background Files: {downloaded_background_files}")
-
-            
-            if not bg_bucket or not fg_bucket:
-                messages.error(request, "❌ Please select background and foreground sources.")
-                return redirect("composition-add")
-
-            # Generate unique name
-            def generate_auto_name():
-                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-                random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
-                return f"composition_{timestamp}_{random_str}"
-
-            auto_name = generate_auto_name()
-            output_path = os.path.join(VIDEO_DIR, f"{auto_name}.mp4")
-            audio_filename = f"{audio_file}"
-           
-            # ✅ Generate Thumbnail from first background image (safe)
-            thumbnail_path = os.path.join(THUMBNAIL_DIR, f"thumbnail_{auto_name}.jpg")
-            first_bg_image = downloaded_background_files[0] if downloaded_background_files else None
-
-            if first_bg_image:
-                try:
-                    os.makedirs(os.path.dirname(thumbnail_path), exist_ok=True)
-                    ext = os.path.splitext(first_bg_image)[1].lower()
-                    from PIL import Image
-
-                    if ext in [".jpg", ".jpeg", ".png", ".webp"]:
-                        img = Image.open(first_bg_image).convert("RGB")
-                        img.save(thumbnail_path, "JPEG")
-                        print(f"✅ Thumbnail (image) saved at: {thumbnail_path}")
-
-                    elif ext == ".gif":
-                        img = Image.open(first_bg_image)
-                        img.seek(0)  # Use the first frame of the GIF
-                        img.convert("RGB").save(thumbnail_path, "JPEG")
-                        print(f"✅ Thumbnail (GIF) saved at: {thumbnail_path}")
-
-                    elif ext == ".mp4":
-                        with VideoFileClip(first_bg_image) as clip:
-                            frame = clip.get_frame(0)  # Get the first frame
-                            img = Image.fromarray(frame).convert("RGB")
-                            img.save(thumbnail_path, "JPEG")
-                            print(f"✅ Thumbnail (video) saved at: {thumbnail_path}")
-
-                    else:
-                        print(f"❌ Unsupported format for thumbnail: {ext}")
-                        thumbnail_path = None
-
-                except Exception as e:
-                    print(f"❌ Error saving thumbnail: {e}")
-                    thumbnail_path = None
-                    
-            # ✅ Save Audio File
-            audio_path = None
-            if audio_file:
-                audio_path = os.path.join(AUDIO_DIR, audio_file.name)
-                with open(audio_path, "wb") as f:
-                    f.write(audio_file.read())
-                    
-            # Create DB entry (video paths will be updated later)
-            comps = Composition.objects.create(
-                name=auto_name,
-                type="left-to-right",
-                
-                background_video="null",
-                foreground_video="null",
-                background_brightness=background_brightness,
-                background_saturation=background_saturation,
-                background_opacity=background_opacity,
-                background_transition=background_transition,
-                foreground_brightness=foreground_brightness,
-                foreground_opacity=foreground_opacity,
-                foreground_saturation=foreground_saturation,
-                foreground_transition=foreground_transition,
-                img=thumbnail_path,
-                url=full_url,
-                page_url=linkto,
-                audio_file=audio_path,
-                slug=slug,  # 🔥 Added
-                bg_bucket1=bg_bucket,
-                bg_bucket2=bg_bucket2,
-                bg_bucket3=bg_bucket3,
-                bg_bucket4=bg_bucket4, 
-
-                fg_bucket1=fg_bucket,
-                fg_bucket2=fg_bucket2,
-                fg_bucket3=fg_bucket3,
-                fg_bucket4=fg_bucket4,
-                status="uncompleted"
-            )
-
-            params_left = {
-                "background_bucket": bg_bucket,
-                "foreground_bucket": fg_bucket,
-                "audio_file_path": str(audio_path),
-                "ids": comps.id
-            }
-
-            # Call Celery Task
-            #left_to_right_task.delay(params_left)
-
-            messages.success(request, "🎉 Left to Right Composition added successfully!")
-            return redirect("composition-view")
-            
-        else:
-            print("test")
-            #return False
-          
     return render(request, "admin/composition.html", {
         "buckets": matching_buckets
     })
@@ -1105,9 +523,6 @@ def composition_view(request):
     paginator = Paginator(compositions_list, 10)
     page_number = request.GET.get("page")
     compositions = paginator.get_page(page_number)
-    
-    
-    buckets = s3.list_buckets()["Buckets"]
    
     return render(request, "admin/composition-view.html", {"compositions": compositions})
 
@@ -1118,12 +533,8 @@ def user_logout(request):
     return redirect('admin-login')  # Replace 'login' with the name of your login page URL
 
 
-
 def delete_compositions(request):
     """Ensures AWS S3 videos are deleted first before removing records from the Composition table."""
-    s3_client = boto3.client('s3')
-    BUCKET_NAME = 'composition-final'
-
     if request.method == 'POST':
         try:
             # ✅ Get selected composition IDs from request
@@ -1152,12 +563,12 @@ def delete_compositions(request):
 
                     try:
                         # ✅ Ensure the file exists in S3 before deleting
-                        response = s3_client.head_object(Bucket=BUCKET_NAME, Key=s3_key)
+                        response = s3.head_object(Bucket=os.getenv("IDRIVE_BUCKET"), Key=s3_key)
                         if response['ResponseMetadata']['HTTPStatusCode'] == 200:
                             print(f"✅ File found in S3: {s3_key}, proceeding to delete...")
 
                             # ✅ Delete the file from S3
-                            delete_response = s3_client.delete_object(Bucket=BUCKET_NAME, Key=s3_key)
+                            delete_response = s3.delete_object(Bucket=os.getenv("IDRIVE_BUCKET"), Key=s3_key)
 
                             # ✅ Confirm deletion
                             if delete_response.get("ResponseMetadata", {}).get("HTTPStatusCode") in [204, 200]:
@@ -1167,7 +578,7 @@ def delete_compositions(request):
                                 failed_s3_keys.append(s3_key)
                                 print(f"⚠️ Warning: S3 did not confirm deletion: {s3_key}")
 
-                    except s3_client.exceptions.ClientError as e:
+                    except s3.exceptions.ClientError as e:
                         error_code = e.response['Error']['Code']
                         if error_code == "404":
                             print(f"⚠️ File not found in S3: {s3_key}, skipping S3 deletion.")
@@ -1192,7 +603,8 @@ def delete_compositions(request):
             messages.error(request, f"An error occurred: {e}")
 
     return redirect('composition-view') 
-    
+
+
 def composition_detail(request, slug):
     composition = get_object_or_404(Composition, slug=slug)
     return render(request, 'admin/composition_detail.html', {'composition': composition})

@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>New Composition Admin Dashboard</title>
+  <title>Composition and Source Admin Dashboard</title>
 
   <!-- Google Font: Source Sans Pro -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
@@ -74,44 +74,26 @@
               <ul class="nav nav-treeview">
 
                 <li class="nav-item">
-                  <a href="{% url 'new-source' %}" class="nav-link">
+                  <a href="{% url 'create_source' %}" class="nav-link">
                     <i class="far fa-circle nav-icon"></i>
                     <p>New Source</p>
                   </a>
                 </li>
 
                 <li class="nav-item">
-                  <a href="{% url 'source-library' %}" class="nav-link">
+                  <a href="{% url 'source_library' %}" class="nav-link">
                     <i class="far fa-circle nav-icon"></i>
-                    <p>View Source</p>
+                    <p>Source Library</p>
+                  </a>
+                </li>
+                <li class="nav-item">
+                  <a href="{% url 'list_sources' %}" class="nav-link">
+                    <i class="far fa-circle nav-icon"></i>
+                    <p>All Sources</p>
                   </a>
                 </li>
               </ul>
             </li>
-
-  <!--          <li class="nav-item">-->
-  <!--            <a href="#" class="nav-link">-->
-  <!--              <i class="nav-icon fas fa-user"></i>-->
-  <!--              <p>S3Buckets <i class="fas fa-angle-left right"></i></p>-->
-  <!--            </a>-->
-  <!--            <ul class="nav nav-treeview">-->
-  <!--              -->
-  <!--              <li class="nav-item">-->
-  <!--                <a href="{% url 'list_buckets' %}" class="nav-link">-->
-  <!--                  <i class="far fa-circle nav-icon"></i>-->
-  <!--                  <p>S3 Buckets</p>-->
-  <!--                </a>-->
-  <!--              </li>-->
-  <!--              -->
-  <!--             -->
-  <!--            </ul>-->
-  <!--          </li>-->
-           <!--  <li class="nav-item menu-open">
-              <a href="{% url 'create-video' %}" class="nav-link">
-                <i class="nav-icon fas fa-sign-out-alt"></i>
-                <p>Upload</p>
-              </a>
-            </li> -->
 
             <li class="nav-item menu-open">
               <a href="#" class="nav-link">
@@ -143,5 +125,24 @@
   <script src="{% static 'admin/plugins/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
   <!-- AdminLTE App -->
   <script src="{% static 'admin/dist/js/adminlte.js' %}"></script>
+  <!-- In base.html before </body> -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+
+{% if messages %}
+    <script>
+        {% for message in messages %}
+            Swal.fire({
+                title: "{{ message.tags|capfirst }}!",
+                text: "{{ message|escapejs }}",
+                icon: "{% if 'error' in message.tags %}error{% elif 'success' in message.tags %}success{% elif 'warning' in message.tags %}warning{% else %}info{% endif %}",
+                confirmButtonText: 'OK',
+                timer: 3000,
+                timerProgressBar: true
+            });
+        {% endfor %}
+    </script>
+{% endif %}
+
 </body>
 </html>

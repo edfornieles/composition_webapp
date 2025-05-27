@@ -6,8 +6,6 @@
 <!-- Content Wrapper. Contains page content -->
   <div class="content-wrapper">
     <!-- Content Header (Page header) -->
-    
-
     <!-- Main content -->
     <section class="content">
       <div class="container-fluid">
@@ -21,61 +19,97 @@
              
               <div class="card-body">
                 <div class="p-4 bg-white shadow-lg rounded-lg border border-purple-500">
-
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <input type="text" id="search" placeholder="🔍 Search..." class="form-control w-25">
-                        <div>
-                            <button class="btn btn-success btn-sm">Download Selected</button>
-                            <button class="btn btn-danger btn-sm">Delete Selected</button>
+                    <!-- SEARCH FORM (GET) -->
+                    <form method="GET" class="mb-3">
+                        <div class="d-flex justify-content-start align-items-center">
+                            <input type="text" name="search" id="search" placeholder="🔍 Search..." value="{{ request.GET.search }}" class="form-control w-25">
+                            <button type="submit" class="btn btn-primary ms-2">Search</button>
                         </div>
-                    </div>
+                    </form>
 
-                    <!-- Table -->
-                    <table class="table table-bordered text-center align-middle">
-                        <thead class="bg-dark text-white">
-                            <tr>
-                                <th>Thumbnail</th>
-                                <th>Title</th>
-                                <th>Type</th>
-                                <th>Date</th>
-                                <th>Actions</th>
-                                <th>Select</th>
-                            </tr>
-                        </thead>
-                        <tbody id="compositionTable">
-                            {% for comp in compositions %}
-                            <tr>
-                                <td><img src="#" alt="Thumbnail" class="rounded" style="width: 50px; height: 50px;"></td>
-                                <td>{{ comp.name }}</td>
-                                <td>{{ comp.type }}</td>
-                                <td>{{ comp.date }}</td>
-                                <td>
-                                    <button class="btn btn-outline-secondary btn-sm">
-                                        <i class="fas fa-sync-alt"></i>
-                                    </button>
-                                </td>
-                                <td><input type="checkbox"></td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                    <!-- ACTION FORM (POST for Download/Delete) -->
+                    <form method="POST">
+                        {% csrf_token %}
+                        <div class="d-flex justify-content-end mb-3">
+                            <button type="submit" class="btn btn-success btn-sm me-2"
+                                    formaction="{% url 'download_source' %}">Download Selected</button>
+                            <button type="submit" class="btn btn-danger btn-sm"
+                                    formaction="{% url 'delete_source' %}">Delete Selected</button>
+                        </div>
+
+                        <table class="table table-bordered text-center align-middle">
+                            <thead class="bg-dark text-white">
+                                <tr>
+                                    <th>Thumbnail</th>
+                                    <th>Title</th>
+                                    <th>Type</th>
+                                    <th>Date</th>
+                                    <th>Edit</th>
+                                    <th>Select</th>
+                                </tr>
+                            </thead>
+                            <tbody id="compositionTable">
+                                {% for comp in page_obj %}
+                                <tr>
+                                    <td>
+                                        {% if comp.thumbnail %}
+                                            <img src="{{ comp.thumbnail }}" alt="Thumbnail" class="rounded" style="width: 50px; height: 50px;">
+                                        {% else %}
+                                            <span class="text-muted">No image</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ comp.name }}</td>
+                                    <td>{{ comp.type }}</td>
+                                    <td>{{ comp.last_scraped }}</td>
+                                    <td>
+                                        <a href="{% url 'edit_source' comp.id %}" class="text-info"><i class="fa fa-edit"></i></a>
+                                    </td>
+                                    <td><input type="checkbox" name="source" value="{{ comp.name }}"></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </form>
 
                     <!-- Pagination -->
                     <div class="d-flex justify-content-center mt-3">
                         <nav>
                             <ul class="pagination pagination-sm">
-                                <li class="page-item disabled"><a class="page-link" href="#">«</a></li>
-                                <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                                <li class="page-item"><a class="page-link" href="#">2</a></li>
-                                <li class="page-item"><a class="page-link" href="#">3</a></li>
-                                <li class="page-item"><a class="page-link" href="#">...»</a></li>
+
+                                {# First page #}
+                                {% if page_obj.has_previous %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page=1">«</a>
+                                    </li>
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}">‹</a>
+                                    </li>
+                                {% endif %}
+
+                                {# Page range logic to show 5 pages centered on current page #}
+                                {% for num in page_obj.paginator.page_range %}
+                                    {% if num >= page_obj.number|add:'-2' and num <= page_obj.number|add:'2' %}
+                                        <li class="page-item {% if page_obj.number == num %}active{% endif %}">
+                                            <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+                                        </li>
+                                    {% endif %}
+                                {% endfor %}
+
+                                {# Next and Last #}
+                                {% if page_obj.has_next %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ page_obj.next_page_number }}">›</a>
+                                    </li>
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">»</a>
+                                    </li>
+                                {% endif %}
+
                             </ul>
                         </nav>
                     </div>
-
                 </div>
-            </div>
-              
+              </div>
             </div>
           </div>
         </div>

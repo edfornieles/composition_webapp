@@ -1,6 +1,7 @@
-import boto3, ffmpeg, os, re,subprocess
+import boto3, ffmpeg, os, re, random, string, subprocess
 import moviepy as mp
 
+from datetime import datetime
 from botocore.exceptions import ClientError, NoCredentialsError
 from moviepy import ImageSequenceClip ,VideoFileClip, concatenate_videoclips
 from PIL import Image, UnidentifiedImageError
@@ -15,20 +16,28 @@ except ImportError:
     RESAMPLING_METHOD = Image.LANCZOS  # Fallback for older versions
 
 # Initialize S3 Client
-aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
-aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
-aws_region = os.getenv("AWS_S3_REGION_NAME", "us-east-1")
+s3 = None
+def set_r2_client():
+    global s3
+    if s3 is None:
+        s3 = boto3.client(
+        "s3",
+            endpoint_url=os.getenv('R2_ENDPOINT'),
+            aws_access_key_id=os.getenv('R2_ACCESS_KEY'),
+            aws_secret_access_key=os.getenv('R2_SECRET_KEY'),
+            region_name="auto",
+        )
 
-if not aws_access_key or not aws_secret_key:
-    raise ValueError("AWS credentials not found!")
+set_r2_client()
 
-s3 = boto3.client(
-    "s3",
-    aws_access_key_id=aws_access_key,
-    aws_secret_access_key=aws_secret_key,
-    region_name=aws_region,
-)
-BUCKET_NAME = "composition-final"
+TEMP_BG_FOLDER = "media/temp_s3_back_files"
+TEMP_FG_FOLDER = "media/temp_s3_fore_files"
+VIDEO_DIR = "media/videos"
+TEMP_IMAGE_FOLDER = "media/temp_images"
+THUMBNAIL_DIR = "static/composition_thumbnails"
+AUDIO_DIR = "compositions/audios"
+MERGED_IMAGE_DIR = "media/merged_images"
+
 
 def convert_media_to_video(media_files, output_path, fps=24, duration_per_frame=2):
     """
@@ -126,16 +135,17 @@ def create_video_ffmpeg(image_folder, output_video, fps=1):
         print(result.stderr)
         return None  # Return None if video creation fails
 
+
 def get_sample_image_url(bucket_name):
     """ Get the first image (JPG, PNG, JPEG, GIF) from the bucket """
     try:
         response = s3.list_objects_v2(Bucket=bucket_name)
-        if "Contents" in response:
-            for obj in response["Contents"]:
-                key = obj["Key"].lower()
-                if key.endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                    # Generate a public URL if the bucket/object is public
-                    return f"https://{bucket_name}.s3.amazonaws.com/{obj['Key']}"
+        contents = response.get("Contents", [])
+        for obj in contents:
+            key = obj["Key"].lower()
+            if key.endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                # Generate a public URL if the bucket/object is public
+                return f"{os.getenv('R2_PUBLIC_URL')}/{obj['Key']}"
         return None
     except Exception as e:
         print(f"Error accessing {bucket_name}: {e}")
@@ -207,7 +217,6 @@ def validate_images(image_list):
     return valid_images  # ✅ Return only valid images
 
 
-
 def delete_temp_files(folder_path):
     """Delete all files in a given folder."""
     for file in os.listdir(folder_path):
@@ -217,7 +226,6 @@ def delete_temp_files(folder_path):
                 os.remove(file_path)
         except Exception as e:
             print(f"Error deleting file {file_path}: {e}")
-
 
 
 def generate_video_thumbnail(video_path, thumbnail_path, time="00:00:01"):
@@ -233,7 +241,6 @@ def generate_video_thumbnail(video_path, thumbnail_path, time="00:00:01"):
         print(f"❌ Error generating thumbnail: {e.stderr.decode()}")
 
 
-
 def upload_to_s3(file_path, s3_key, bucket_name="your-s3-bucket-name"):
     """Uploads a file to S3 under the specified key."""
     try:
@@ -246,7 +253,7 @@ def upload_to_s3(file_path, s3_key, bucket_name="your-s3-bucket-name"):
         s3.upload_file(file_path, bucket_name, s3_key)
 
         # ✅ Generate public URL
-        file_url = f"https://{bucket_name}.s3.amazonaws.com/{s3_key}"
+        file_url = f"{os.getenv('R2_PUBLIC_URL')}/{s3_key}"
         print(f"✅ File uploaded successfully: {file_url}")
         return file_url
 
@@ -256,3 +263,55 @@ def upload_to_s3(file_path, s3_key, bucket_name="your-s3-bucket-name"):
     except Exception as e:
         print(f"❌ Error uploading to S3: {e}")
         return None
+
+def ensure_directories():
+    for folder in [TEMP_BG_FOLDER, TEMP_FG_FOLDER, VIDEO_DIR, TEMP_IMAGE_FOLDER, THUMBNAIL_DIR, AUDIO_DIR, MERGED_IMAGE_DIR]:
+        os.makedirs(folder, exist_ok=True)
+
+def generate_auto_name():
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    rand = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+    return f"composition_{timestamp}_{rand}"
+
+def generate_thumbnail(source_path, output_path):
+    try:
+        ext = os.path.splitext(source_path)[1].lower()
+        if ext in [".jpg", ".jpeg", ".png", ".webp"]:
+            img = Image.open(source_path).convert("RGB")
+        elif ext == ".gif":
+            img = Image.open(source_path)
+            img.seek(0)
+            img = img.convert("RGB")
+        elif ext == ".mp4":
+            with VideoFileClip(source_path) as clip:
+                frame = clip.get_frame(0)
+                img = Image.fromarray(frame).convert("RGB")
+        else:
+            print(f"❌ Unsupported format for thumbnail: {ext}")
+            return None
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        img.save(output_path, "JPEG")
+        return output_path
+    except Exception as e:
+        print(f"❌ Error generating thumbnail: {e}")
+        return None
+
+def save_uploaded_file(uploaded_file, path):
+    with open(path, "wb") as f:
+        f.write(uploaded_file.read())
+    return path
+
+def delete_bucket_objects(bucket_name):
+    continuation_token = None
+    while True:
+        list_kwargs = {'Bucket': bucket_name}
+        if continuation_token:
+            list_kwargs['ContinuationToken'] = continuation_token
+
+        response = s3.list_objects_v2(**list_kwargs)
+        for obj in response.get('Contents', []):
+            s3.delete_object(Bucket=bucket_name, Key=obj['Key'])
+
+        if not response.get('IsTruncated'):
+            break
+        continuation_token = response.get('NextContinuationToken')
