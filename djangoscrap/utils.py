@@ -315,3 +315,56 @@ def delete_bucket_objects(bucket_name):
         if not response.get('IsTruncated'):
             break
         continuation_token = response.get('NextContinuationToken')
+
+
+def directory_exists(bucket_name, prefix):
+    response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+    return "Contents" in response
+
+def list_directories(bucket_name, prefix=""):
+    response = s3.list_objects_v2(
+        Bucket=bucket_name,
+        Prefix=prefix,
+        Delimiter="/"
+    )
+    return response.get("CommonPrefixes", [])
+
+def delete_directory(bucket_name, prefix):
+    objects = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+    to_delete = [{"Key": obj["Key"]} for obj in objects.get("Contents", [])]
+
+    if to_delete:
+        s3.delete_objects(
+            Bucket=bucket_name,
+            Delete={"Objects": to_delete}
+        )
+        print(f"Deleted {len(to_delete)} objects under '{prefix}'")
+    else:
+        print("No objects found to delete")
+
+
+def rename_directory(bucket_name, old_prefix, new_prefix):
+    try:
+        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=old_prefix)
+        objects = response.get('Contents', [])
+
+        if not objects:
+            return False, f"No objects found in '{old_prefix}'"
+
+        for obj in objects:
+            old_key = obj["Key"]
+            new_key = old_key.replace(old_prefix, new_prefix, 1)
+
+            s3.copy_object(
+                Bucket=bucket_name,
+                CopySource={'Bucket': bucket_name, 'Key': old_key},
+                Key=new_key
+            )
+
+        for obj in objects:
+            s3.delete_object(Bucket=bucket_name, Key=obj["Key"])
+
+        return True, "Directory renamed successfully"
+    except Exception as e:
+        return False, str(e)
+

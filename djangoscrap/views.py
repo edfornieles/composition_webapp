@@ -87,8 +87,7 @@ def source_library(request):
             Q(source_id__icontains=search_query)
         )
     try:
-        s3_buckets = s3.list_buckets()["Buckets"]
-        s3_bucket_names = [bucket["Name"] for bucket in s3_buckets]
+        s3_bucket_names = list_directories(os.getenv('R2_BUCKET_NAME'))
     except ClientError as e:
         s3_bucket_names = []
 
@@ -97,7 +96,10 @@ def source_library(request):
 
     for bucket_name in s3_bucket_names:
         try:
-            response = s3.list_objects_v2(Bucket=bucket_name)
+            response = s3.list_objects_v2(
+                        Bucket = os.getenv('R2_BUCKET_NAME'),
+                        Prefix = bucket_name.get("Prefix")
+                    )
             contents = response.get("Contents", [])
             image_files = [obj for obj in contents if obj["Key"].lower().endswith((".png", ".jpg", ".jpeg"))]
             if image_files:
@@ -106,11 +108,9 @@ def source_library(request):
                 image_key = image_file["Key"]
 
                 image_url = f"{os.getenv('R2_PUBLIC_URL')}/{image_key}"
-                bucket_thumbnails[bucket_name] = image_url
+                bucket_thumbnails[bucket_name.get("Prefix").split('/')[0]] = image_url
 
-                # Save all image URLs for fallback
-                for img in image_files:
-                    all_available_images.append(f"{os.getenv('R2_PUBLIC_URL')}/{img['Key']}")
+                all_available_images += [image_url]
         except ClientError as e:
             print(f"Error accessing bucket {bucket_name}: {e}")
             continue
@@ -122,7 +122,7 @@ def source_library(request):
         elif all_available_images:
             source.thumbnail = random.choice(all_available_images)
         else:
-            source.thumbnail = None  # fallback to placeholder in template
+            source.thumbnail = None
 
     paginator = Paginator(sources, 10)  # Show 10 per page
     page_number = request.GET.get("page")
@@ -133,15 +133,38 @@ def source_library(request):
 
 def list_sources(request):
     """ List all S3 buckets with sample image """
-    bucket_list = s3.list_buckets()["Buckets"]
     all_sources = []
+    response = s3.list_objects_v2(Bucket=os.getenv('R2_BUCKET_NAME'), Delimiter="/")
 
-    for source in bucket_list:
-        image_url = get_sample_image_url(source['Name'])
+    directories = response.get("CommonPrefixes", [])
+    for dir_prefix in directories:
+        prefix = dir_prefix["Prefix"]  # e.g., "dir1/"
+
+        # Get all objects under this prefix
+        dir_objects = s3.list_objects_v2(Bucket=os.getenv('R2_BUCKET_NAME'), Prefix=prefix).get("Contents", [])
+
+        if not dir_objects:
+            continue  # Skip empty directories
+
+        # Get latest modified date
+        latest_date = max(obj["LastModified"] for obj in dir_objects)
+
+        # Find sample image
+        sample_image_key = None
+        for obj in dir_objects:
+            key = obj["Key"].lower()
+            if key.endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                sample_image_key = obj["Key"]
+                break
+        sample_image_url = (
+            f"{os.getenv('R2_PUBLIC_URL')}/{sample_image_key}"
+            if {sample_image_key} else None
+        )
+
         all_sources.append({
-            "Name": source['Name'],
-            "CreationDate": source["CreationDate"],
-            "image_url": image_url
+            "Name": prefix.rstrip('/'),
+            "CreationDate": latest_date,
+            "image_url": sample_image_url
         })
 
     return render(request, 'admin/sources.html', {'sources': all_sources})
@@ -149,7 +172,10 @@ def list_sources(request):
 
 def source_contents(request, source_name):
     """ Get contents of a selected bucket """
-    objects = s3.list_objects_v2(Bucket=source_name).get("Contents", [])
+    objects = s3.list_objects_v2(
+                        Bucket = os.getenv('R2_BUCKET_NAME'),
+                        Prefix = f"{source_name}/"
+                    ).get("Contents", [])
     paginator = Paginator(objects, 25)  # Show 25 objects per page
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
@@ -167,10 +193,11 @@ def create_or_edit_source(request, source_id=None):
     source = get_object_or_404(Source, id=source_id) if is_edit else None
 
     form = SourceForm(request.POST or None, instance=source)
-
+    if is_edit:
+        original_name = source.name
     if request.method == "POST":
         if form.is_valid():
-            bucket_name_raw = form.cleaned_data["name"]
+            bucket_name_raw = form.cleaned_data["name"].lower()
             new_bucket_name = bucket_name_raw.lower().replace(" ", "-")
 
             if not is_edit:
@@ -181,30 +208,25 @@ def create_or_edit_source(request, source_id=None):
                         "form": form,
                         "is_edit": False,
                     })
-
-                # Check if bucket exists in Cloudflare
-                try:
-                    s3.head_bucket(Bucket=new_bucket_name)
+                if directory_exists(os.getenv('R2_BUCKET_NAME'), new_bucket_name):
                     form.add_error("name", "A bucket with this name already exists on the storage provider.")
                     return render(request, "admin/new-update-source.html", {
                         "form": form,
                         "is_edit": False,
                     })
-                except ClientError as e:
-                    error_code = int(e.response['Error']['Code'])
-                    if error_code == 404:
-                        pass  # Bucket doesn't exist
-                    elif error_code == 403:
-                        form.add_error("name", "Bucket exists but is not accessible (likely owned by someone else).")
-                        return render(request, "admin/new-update-source.html", {
-                            "form": form,
-                            "is_edit": False,
-                        })
-                    else:
-                        messages.error(request, f"Unexpected error checking bucket: {e}")
-                        return redirect("list_sources")
 
-            # Save to DB
+            if is_edit:
+                if original_name != bucket_name_raw:
+                    old_prefix = original_name.lower().replace(" ", "-") + "/"
+                    new_prefix = new_bucket_name + "/"
+
+                    # ✅ Rename objects in S3
+                    success, msg = rename_directory(os.getenv('R2_BUCKET_NAME'), old_prefix, new_prefix)
+                    print(success, msg, old_prefix, new_prefix)
+                    if not success:
+                        messages.error(request, f"Error renaming directory: {msg}")
+                        return redirect("source_library")
+
             bucket = form.save(commit=False)
             bucket.name = bucket_name_raw
             bucket.save()
@@ -212,15 +234,15 @@ def create_or_edit_source(request, source_id=None):
             if not is_edit:
                 # Create the bucket on Cloudflare
                 try:
-                    s3.create_bucket(Bucket=new_bucket_name)
+                    s3.put_object(Bucket=os.getenv('R2_BUCKET_NAME'), Key=f"{new_bucket_name}/")
                     messages.success(request, f"Bucket '{new_bucket_name}' created successfully.")
                 except ClientError as e:
                     messages.error(request, f"Error creating bucket: {e}")
-                    return redirect("list_sources")
+                    return redirect("source_library")
             else:
                 messages.success(request, f"Source '{bucket_name_raw}' updated successfully.")
 
-            return redirect("list_sources")
+            return redirect("source_library")
 
     return render(request, "admin/new-update-source.html", {
         "form": form,
@@ -236,8 +258,8 @@ def delete_source(request):
     selected = request.POST.getlist("source") or [request.POST.get("source")]
     for source in selected:
         try:
-            delete_bucket_objects(source)
-            s3.delete_bucket(Bucket=source)
+            delete_directory(os.getenv('R2_BUCKET_NAME'), source)
+            # s3.delete_bucket(Bucket=source)
             Source.objects.filter(name=source).delete()
         except Exception as e:
             errors.append(f"{source}: {e}")
@@ -261,7 +283,10 @@ def download_source(request):
         with zipfile.ZipFile(zip_buffer, "w") as zip_file:
             for source in selected:
                 try:
-                    objects = s3.list_objects_v2(Bucket=source)
+                    objects = s3.list_objects_v2(
+                        Bucket = os.getenv('R2_BUCKET_NAME'),
+                        Prefix = f"{source}/"
+                    )
                     contents = objects.get('Contents', [])
 
                     for obj in contents:
@@ -304,20 +329,27 @@ def upload_file(request, source_name):
             messages.error(request, "You can upload a maximum of 50 files at once.")
             return redirect(request.path)
 
+        errors = []
+
         for file in files:
             try:
                 s3.upload_fileobj(
                     file,
-                    source_name,
-                    file.name,
+                    os.getenv('R2_BUCKET_NAME'),
+                    f"{source_name.rstrip('/')}/{file.name}",
                     ExtraArgs={'ContentType': file.content_type}
                 )
                 messages.success(request, f"Uploaded: {file.name}")
             except Exception as e:
-                messages.error(request, f"Error uploading {file.name}: {e}")
-                return redirect('source_contents', source_name=source_name)
+                errors.append(f"{file.name}: {e}")
 
-        return redirect("sources")
+        if errors:
+            for err in errors:
+                messages.error(request, f"Error: {err}")
+                return redirect('source_contents', source_name=source_name)
+        else:
+            messages.success(request, "All files uploaded successfully.")
+            return redirect("list_sources")
 
     return render(request, 'admin/upload.html', {'source_name': source_name})
 
@@ -326,7 +358,7 @@ def upload_file(request, source_name):
 @staff_member_required
 def delete_file_from_source(request, source_name, file_name):
     try:
-        s3.delete_object(Bucket=source_name, Key=file_name)
+        s3.delete_object(Bucket=os.getenv('R2_BUCKET_NAME'), Key=file_name)
         messages.success(request, f"{file_name} deleted.")
     except Exception as e:
         messages.error(request, f"Failed to delete {file_name}: {e}")
