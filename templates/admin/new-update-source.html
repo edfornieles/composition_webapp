@@ -23,6 +23,9 @@
                 <div class="p-4 bg-white shadow-lg rounded-lg border border-purple-500">
                     <form class="mb-4" method="POST" action="">
                         {% csrf_token %}
+                        {% for error in form.name.errors %}
+                            <div class="row ml-1" style="color:red">{{ error }}</div>
+                        {% endfor %}
                         <div class="row">
                             <div class="col-md-3">
                                 <label class="form-label">Name:</label>

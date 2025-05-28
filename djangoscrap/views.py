@@ -86,12 +86,16 @@ def source_library(request):
             Q(type__icontains=search_query) |
             Q(source_id__icontains=search_query)
         )
-    s3_buckets = os.getenv("R2_BUCKETS_NAME").split(",")
+    try:
+        s3_buckets = s3.list_buckets()["Buckets"]
+        s3_bucket_names = [bucket["Name"] for bucket in s3_buckets]
+    except ClientError as e:
+        s3_bucket_names = []
 
     bucket_thumbnails = {}
     all_available_images = []  # For fallback
 
-    for bucket_name in s3_buckets:
+    for bucket_name in s3_bucket_names:
         try:
             response = s3.list_objects_v2(Bucket=bucket_name)
             contents = response.get("Contents", [])
@@ -129,14 +133,14 @@ def source_library(request):
 
 def list_sources(request):
     """ List all S3 buckets with sample image """
-    source_names = os.getenv("R2_BUCKETS_NAME", "").split(",")  # comma-separated list
+    bucket_list = s3.list_buckets()["Buckets"]
     all_sources = []
 
-    for source in source_names:
-        image_url = get_sample_image_url(source)
+    for source in bucket_list:
+        image_url = get_sample_image_url(source['Name'])
         all_sources.append({
-            "Name": source,
-            # "CreationDate": source["CreationDate"],
+            "Name": source['Name'],
+            "CreationDate": source["CreationDate"],
             "image_url": image_url
         })
 
