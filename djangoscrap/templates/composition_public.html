@@ -11,6 +11,13 @@
             --accent: #42d392;
         }
         * { box-sizing: border-box; }
+        .orb-tex { width: 100%; height: 100%; }
+        .orb-tex > img, .orb-tex > video {
+            width: 100%;
+            height: 100%;
+            object-fit: fill;
+            display: block;
+        }
         body {
             margin: 0;
             background: var(--bg);
@@ -68,7 +75,19 @@
         #scrollStage,
         #strobeStage,
         #psychedelicStage,
-        #kaleidoStage {
+        #kaleidoStage,
+        #swirlStage,
+        #centerShiftStage,
+        #associationsStage,
+        #prismStage,
+        #sleepStage,
+        #waveStage,
+        #angerStage,
+        #anxietyStage,
+        #boxStage,
+        #liquidMirrorStage,
+        #liquidMirrorExtremeStage,
+        #waxMeltStage {
             z-index: 5;
         }
         #splitScreen,
@@ -572,12 +591,17 @@
             animation-timing-function: cubic-bezier(0.12, 0.78, 0.2, 1);
             animation-fill-mode: forwards;
             transform-origin: 50% 50%;
+            isolation: isolate;
+            contain: layout style paint;
         }
         .tunnel-burst-layer img,
         .tunnel-burst-layer video {
             width: 100%;
             height: 100%;
             object-fit: cover;
+            transform: translateZ(0);
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
         }
         .swirl-layer {
             position: absolute;
@@ -926,6 +950,103 @@
             overflow: hidden;
             background: radial-gradient(circle at 50% 58%, #202736 0%, #121927 56%, #080d16 100%);
         }
+        .liquid-mirror-stage {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: #050810;
+        }
+        .liquid-mirror-stage .lm-canvas {
+            position: absolute;
+            inset: 0;
+            filter: url(#liquidMirrorWarp);
+            will-change: filter;
+        }
+        .liquid-mirror-stage .lm-asset {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            transition: opacity 1800ms ease;
+        }
+        .liquid-mirror-stage .lm-asset > img,
+        .liquid-mirror-stage .lm-asset > video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .liquid-mirror-stage .lm-tint {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(ellipse at 50% 60%, rgba(120,170,220,0.0) 35%, rgba(8,18,32,0.55) 100%);
+            mix-blend-mode: multiply;
+        }
+        .liquid-mirror-extreme-stage {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: #02050a;
+        }
+        .liquid-mirror-extreme-stage .lmx-canvas {
+            position: absolute;
+            inset: -12%;
+            filter: url(#liquidMirrorExtremeWarp) saturate(1.15) contrast(1.05);
+            will-change: filter;
+        }
+        .liquid-mirror-extreme-stage .lmx-asset {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            transition: opacity 1200ms ease;
+        }
+        .liquid-mirror-extreme-stage .lmx-asset > img,
+        .liquid-mirror-extreme-stage .lmx-asset > video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .liquid-mirror-extreme-stage .lmx-tint {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(ellipse at 50% 50%, rgba(180,80,220,0) 0%, rgba(180,80,220,0) 35%, rgba(20,4,40,0.45) 80%, rgba(0,0,0,0.8) 100%);
+            mix-blend-mode: multiply;
+        }
+        .wax-melt-stage {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: #0a0806;
+        }
+        .wax-melt-stage .wm-canvas {
+            position: absolute;
+            inset: 0;
+            filter: url(#waxMeltWarp);
+            will-change: filter;
+        }
+        .wax-melt-stage .wm-asset {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            transition: opacity 3200ms ease;
+            mix-blend-mode: lighten;
+        }
+        .wax-melt-stage .wm-asset > img,
+        .wax-melt-stage .wm-asset > video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .wax-melt-stage .wm-tint {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: linear-gradient(to bottom, rgba(255,200,140,0.0) 0%, rgba(120,60,30,0.18) 65%, rgba(30,12,6,0.45) 100%);
+            mix-blend-mode: multiply;
+        }
         .box-room {
             position: absolute;
             inset: 0;
@@ -1066,6 +1187,25 @@
         <div class="anger-stage hidden" id="angerStage"></div>
         <div class="anxiety-stage hidden" id="anxietyStage"></div>
         <div class="box-stage hidden" id="boxStage"></div>
+        <div class="liquid-mirror-stage hidden" id="liquidMirrorStage"></div>
+        <div class="liquid-mirror-extreme-stage hidden" id="liquidMirrorExtremeStage"></div>
+        <div class="wax-melt-stage hidden" id="waxMeltStage"></div>
+        <svg width="0" height="0" style="position:absolute;width:0;height:0;pointer-events:none" aria-hidden="true">
+            <defs>
+                <filter id="liquidMirrorWarp" x="-8%" y="-8%" width="116%" height="116%">
+                    <feTurbulence id="liquidMirrorTurbulence" type="fractalNoise" baseFrequency="0.014 0.030" numOctaves="2" seed="3" result="noise"/>
+                    <feDisplacementMap in="SourceGraphic" in2="noise" scale="42" xChannelSelector="R" yChannelSelector="G"/>
+                </filter>
+                <filter id="liquidMirrorExtremeWarp" x="-35%" y="-35%" width="170%" height="170%">
+                    <feTurbulence id="liquidMirrorExtremeTurbulence" type="turbulence" baseFrequency="0.010 0.022" numOctaves="3" seed="11" result="noise"/>
+                    <feDisplacementMap id="liquidMirrorExtremeDisplacement" in="SourceGraphic" in2="noise" scale="90" xChannelSelector="R" yChannelSelector="G"/>
+                </filter>
+                <filter id="waxMeltWarp" x="-15%" y="-5%" width="130%" height="160%">
+                    <feTurbulence id="waxMeltTurbulence" type="fractalNoise" baseFrequency="0.045 0.006" numOctaves="2" seed="7" result="noise"/>
+                    <feDisplacementMap id="waxMeltDisplacement" in="SourceGraphic" in2="noise" scale="20" xChannelSelector="R" yChannelSelector="G"/>
+                </filter>
+            </defs>
+        </svg>
         <div class="layer overlay-layer" id="overlayLayer"></div>
         <a class="click-through hidden" id="clickThroughLink" href="javascript:void(0)" aria-label="Linked composition destination">Linked composition destination</a>
     </div>
@@ -1110,8 +1250,11 @@
 
     <script src="/static/admin/js/composition_shared_renderer.js"></script>
     <script>
-        const bgAssets = JSON.parse(document.getElementById("bg-assets").textContent || "[]");
+        let bgAssets = JSON.parse(document.getElementById("bg-assets").textContent || "[]");
         const fgAssets = JSON.parse(document.getElementById("fg-assets").textContent || "[]");
+        if (!bgAssets.length && fgAssets.length) {
+            bgAssets = fgAssets.slice();
+        }
         const compositionTypeRaw = JSON.parse(document.getElementById("composition-type").textContent || "\"classic\"");
         const compositionType = compositionTypeRaw === "morph" ? "single" : compositionTypeRaw;
         const compositionTransition = JSON.parse(document.getElementById("composition-transition").textContent || "\"none\"");
@@ -1210,8 +1353,34 @@
                 setStageActivity(document.visibilityState === "visible");
             });
         }
+        // Limit concurrent video-heavy mounts (tunnel-burst, strobe, etc.) so Chrome
+        // does not overload HW video decode + compositing — avoids black frames and
+        // horizontal "torn" band glitches on stacked blend/filter layers.
+        const MAX_ACTIVE_VIDEO_SLOTS = 10;
+        let _videoSlotsInUse = 0;
+        const _videoSlotWaiters = [];
         const withVideoMountSlot = (runTask) => {
-            runTask(function () {});
+            const tryRun = () => {
+                if (_videoSlotsInUse >= MAX_ACTIVE_VIDEO_SLOTS) {
+                    _videoSlotWaiters.push(tryRun);
+                    return;
+                }
+                _videoSlotsInUse += 1;
+                let released = false;
+                const releaseSlot = () => {
+                    if (released) return;
+                    released = true;
+                    _videoSlotsInUse = Math.max(0, _videoSlotsInUse - 1);
+                    const next = _videoSlotWaiters.shift();
+                    if (typeof next === "function") next();
+                };
+                try {
+                    runTask(releaseSlot);
+                } catch (_) {
+                    releaseSlot();
+                }
+            };
+            tryRun();
         };
 
         function toVideoFallbackAsset(asset) {
@@ -1499,6 +1668,9 @@
                     img.addEventListener("error", () => fireBroken("thumbnail_error"), { once: true });
                     container.appendChild(img);
                     if (applyFilters) applyVisualFilter(img);
+                    if (typeof assetOptions.onFallbackMounted === "function") {
+                        requestAnimationFrame(() => assetOptions.onFallbackMounted());
+                    }
                 };
                 kickPlay();
                 el.addEventListener("loadeddata", kickPlay, { once: true });
@@ -1627,7 +1799,22 @@
                         });
                     } else {
                         if (onReady) onReady();
-                        releaseSlot();
+                        // Hold slot until video signals playable frame so burst/stack modes
+                        // cannot spawn dozens of simultaneous decoders (Chrome GPU corruption).
+                        const mountedVideo = container.querySelector("video");
+                        if (mountedVideo && renderAsset.kind === "video") {
+                            const releaseOnce = () => releaseSlot();
+                            if (mountedVideo.readyState >= 2) {
+                                requestAnimationFrame(releaseOnce);
+                            } else {
+                                mountedVideo.addEventListener("loadeddata", releaseOnce, { once: true });
+                                mountedVideo.addEventListener("canplay", releaseOnce, { once: true });
+                                mountedVideo.addEventListener("error", releaseOnce, { once: true });
+                                setTimeout(releaseOnce, Math.max(800, Number(assetOptions.videoReadyTimeoutMs) || 2200));
+                            }
+                        } else {
+                            releaseSlot();
+                        }
                     }
                 });
             } else {
@@ -1647,6 +1834,20 @@
                 });
                 probe.src = renderAsset.url;
             }
+        }
+
+        function showTunnelStageNoMedia() {
+            const stage = document.getElementById("tunnelStage");
+            if (!stage) return;
+            stage.classList.remove("hidden");
+            stage.style.display = "flex";
+            stage.style.alignItems = "center";
+            stage.style.justifyContent = "center";
+            stage.style.background = "#0a0a0f";
+            stage.style.width = "100%";
+            stage.style.height = "100%";
+            stage.style.boxSizing = "border-box";
+            stage.innerHTML = '<div style="color:#c8c8c8;font:14px/1.55 system-ui,sans-serif;padding:28px;max-width:480px;text-align:center;"><strong style="color:#eee;display:block;margin-bottom:10px;">No media for this composition</strong><span style="opacity:.85">Background sources are missing on disk, empty, or filtered out (for example “landscape only” with no landscape clips). Add media under Source Library and assign sources in Edit composition.</span></div>';
         }
 
         function normalizeTransitionMode(value) {
@@ -1981,7 +2182,15 @@
             const stage = document.getElementById("tunnelStage");
             stage.classList.remove("hidden");
             stage.innerHTML = "";
-            if (!bgAssets.length) return;
+            const patchworkPool = bgAssets.length ? bgAssets : fgAssets;
+            if (!patchworkPool.length) {
+                stage.style.display = "flex";
+                stage.style.alignItems = "center";
+                stage.style.justifyContent = "center";
+                stage.style.background = "#0a0a0f";
+                stage.innerHTML = '<div style="color:#c8c8c8;font:14px/1.55 system-ui,sans-serif;padding:28px;max-width:480px;text-align:center;"><strong style="color:#eee;display:block;margin-bottom:10px;">No media for this composition</strong><span style="opacity:.85">Background sources are missing on disk, empty, or filtered out (e.g. landscape-only with no landscape clips). Open Source Library, ensure the folder exists with images or video, then assign it under Edit composition.</span></div>';
+                return;
+            }
 
             stage.style.display = "grid";
             const stageW = Math.max(1, window.innerWidth || 1);
@@ -2045,7 +2254,7 @@
                 isHorizontalStripeVariant ||
                 isFineFluxVariant ||
                 isSuperfineFluxVariant;
-            const mashPoolSize = Math.min(5, Math.max(1, bgAssets.length));
+            const mashPoolSize = Math.min(5, Math.max(1, patchworkPool.length));
             stage.style.inset = "0";
             stage.style.transform = "none";
             const applyMashFragment = (layer, row, col) => {
@@ -2079,7 +2288,10 @@
                 });
             };
             const mountMashLayer = (layer, asset, row, col) => {
-                mountAssetWhenReady(layer, asset, () => applyMashFragment(layer, row, col), true, { mashTile: useFragment });
+                mountAssetWhenReady(layer, asset, () => applyMashFragment(layer, row, col), true, {
+                    mashTile: useFragment,
+                    onFallbackMounted: () => applyMashFragment(layer, row, col),
+                });
             };
             stage.style.width = "100%";
             stage.style.height = "100%";
@@ -2127,14 +2339,14 @@
 
             let cursor = 0;
             const nextAsset = () => {
-                if (compositionSourcePlaybackMode === "random" && bgAssets.length > 1) {
-                    let nextIndex = Math.floor(Math.random() * bgAssets.length);
-                    if (nextIndex === cursor) nextIndex = (nextIndex + 1) % bgAssets.length;
+                if (compositionSourcePlaybackMode === "random" && patchworkPool.length > 1) {
+                    let nextIndex = Math.floor(Math.random() * patchworkPool.length);
+                    if (nextIndex === cursor) nextIndex = (nextIndex + 1) % patchworkPool.length;
                     cursor = nextIndex;
                 } else {
-                    cursor = cursor % bgAssets.length;
+                    cursor = cursor % patchworkPool.length;
                 }
-                const asset = bgAssets[cursor];
+                const asset = patchworkPool[cursor];
                 if (compositionSourcePlaybackMode !== "random") cursor += 1;
                 return asset;
             };
@@ -2144,7 +2356,7 @@
             }
             mountAssetWhenReady(baseLayer, pool[0], applyBaseLayerFit);
             const rotatePoolAsset = (forcedSlot = null) => {
-                if (bgAssets.length <= mashPoolSize) return;
+                if (patchworkPool.length <= mashPoolSize) return;
                 const slot = forcedSlot === null ? Math.floor(Math.random() * mashPoolSize) : forcedSlot;
                 pool[slot] = nextAsset();
             };
@@ -2409,7 +2621,10 @@
             const stage = document.getElementById("tunnelStage");
             stage.classList.remove("hidden");
             stage.innerHTML = "";
-            if (!bgAssets.length) return;
+            if (!bgAssets.length) {
+                showTunnelStageNoMedia();
+                return;
+            }
             stage.style.background = isPsychedelicTunnel
                 ? "radial-gradient(circle at 24% 22%, #2a003d, #0c0016 52%, #000)"
                 : "#000";
@@ -2744,6 +2959,255 @@
             setupPaneMash(rightPane, rightPool);
         }
 
+        function setupLiquidMirrorMode() {
+            // Hide everything except the liquid-mirror stage and overlay layer.
+            document.getElementById("backgroundLayer").classList.add("hidden");
+            document.getElementById("foregroundLayer").classList.add("hidden");
+            document.getElementById("tunnelGrid").classList.add("hidden");
+            document.getElementById("splitScreen").classList.add("hidden");
+            document.getElementById("splitScreenHorizontal").classList.add("hidden");
+            document.getElementById("psychedelicStage").classList.add("hidden");
+            document.getElementById("kaleidoStage").classList.add("hidden");
+            document.getElementById("scrollStage").classList.add("hidden");
+            document.getElementById("strobeStage").classList.add("hidden");
+            document.getElementById("tunnelStage").classList.add("hidden");
+            const stage = document.getElementById("liquidMirrorStage");
+            stage.classList.remove("hidden");
+            stage.innerHTML = "";
+            const lmCanvas = document.createElement("div");
+            lmCanvas.className = "lm-canvas";
+            stage.appendChild(lmCanvas);
+            const tint = document.createElement("div");
+            tint.className = "lm-tint";
+            stage.appendChild(tint);
+            if (!bgAssets.length) return;
+
+            // Slow drifting cycle through bg assets, with long crossfades to feel like
+            // the same liquid surface re-resolving as a different image.
+            const speed = Math.max(0.25, compositionSpeed);
+            const cycleMs = Math.max(7000, Math.floor(11000 / speed));
+            const fadeMs = 1800;
+            let cursor = 0;
+            let activeWrapper = null;
+            const nextAsset = () => {
+                if (compositionSourcePlaybackMode === "random" && bgAssets.length > 1) {
+                    let n = Math.floor(Math.random() * bgAssets.length);
+                    if (n === cursor) n = (n + 1) % bgAssets.length;
+                    cursor = n;
+                    return bgAssets[n];
+                }
+                const a = bgAssets[cursor % bgAssets.length];
+                cursor += 1;
+                return a;
+            };
+            const cycle = () => {
+                if (!stage.isConnected) return;
+                const wrapper = document.createElement("div");
+                wrapper.className = "lm-asset";
+                lmCanvas.appendChild(wrapper);
+                mountAssetWhenReady(wrapper, nextAsset(), () => {
+                    requestAnimationFrame(() => { wrapper.style.opacity = "1"; });
+                    const previous = activeWrapper;
+                    activeWrapper = wrapper;
+                    if (previous) {
+                        previous.style.opacity = "0";
+                        setTimeout(() => {
+                            if (previous.parentNode) previous.remove();
+                        }, fadeMs + 80);
+                    }
+                });
+            };
+            cycle();
+            setInterval(cycle, cycleMs);
+
+            // Animate the SVG turbulence baseFrequency for slow drifting ripples.
+            const turbulence = document.getElementById("liquidMirrorTurbulence");
+            if (turbulence) {
+                const start = Date.now();
+                const tick = () => {
+                    if (!stage.isConnected) return;
+                    const t = (Date.now() - start) / 1000;
+                    const fx = (0.013 + Math.sin(t * 0.12 * speed) * 0.004).toFixed(4);
+                    const fy = (0.028 + Math.cos(t * 0.16 * speed) * 0.006).toFixed(4);
+                    turbulence.setAttribute("baseFrequency", `${fx} ${fy}`);
+                    requestAnimationFrame(tick);
+                };
+                tick();
+            }
+        }
+
+        function setupLiquidMirrorExtremeMode() {
+            document.getElementById("backgroundLayer").classList.add("hidden");
+            document.getElementById("foregroundLayer").classList.add("hidden");
+            document.getElementById("tunnelGrid").classList.add("hidden");
+            document.getElementById("splitScreen").classList.add("hidden");
+            document.getElementById("splitScreenHorizontal").classList.add("hidden");
+            document.getElementById("psychedelicStage").classList.add("hidden");
+            document.getElementById("kaleidoStage").classList.add("hidden");
+            document.getElementById("scrollStage").classList.add("hidden");
+            document.getElementById("strobeStage").classList.add("hidden");
+            document.getElementById("tunnelStage").classList.add("hidden");
+            const liquid = document.getElementById("liquidMirrorStage");
+            if (liquid) liquid.classList.add("hidden");
+            const stage = document.getElementById("liquidMirrorExtremeStage");
+            stage.classList.remove("hidden");
+            stage.innerHTML = "";
+            const lmxCanvas = document.createElement("div");
+            lmxCanvas.className = "lmx-canvas";
+            stage.appendChild(lmxCanvas);
+            const tint = document.createElement("div");
+            tint.className = "lmx-tint";
+            stage.appendChild(tint);
+            if (!bgAssets.length) return;
+
+            const speed = Math.max(0.25, compositionSpeed);
+            const cycleMs = Math.max(4000, Math.floor(6500 / speed));
+            const fadeMs = 1200;
+            let cursor = 0;
+            let activeWrapper = null;
+            const nextAsset = () => {
+                if (compositionSourcePlaybackMode === "random" && bgAssets.length > 1) {
+                    let n = Math.floor(Math.random() * bgAssets.length);
+                    if (n === cursor) n = (n + 1) % bgAssets.length;
+                    cursor = n;
+                    return bgAssets[n];
+                }
+                const a = bgAssets[cursor % bgAssets.length];
+                cursor += 1;
+                return a;
+            };
+            const cycle = () => {
+                if (!stage.isConnected) return;
+                const wrapper = document.createElement("div");
+                wrapper.className = "lmx-asset";
+                lmxCanvas.appendChild(wrapper);
+                mountAssetWhenReady(wrapper, nextAsset(), () => {
+                    requestAnimationFrame(() => { wrapper.style.opacity = "1"; });
+                    const previous = activeWrapper;
+                    activeWrapper = wrapper;
+                    if (previous) {
+                        previous.style.opacity = "0";
+                        setTimeout(() => {
+                            if (previous.parentNode) previous.remove();
+                        }, fadeMs + 80);
+                    }
+                });
+            };
+            cycle();
+            setInterval(cycle, cycleMs);
+
+            // Aggressive turbulence drift + breathing scale (140 -> 240) so the
+            // surface keeps tearing itself apart instead of settling.
+            const turbulence = document.getElementById("liquidMirrorExtremeTurbulence");
+            const displacement = document.getElementById("liquidMirrorExtremeDisplacement");
+            const start = Date.now();
+            const tick = () => {
+                if (!stage.isConnected) return;
+                const t = (Date.now() - start) / 1000;
+                if (turbulence) {
+                    const fx = (0.011 + Math.sin(t * 0.3 * speed) * 0.003).toFixed(4);
+                    const fy = (0.024 + Math.cos(t * 0.4 * speed) * 0.005).toFixed(4);
+                    turbulence.setAttribute("baseFrequency", `${fx} ${fy}`);
+                }
+                if (displacement) {
+                    const s = (95 + Math.sin(t * 0.6 * speed) * 25).toFixed(0);
+                    displacement.setAttribute("scale", s);
+                }
+                requestAnimationFrame(tick);
+            };
+            tick();
+        }
+
+        function setupWaxMeltMode() {
+            document.getElementById("backgroundLayer").classList.add("hidden");
+            document.getElementById("foregroundLayer").classList.add("hidden");
+            document.getElementById("tunnelGrid").classList.add("hidden");
+            document.getElementById("splitScreen").classList.add("hidden");
+            document.getElementById("splitScreenHorizontal").classList.add("hidden");
+            document.getElementById("psychedelicStage").classList.add("hidden");
+            document.getElementById("kaleidoStage").classList.add("hidden");
+            document.getElementById("scrollStage").classList.add("hidden");
+            document.getElementById("strobeStage").classList.add("hidden");
+            document.getElementById("tunnelStage").classList.add("hidden");
+            const liquid = document.getElementById("liquidMirrorStage");
+            if (liquid) liquid.classList.add("hidden");
+            const stage = document.getElementById("waxMeltStage");
+            stage.classList.remove("hidden");
+            stage.innerHTML = "";
+            const wmCanvas = document.createElement("div");
+            wmCanvas.className = "wm-canvas";
+            stage.appendChild(wmCanvas);
+            const tint = document.createElement("div");
+            tint.className = "wm-tint";
+            stage.appendChild(tint);
+            if (!bgAssets.length) return;
+
+            const speed = Math.max(0.25, compositionSpeed);
+            const cycleMs = Math.max(7000, Math.floor(11000 / speed));
+            const fadeMs = 3200;
+            let cursor = 0;
+            let activeWrapper = null;
+            const nextAsset = () => {
+                if (compositionSourcePlaybackMode === "random" && bgAssets.length > 1) {
+                    let n = Math.floor(Math.random() * bgAssets.length);
+                    if (n === cursor) n = (n + 1) % bgAssets.length;
+                    cursor = n;
+                    return bgAssets[n];
+                }
+                const a = bgAssets[cursor % bgAssets.length];
+                cursor += 1;
+                return a;
+            };
+            // Long overlap: new image fades up beneath the still-visible melted
+            // previous, lighten-blended so the drips of one bleed into the next.
+            const cycle = () => {
+                if (!stage.isConnected) return;
+                const wrapper = document.createElement("div");
+                wrapper.className = "wm-asset";
+                if (activeWrapper && activeWrapper.parentNode === wmCanvas) {
+                    wmCanvas.insertBefore(wrapper, activeWrapper);
+                } else {
+                    wmCanvas.appendChild(wrapper);
+                }
+                mountAssetWhenReady(wrapper, nextAsset(), () => {
+                    requestAnimationFrame(() => { wrapper.style.opacity = "1"; });
+                    const previous = activeWrapper;
+                    activeWrapper = wrapper;
+                    if (previous) {
+                        // Hold previous at full for half the fade so it visibly drips
+                        // off the top of the new image, then fade it out.
+                        setTimeout(() => {
+                            previous.style.opacity = "0";
+                        }, Math.floor(fadeMs * 0.45));
+                        setTimeout(() => {
+                            if (previous.parentNode) previous.remove();
+                        }, fadeMs + 200);
+                    }
+                });
+            };
+            cycle();
+            setInterval(cycle, cycleMs);
+
+            // Strong drip from frame 1: scale stays high and breathes (90 -> 170)
+            // so the image is visibly melting the moment it appears.
+            const turbulence = document.getElementById("waxMeltTurbulence");
+            const displacement = document.getElementById("waxMeltDisplacement");
+            const start = Date.now();
+            const tick = () => {
+                if (!stage.isConnected) return;
+                const t = (Date.now() - start) / 1000;
+                const scale = (130 + Math.sin(t * 0.35 * speed) * 40).toFixed(1);
+                if (displacement) displacement.setAttribute("scale", scale);
+                if (turbulence) {
+                    const fx = (0.043 + Math.sin(t * 0.05 * speed) * 0.006).toFixed(4);
+                    const fy = (0.0058 + Math.cos(t * 0.04 * speed) * 0.0014).toFixed(4);
+                    turbulence.setAttribute("baseFrequency", `${fx} ${fy}`);
+                }
+                requestAnimationFrame(tick);
+            };
+            tick();
+        }
+
         function setupTunnelBurstMode() {
             document.getElementById("backgroundLayer").classList.add("hidden");
             document.getElementById("foregroundLayer").classList.add("hidden");
@@ -2757,7 +3221,10 @@
             const stage = document.getElementById("tunnelStage");
             stage.classList.remove("hidden");
             stage.innerHTML = "";
-            if (!bgAssets.length) return;
+            if (!bgAssets.length) {
+                showTunnelStageNoMedia();
+                return;
+            }
 
             let cursor = 0;
             let layerDepth = 1;
@@ -2774,9 +3241,42 @@
                 return asset;
             };
 
+            // Persistent base layer so the stage is never blank between bursts.
+            const baseLayer = document.createElement("div");
+            baseLayer.style.position = "absolute";
+            baseLayer.style.inset = "0";
+            baseLayer.style.zIndex = "0";
+            baseLayer.style.opacity = "0.55";
+            baseLayer.style.filter = "saturate(1.15) contrast(1.05)";
+            stage.appendChild(baseLayer);
+            mountAssetWhenReady(baseLayer, nextAsset(), () => {}, true, {
+                waitForVideoReady: true,
+                videoReadyTimeoutMs: 1800,
+            });
+            const baseSwapMs = Math.max(2200, Math.floor(4200 / Math.max(0.25, compositionSpeed)));
+            setInterval(() => {
+                const fresh = document.createElement("div");
+                fresh.style.position = "absolute";
+                fresh.style.inset = "0";
+                fresh.style.zIndex = "0";
+                fresh.style.opacity = "0";
+                fresh.style.transition = "opacity 0.9s ease";
+                fresh.style.filter = "saturate(1.15) contrast(1.05)";
+                stage.insertBefore(fresh, stage.firstChild);
+                mountAssetWhenReady(fresh, nextAsset(), () => {
+                    requestAnimationFrame(() => { fresh.style.opacity = "0.55"; });
+                    setTimeout(() => {
+                        if (baseLayer.parentNode) baseLayer.remove();
+                    }, 950);
+                }, true, { waitForVideoReady: true, videoReadyTimeoutMs: 1800 });
+            }, baseSwapMs);
+
             const speed = Math.max(0.25, compositionSpeed);
-            const spawnMs = Math.max(64, Math.floor(160 / speed));
+            const spawnMs = Math.max(110, Math.floor(240 / speed));
+            const MAX_TUNNEL_BURST_LAYERS = 12;
             const spawnBurstLayer = () => {
+                const burstCount = stage.querySelectorAll(".tunnel-burst-layer").length;
+                if (burstCount >= MAX_TUNNEL_BURST_LAYERS) return;
                 const layer = document.createElement("div");
                 layer.className = "tunnel-burst-layer";
                 const fromX = (-8 + Math.random() * 16).toFixed(2);
@@ -2803,11 +3303,15 @@
                 const hue = (-22 + Math.random() * 44).toFixed(1);
                 const sat = (0.95 + Math.random() * 0.85).toFixed(3);
                 const contrast = (0.98 + Math.random() * 0.55).toFixed(3);
-                const blur = (Math.random() * 1.3).toFixed(2);
+                const blur = (Math.random() * 0.45).toFixed(2);
                 layer.style.filter = `hue-rotate(${hue}deg) saturate(${sat}) contrast(${contrast}) blur(${blur}px)`;
                 layer.style.mixBlendMode = Math.random() > 0.62 ? "screen" : (Math.random() > 0.54 ? "lighten" : "normal");
                 stage.appendChild(layer);
-                mountAsset(layer, nextAsset());
+                const asset = nextAsset();
+                mountAssetWhenReady(layer, asset, () => {}, true, {
+                    waitForVideoReady: true,
+                    videoReadyTimeoutMs: 1600,
+                });
                 layer.addEventListener("animationend", () => layer.remove(), { once: true });
             };
 
@@ -5617,6 +6121,15 @@
             overlayLayer.style.position = "absolute";
             overlayLayer.style.pointerEvents = "none";
             let idx = 0;
+            let lastOverlayPick = -1;
+            const pickRandomOverlayAsset = () => {
+                if (!overlayAssets.length) return null;
+                if (overlayAssets.length === 1) { lastOverlayPick = 0; return overlayAssets[0]; }
+                let n = Math.floor(Math.random() * overlayAssets.length);
+                if (n === lastOverlayPick) n = (n + 1) % overlayAssets.length;
+                lastOverlayPick = n;
+                return overlayAssets[n];
+            };
             let gifTimer = null;
             const normalizeOverlayEffect = (value) => {
                 const raw = String(value || "").trim().toLowerCase();
@@ -5625,6 +6138,7 @@
                 if (compact === "circlerotate" || compact === "circle") return "circle_rotate";
                 if (compact === "circlerotatemirror" || compact === "circlemirror") return "circle_rotate_mirror";
                 if (compact === "mash" || compact === "glitchmash" || compact === "overlaymash") return "mash";
+                if (compact === "orb" || compact === "folderorb" || compact === "orbsphere" || compact === "sphere") return "orb";
                 return "none";
             };
             const resolvedOverlayEffect = (() => {
@@ -5695,7 +6209,8 @@
                 wrapper.style.mixBlendMode = "normal";
                 const isCircleOverlayEffect =
                     resolvedOverlayEffect === "circle_rotate" ||
-                    resolvedOverlayEffect === "circle_rotate_mirror";
+                    resolvedOverlayEffect === "circle_rotate_mirror" ||
+                    resolvedOverlayEffect === "orb";
                 const isMashOverlayEffect = resolvedOverlayEffect === "mash";
                 const isConstrainedFit =
                     overlayFit === "framed" ||
@@ -5839,8 +6354,8 @@
                 let activeLayer = null;
                 const mountNextMash = () => {
                     if (!shell.inner.isConnected || !overlayAssets.length) return;
-                    const asset = overlayAssets[idx % overlayAssets.length];
-                    idx += 1;
+                    const asset = pickRandomOverlayAsset();
+                    if (!asset) return;
                     const incoming = buildMashLayer(asset);
                     if (!incoming) return;
                     shell.inner.appendChild(incoming);
@@ -5977,13 +6492,256 @@
                     }, mashMs);
                 }
             };
+            if (resolvedOverlayEffect === "orb") {
+                // True spherical wrapping via canvas: per-pixel equirectangular -> orthographic
+                // sphere projection, with shading + specular. No deps. Same math as the
+                // /tmp/orb_demo.png reference render. Yaw is animated for rotation, asset
+                // (img or video) is the equirectangular texture.
+                const shell = buildOverlayShell();
+                overlayLayer.appendChild(shell.wrapper);
+                shell.inner.style.position = "relative";
+                shell.inner.style.overflow = "hidden";
+                shell.inner.style.borderRadius = "50%";
+                shell.inner.style.background = "#000";
+
+                const ORB_OUT = 384;
+                const ORB_SRC = 256;
+                const canvas = document.createElement("canvas");
+                canvas.width = ORB_OUT;
+                canvas.height = ORB_OUT;
+                canvas.style.position = "absolute";
+                canvas.style.inset = "0";
+                canvas.style.width = "100%";
+                canvas.style.height = "100%";
+                shell.inner.appendChild(canvas);
+                const ctx = canvas.getContext("2d");
+                const outImage = ctx.createImageData(ORB_OUT, ORB_OUT);
+                const outData = outImage.data;
+
+                // Precompute per-pixel UV + shading LUT once. uBase is longitude offset
+                // before yaw; we add (yaw mod 1) per frame.
+                const valid = new Uint8Array(ORB_OUT * ORB_OUT);
+                const lut = new Float32Array(ORB_OUT * ORB_OUT * 4);
+                const cx = ORB_OUT / 2;
+                const cy = ORB_OUT / 2;
+                const R = ORB_OUT / 2;
+                const lx = -0.45, ly = -0.45, lz = 0.77;
+                for (let y = 0; y < ORB_OUT; y++) {
+                    for (let x = 0; x < ORB_OUT; x++) {
+                        const i = y * ORB_OUT + x;
+                        const nx = (x - cx) / R;
+                        const ny = (y - cy) / R;
+                        const d2 = nx * nx + ny * ny;
+                        if (d2 > 1.0) continue;
+                        const z = Math.sqrt(1 - d2);
+                        const u = (Math.atan2(nx, z) / Math.PI) * 0.5 + 0.5;
+                        const v = (Math.asin(Math.max(-1, Math.min(1, ny))) / Math.PI) + 0.5;
+                        const dot = Math.max(0, nx * lx + ny * ly + z * lz);
+                        const shade = 0.45 + 0.7 * dot;
+                        const rim = 1 - Math.pow(1 - z, 2) * 0.55;
+                        const spec = Math.pow(dot, 30) * 240;
+                        valid[i] = 1;
+                        lut[i * 4 + 0] = u;
+                        lut[i * 4 + 1] = v;
+                        lut[i * 4 + 2] = shade * rim;
+                        lut[i * 4 + 3] = spec;
+                    }
+                }
+
+                const back = document.createElement("canvas");
+                back.width = ORB_SRC;
+                back.height = ORB_SRC;
+                const backCtx = back.getContext("2d", { willReadFrequently: true });
+                const backPrev = document.createElement("canvas");
+                backPrev.width = ORB_SRC;
+                backPrev.height = ORB_SRC;
+                const backPrevCtx = backPrev.getContext("2d", { willReadFrequently: true });
+
+                const ORB_FADE_MS = 800;
+                let currentImg = null;
+                let currentVideo = null;
+                let prevImg = null;
+                let prevVideo = null;
+                let fadeStart = 0;
+                let fadeActive = false;
+                let assetIdx = -1;
+                const stopVideo = (v) => {
+                    if (!v) return;
+                    try { v.pause(); } catch (_) {}
+                    try { v.removeAttribute("src"); v.load(); } catch (_) {}
+                };
+                const releaseVideo = () => { stopVideo(currentVideo); currentVideo = null; };
+                const releasePrev = () => {
+                    stopVideo(prevVideo);
+                    prevVideo = null;
+                    prevImg = null;
+                };
+                const spinSec = Math.max(6, 18 / Math.max(0.25, overlaySpeed));
+                let currentStart = Date.now();
+                let prevStart = Date.now();
+                const loadAsset = (asset, withFade) => {
+                    if (!asset) return;
+                    const renderable = (typeof resolveRenderableAsset === "function")
+                        ? resolveRenderableAsset(asset)
+                        : asset;
+                    if (!renderable) return;
+                    if (withFade && (currentImg || currentVideo)) {
+                        // Promote current source to "prev" so render can crossfade.
+                        releasePrev();
+                        prevImg = currentImg;
+                        prevVideo = currentVideo;
+                        currentImg = null;
+                        currentVideo = null;
+                        prevStart = currentStart;
+                        currentStart = Date.now();
+                        fadeStart = Date.now();
+                        fadeActive = true;
+                    } else {
+                        releaseVideo();
+                        currentImg = null;
+                        currentStart = Date.now();
+                        fadeActive = false;
+                    }
+                    if (renderable.kind === "video") {
+                        const v = document.createElement("video");
+                        v.src = renderable.url;
+                        v.autoplay = true;
+                        v.loop = true;
+                        v.muted = true;
+                        v.defaultMuted = true;
+                        v.playsInline = true;
+                        v.setAttribute("playsinline", "");
+                        v.setAttribute("muted", "");
+                        v.preload = "auto";
+                        v.crossOrigin = "anonymous";
+                        v.play().catch(() => {});
+                        currentVideo = v;
+                    } else {
+                        const im = new Image();
+                        im.crossOrigin = "anonymous";
+                        im.onload = () => { currentImg = im; };
+                        im.src = renderable.url;
+                    }
+                };
+                const pickNext = () => {
+                    if (!overlayAssets.length) return null;
+                    if (overlayAssets.length === 1) { assetIdx = 0; return overlayAssets[0]; }
+                    let n = Math.floor(Math.random() * overlayAssets.length);
+                    if (n === assetIdx) n = (n + 1) % overlayAssets.length;
+                    assetIdx = n;
+                    return overlayAssets[n];
+                };
+                loadAsset(pickNext(), false);
+
+                // Continuous rotation. Each asset gets its own start time so a freshly
+                // swapped-in image begins with its center at the orb's center (yaw=0)
+                // and spins forward from there while crossfading over the outgoing one.
+                // (spinSec, currentStart, prevStart hoisted above loadAsset for TDZ.)
+                const drawSourceTo = (srcCtx, img, video) => {
+                    try {
+                        if (video && video.readyState >= 2) {
+                            srcCtx.drawImage(video, 0, 0, ORB_SRC, ORB_SRC);
+                            return true;
+                        }
+                        if (img && img.complete && img.naturalWidth > 0) {
+                            srcCtx.drawImage(img, 0, 0, ORB_SRC, ORB_SRC);
+                            return true;
+                        }
+                    } catch (_) {}
+                    return false;
+                };
+                const render = () => {
+                    if (!canvas.isConnected) return;
+                    const curReady = drawSourceTo(backCtx, currentImg, currentVideo);
+                    if (!curReady) {
+                        requestAnimationFrame(render);
+                        return;
+                    }
+                    let srcData, prevData = null;
+                    try {
+                        srcData = backCtx.getImageData(0, 0, ORB_SRC, ORB_SRC).data;
+                    } catch (_) {
+                        requestAnimationFrame(render);
+                        return;
+                    }
+                    let fadeT = 1;
+                    if (fadeActive) {
+                        fadeT = Math.min(1, (Date.now() - fadeStart) / ORB_FADE_MS);
+                        // Smoothstep for gentler ease.
+                        fadeT = fadeT * fadeT * (3 - 2 * fadeT);
+                        const prevReady = drawSourceTo(backPrevCtx, prevImg, prevVideo);
+                        if (prevReady) {
+                            try { prevData = backPrevCtx.getImageData(0, 0, ORB_SRC, ORB_SRC).data; }
+                            catch (_) { prevData = null; }
+                        }
+                        if (fadeT >= 1 || !prevData) {
+                            fadeActive = false;
+                            releasePrev();
+                        }
+                    }
+                    const now = Date.now();
+                    const yawCur = (((now - currentStart) / 1000 / spinSec) % 1 + 1) % 1;
+                    const yawPrev = (((now - prevStart) / 1000 / spinSec) % 1 + 1) % 1;
+                    const totalPx = ORB_OUT * ORB_OUT;
+                    const blendNew = fadeT;
+                    const blendOld = 1 - fadeT;
+                    for (let i = 0; i < totalPx; i++) {
+                        const o = i * 4;
+                        if (!valid[i]) {
+                            outData[o + 3] = 0;
+                            continue;
+                        }
+                        const uBase = lut[i * 4];
+                        let uCur = uBase + yawCur; uCur -= Math.floor(uCur);
+                        const v = lut[i * 4 + 1];
+                        const sxCur = (uCur * (ORB_SRC - 1)) | 0;
+                        const sy = (v * (ORB_SRC - 1)) | 0;
+                        const soCur = (sy * ORB_SRC + sxCur) * 4;
+                        const shade = lut[i * 4 + 2];
+                        const spec = lut[i * 4 + 3];
+                        let r0 = srcData[soCur];
+                        let g0 = srcData[soCur + 1];
+                        let b0 = srcData[soCur + 2];
+                        if (prevData) {
+                            let uPrev = uBase + yawPrev; uPrev -= Math.floor(uPrev);
+                            const sxPrev = (uPrev * (ORB_SRC - 1)) | 0;
+                            const soPrev = (sy * ORB_SRC + sxPrev) * 4;
+                            r0 = r0 * blendNew + prevData[soPrev] * blendOld;
+                            g0 = g0 * blendNew + prevData[soPrev + 1] * blendOld;
+                            b0 = b0 * blendNew + prevData[soPrev + 2] * blendOld;
+                        }
+                        let r1 = r0 * shade + spec;
+                        let g1 = g0 * shade + spec;
+                        let b1 = b0 * shade + spec;
+                        if (r1 > 255) r1 = 255;
+                        if (g1 > 255) g1 = 255;
+                        if (b1 > 255) b1 = 255;
+                        outData[o] = r1;
+                        outData[o + 1] = g1;
+                        outData[o + 2] = b1;
+                        outData[o + 3] = 255;
+                    }
+                    ctx.putImageData(outImage, 0, 0);
+                    requestAnimationFrame(render);
+                };
+                requestAnimationFrame(render);
+
+                if (overlayAssets.length > 1) {
+                    const swapMs = Math.max(2600, Math.floor(5200 / Math.max(0.25, overlaySpeed)));
+                    trackOverlayInterval(setInterval(() => {
+                        if (!canvas.isConnected) { releaseVideo(); releasePrev(); return; }
+                        loadAsset(pickNext(), true);
+                    }, swapMs));
+                }
+                return;
+            }
             if (resolvedOverlayEffect === "rotate_3d") {
                 const shell = buildOverlayShell();
                 overlayLayer.appendChild(shell.wrapper);
                 const halfTurnMs = Math.max(900, Math.floor(2600 / Math.max(0.25, overlaySpeed)));
                 const playHalfTurn = () => {
-                    const asset = overlayAssets[idx % overlayAssets.length];
-                    idx += 1;
+                    const asset = pickRandomOverlayAsset();
+                    if (!asset) return;
                     mountAsset(shell.inner, asset, false);
                     applyMountedMediaFit(shell.inner);
                     shell.inner.style.transformOrigin = "50% 50%";
@@ -6001,41 +6759,42 @@
                 return;
             }
             const mount = () => {
-                const asset = overlayAssets[idx % overlayAssets.length];
-                idx += 1;
+                const asset = pickRandomOverlayAsset();
+                if (!asset) return;
                 const shell = buildOverlayShell();
                 const overlayTransitionMode = normalizeTransitionMode(compositionOverlayTransition);
-                const shouldTransition = (overlayTransitionMode === "fade" || overlayTransitionMode === "crossfade") && overlayLayer.children.length > 0;
-                if (!shouldTransition) {
-                    overlayLayer.innerHTML = "";
-                    overlayLayer.appendChild(shell.wrapper);
-                    mountAsset(shell.inner, asset, false);
+                const useTransition = overlayTransitionMode === "fade" || overlayTransitionMode === "crossfade";
+                // Always mount the new asset BEFORE removing the previous one so
+                // there is no empty frame while videos/images load.
+                shell.wrapper.style.opacity = "0";
+                shell.wrapper.style.transition = useTransition
+                    ? "opacity 520ms ease-in-out"
+                    : "opacity 120ms linear";
+                overlayLayer.appendChild(shell.wrapper);
+                const reveal = () => {
                     applyMountedMediaFit(shell.inner);
                     applyOverlayMotionEffect(shell.inner, shell.inner.querySelector("img,video"));
-                } else {
-                    shell.wrapper.style.opacity = "0";
-                    shell.wrapper.style.transition = "opacity 520ms ease-in-out";
-                    overlayLayer.appendChild(shell.wrapper);
-                    mountAsset(shell.inner, asset, false, {
-                        onMounted: () => {
-                            applyMountedMediaFit(shell.inner);
-                            applyOverlayMotionEffect(shell.inner, shell.inner.querySelector("img,video"));
-                            const stale = Array.from(overlayLayer.children).filter((node) => node !== shell.wrapper);
-                            requestAnimationFrame(() => {
-                                shell.wrapper.style.opacity = "1";
-                                stale.forEach((node) => {
-                                    node.style.transition = "opacity 520ms ease-in-out";
-                                    node.style.opacity = "0";
-                                });
-                                setTimeout(() => {
-                                    stale.forEach((node) => {
-                                        if (node && node.parentElement === overlayLayer) node.remove();
-                                    });
-                                }, 560);
+                    const stale = Array.from(overlayLayer.children).filter((node) => node !== shell.wrapper);
+                    requestAnimationFrame(() => {
+                        shell.wrapper.style.opacity = "1";
+                        if (useTransition) {
+                            stale.forEach((node) => {
+                                node.style.transition = "opacity 520ms ease-in-out";
+                                node.style.opacity = "0";
                             });
-                        },
+                            setTimeout(() => {
+                                stale.forEach((node) => {
+                                    if (node && node.parentElement === overlayLayer) node.remove();
+                                });
+                            }, 560);
+                        } else {
+                            stale.forEach((node) => {
+                                if (node && node.parentElement === overlayLayer) node.remove();
+                            });
+                        }
                     });
-                }
+                };
+                mountAssetWhenReady(shell.inner, asset, reveal, false);
                 const isSingleGifOverlay =
                     overlayAssets.length === 1 &&
                     asset &&
@@ -6195,6 +6954,12 @@
             setupTunnelDoubleMode();
         } else if (compositionType === "tunnel-burst") {
             setupTunnelBurstMode();
+        } else if (compositionType === "liquid-mirror") {
+            setupLiquidMirrorMode();
+        } else if (compositionType === "liquid-mirror-extreme") {
+            setupLiquidMirrorExtremeMode();
+        } else if (compositionType === "wax-melt") {
+            setupWaxMeltMode();
         } else if (compositionType === "swirl") {
             setupSwirlMode();
         } else if (compositionType === "psychedelic") {

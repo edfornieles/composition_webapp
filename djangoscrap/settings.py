@@ -37,6 +37,10 @@ MEDIA_ROOT = BASE_DIR / "media"
 # Local on-disk audio library: each subfolder is a selectable "Audio source" in compositions.
 # Default lives inside the project so Noise Studio exports are easy to find and use immediately.
 # Override with absolute path if you keep libraries elsewhere (e.g. legacy ../composition_audio_sources).
+LOCAL_SOURCES_ROOT = Path(
+    os.getenv("LOCAL_SOURCES_ROOT", str(BASE_DIR.parent / "composition_sources_unprocessed"))
+).resolve()
+
 COMPOSITION_AUDIO_SOURCES_ROOT = Path(
     os.getenv("COMPOSITION_AUDIO_SOURCES_ROOT", str(BASE_DIR / "composition_audio_sources"))
 ).resolve()

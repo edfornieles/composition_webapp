@@ -51,7 +51,7 @@ os.makedirs(VIDEO_DIR, exist_ok=True)
 # ---------------------------------------------------------------------------
 # Local source roots
 # ---------------------------------------------------------------------------
-LOCAL_SOURCES_ROOT = Path(settings.BASE_DIR).parent / "composition_sources_unprocessed"
+LOCAL_SOURCES_ROOT = settings.LOCAL_SOURCES_ROOT
 LOCAL_SOURCES_ROOT.mkdir(parents=True, exist_ok=True)
 LOCAL_SOURCE_TRASH_ROOT = Path(settings.BASE_DIR) / "archive" / "source_trash"
 LOCAL_SOURCE_TRASH_ROOT.mkdir(parents=True, exist_ok=True)
@@ -174,7 +174,7 @@ _STOCK_FILENAME_MARKERS = (
 # Composition transitions / overlay effects
 # ---------------------------------------------------------------------------
 _TRANSITIONS = ("none", "fade", "crossfade")
-_OVERLAY_EFFECTS = ("none", "rotate_3d", "circle_rotate", "circle_rotate_mirror", "mash")
+_OVERLAY_EFFECTS = ("none", "rotate_3d", "circle_rotate", "circle_rotate_mirror", "mash", "orb")
 
 # ---------------------------------------------------------------------------
 # Composition preview cache

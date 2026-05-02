@@ -1,59 +1,125 @@
 {% extends "layouts/admin.html" %}
 
 {% block content %}
-<!-- Content Wrapper. Contains page content -->
 <div class="content-wrapper">
-  <!-- Content Header (Page header) -->
   <div class="content-header">
     <div class="container-fluid">
       <div class="row mb-2">
         <div class="col-sm-6">
           <h1 class="m-0">Dashboard</h1>
-        </div><!-- /.col -->
+        </div>
         <div class="col-sm-6">
           <ol class="breadcrumb float-sm-right">
-            <li class="breadcrumb-item"><a href="">Home</a></li>
-            <li class="breadcrumb-item active">Dashboard v1</li>
+            <li class="breadcrumb-item"><a href="#">Home</a></li>
+            <li class="breadcrumb-item active">Dashboard</li>
           </ol>
-        </div><!-- /.col -->
-      </div><!-- /.row -->
-    </div><!-- /.container-fluid -->
+        </div>
+      </div>
+    </div>
   </div>
-  <!-- /.content-header -->
 
-  <!-- Main content -->
   <section class="content">
     <div class="container-fluid">
-      <!-- Small boxes (Stat box) -->
+
+      <!-- Stat boxes -->
       <div class="row">
         <div class="col-lg-3 col-6">
-          <!-- small box -->
-          <div class="small-box bg-info">
+          <div class="small-box bg-success">
             <div class="inner">
-              <h3><?php echo $data; ?></h3>
-
-              <p>User</p>
+              <h3>{{ ready_count }}</h3>
+              <p>Ready for Deployment</p>
             </div>
-            
-            <a href="" class="small-box-footer">More info <i class="fas fa-arrow-circle-right"></i></a>
+            <div class="icon"><i class="fas fa-check-circle"></i></div>
+            <a href="{% url 'composition-view' %}?ready=1" class="small-box-footer">View all <i class="fas fa-arrow-circle-right"></i></a>
           </div>
         </div>
-       
-      </div>
-      <!-- /.row -->
-      <!-- Main row -->
-      <div class="row">
-       
-        <!-- right col (We are only adding the ID to make the widgets sortable)-->
-        <section class="col-lg-5 connectedSortable">
 
-        </section>
-        <!-- right col -->
+        <div class="col-lg-3 col-6">
+          <div class="small-box bg-warning">
+            <div class="inner">
+              <h3>{{ draft_count }}</h3>
+              <p>In Draft</p>
+            </div>
+            <div class="icon"><i class="fas fa-edit"></i></div>
+            <a href="{% url 'composition-view' %}" class="small-box-footer">View all <i class="fas fa-arrow-circle-right"></i></a>
+          </div>
+        </div>
+
+        <div class="col-lg-3 col-6">
+          <div class="small-box bg-info">
+            <div class="inner">
+              <h3>{{ total_compositions }}</h3>
+              <p>Total Compositions</p>
+            </div>
+            <div class="icon"><i class="fas fa-film"></i></div>
+            <a href="{% url 'composition-view' %}" class="small-box-footer">View all <i class="fas fa-arrow-circle-right"></i></a>
+          </div>
+        </div>
+
+        <div class="col-lg-3 col-6">
+          <div class="small-box bg-secondary">
+            <div class="inner">
+              <h3>{{ sources_count }}</h3>
+              <p>Ingestion Sources</p>
+            </div>
+            <div class="icon"><i class="fas fa-database"></i></div>
+            <a href="/ingestion/" class="small-box-footer">View all <i class="fas fa-arrow-circle-right"></i></a>
+          </div>
+        </div>
       </div>
-      <!-- /.row (main row) -->
-    </div><!-- /.container-fluid -->
+
+      <!-- Ready compositions by character (up to 9 per section: 3×3) -->
+      {% if character_preview_sections %}
+      {% for section in character_preview_sections %}
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title mb-0">{{ section.label }}</h3>
+            </div>
+            <div class="card-body pt-3">
+              <div class="row">
+                {% for comp in section.compositions %}
+                <div class="col-md-4 mb-4">
+                  <a href="{% url 'composition_detail' composition_id=comp.id %}" class="text-decoration-none text-dark">
+                    <div class="card h-100 shadow-sm">
+                      {% if comp.img %}
+                      <img src="{{ comp.img.url }}" class="card-img-top" alt="{{ comp.name }}" style="height:160px;object-fit:cover;">
+                      {% else %}
+                      <div style="height:160px;background:#222;display:flex;align-items:center;justify-content:center;">
+                        <i class="fas fa-film fa-2x text-secondary"></i>
+                      </div>
+                      {% endif %}
+                      <div class="card-body p-2">
+                        <p class="mb-0 small font-weight-bold">{{ comp.name }}</p>
+                      </div>
+                    </div>
+                  </a>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="row">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body text-muted">
+              {% if ready_count %}
+              Preview grids appear only when a character tag has at least nine ready compositions (same rules as the composition form). None of your tags meet that yet.
+              {% else %}
+              No compositions ready yet.
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
   </section>
-  <!-- /.content -->
 </div>
-<!-- /.content-wrapper -->
 {% endblock %}

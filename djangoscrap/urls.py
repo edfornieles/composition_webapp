@@ -34,6 +34,12 @@ urlpatterns = [
     path('composition/<int:composition_id>/set-ready/', views.set_composition_ready, name='set_composition_ready'),
     path('composition/<int:composition_id>/duplicate/', views.composition_duplicate, name='composition_duplicate'),
     path('compositions/seed-character/', views.seed_character_compositions, name='seed_character_compositions'),
+    # Legacy plural URL — bookmarks and muscle memory used /compositions/<id>/
+    path(
+        "compositions/<int:composition_id>/",
+        RedirectView.as_view(pattern_name="composition_detail", permanent=False),
+        name="composition_detail_legacy",
+    ),
     path('series-library/', views.series_library, name='series-library'),
     path('series-library/<int:series_id>/', views.series_detail, name='series-detail'),
     path('composition-preview/<int:composition_id>/', views.composition_preview_image, name='composition-preview'),

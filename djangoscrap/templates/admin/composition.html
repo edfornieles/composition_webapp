@@ -107,58 +107,89 @@
                                         <label for="stype" class="form-label">Type</label>
                                         <select name="type" id="stype" class="form-control" title="Composition type" required>
                                             <option value="">Select</option>
-                                            <option value="classic" {% if composition.type == 'classic' %}selected{% endif %}>Classic</option>
-                                            <option value="psychedelic-classic" {% if composition.type == 'psychedelic-classic' %}selected{% endif %}>Psychedelic Classic</option>
-                                            <option value="vibrate" {% if composition.type == 'vibrate' %}selected{% endif %}>Vibrate</option>
-                                            <option value="circle-foreground" {% if composition.type == 'circle-foreground' %}selected{% endif %}>Circle Foreground</option>
-                                            <option value="circle-foreground-rotate" {% if composition.type == 'circle-foreground-rotate' %}selected{% endif %}>Circle Foreground (Rotate)</option>
-                                            <option value="circle-foreground-rotate-mirror" {% if composition.type == 'circle-foreground-rotate-mirror' %}selected{% endif %}>Circle Foreground (Rotate + Mirror)</option>
-                                            <option value="cross-foreground" {% if composition.type == 'cross-foreground' %}selected{% endif %}>Cross Foreground</option>
-                                            <option value="cross-foreground-rotate" {% if composition.type == 'cross-foreground-rotate' %}selected{% endif %}>Cross Foreground (Rotate)</option>
-                                            <option value="cross-foreground-tunnel" {% if composition.type == 'cross-foreground-tunnel' %}selected{% endif %}>Cross Foreground (Tunnel Radiate)</option>
-                                            <option value="bat-foreground" {% if composition.type == 'bat-foreground' %}selected{% endif %}>Bat Foreground</option>
-                                            <option value="bat-foreground-rotate" {% if composition.type == 'bat-foreground-rotate' %}selected{% endif %}>Bat Foreground (Rotate)</option>
-                                            <option value="single" {% if composition.type == 'single' or composition.type == 'morph' %}selected{% endif %}>Single</option>
-                                            <option value="morph-fast" {% if composition.type == 'morph-fast' %}selected{% endif %}>Morph Fast</option>
-                                            <option value="eye-morph" {% if composition.type == 'eye-morph' %}selected{% endif %}>Eye Morph</option>
-                                            <option value="tunnel" {% if composition.type == 'tunnel' %}selected{% endif %}>Tunnel</option>
-                                            <option value="psychedelic-tunnel" {% if composition.type == 'psychedelic-tunnel' %}selected{% endif %}>Psychedelic Tunnel</option>
-                                            <option value="tunnel-double" {% if composition.type == 'tunnel-double' %}selected{% endif %}>Tunnel Double</option>
-                                            <option value="tunnel-burst" {% if composition.type == 'tunnel-burst' %}selected{% endif %}>Tunnel Burst (Explode)</option>
-                                            <option value="swirl" {% if composition.type == 'swirl' %}selected{% endif %}>Swirl</option>
-                                            <option value="quad" {% if composition.type == 'quad' %}selected{% endif %}>Quad</option>
-                                            <option value="mash" {% if composition.type == 'mash' %}selected{% endif %}>Mash</option>
-                                            <option value="mash-fine" {% if composition.type == 'mash-fine' %}selected{% endif %}>Mash (fine)</option>
-                                            <option value="mash-fine-double" {% if composition.type == 'mash-fine-double' %}selected{% endif %}>Mash Fine Double</option>
-                                            <option value="mash-fine-flux" {% if composition.type == 'mash-fine-flux' %}selected{% endif %}>Mash (fine flux)</option>
-                                            <option value="mash-superfine" {% if composition.type == 'mash-superfine' %}selected{% endif %}>Mash (super fine)</option>
-                                            <option value="mash-superfine-flux" {% if composition.type == 'mash-superfine-flux' %}selected{% endif %}>Mash (super fine flux)</option>
-                                            <option value="vertical-stripes" {% if composition.type == 'vertical-stripes' %}selected{% endif %}>Vertical Stripes</option>
-                                            <option value="horizontal-stripes" {% if composition.type == 'horizontal-stripes' %}selected{% endif %}>Horizontal Stripes</option>
-                                            <option value="vertical-stripes-thick" {% if composition.type == 'vertical-stripes-thick' %}selected{% endif %}>Vertical Stripes (Thick)</option>
-                                            <option value="horizontal-stripes-thick" {% if composition.type == 'horizontal-stripes-thick' %}selected{% endif %}>Horizontal Stripes (Thick)</option>
-                                            <option value="associations" {% if composition.type == 'associations' %}selected{% endif %}>Associations</option>
-                                            <option value="psychedelic" {% if composition.type == 'psychedelic' %}selected{% endif %}>Psychedelic</option>
-                                            <option value="psychedelic-calm" {% if composition.type == 'psychedelic-calm' %}selected{% endif %}>Psychedelic Calm</option>
-                                            <option value="psychedelic-intense" {% if composition.type == 'psychedelic-intense' %}selected{% endif %}>Psychedelic Intense</option>
-                                            <option value="kaleidoscope" {% if composition.type == 'kaleidoscope' %}selected{% endif %}>Kaleidoscope</option>
-                                            <option value="dirty-scroll" {% if composition.type == 'dirty-scroll' or composition.type == 'social-scroll' %}selected{% endif %}>Dirty Scroll</option>
-                                            <option value="scrollhole" {% if composition.type == 'scrollhole' %}selected{% endif %}>Scrollhole</option>
-                                            <option value="strobe" {% if composition.type == 'strobe' %}selected{% endif %}>Strobe</option>
-                                            <option value="strobe-double" {% if composition.type == 'strobe-double' %}selected{% endif %}>Strobe Double</option>
-                                            <option value="center-shift" {% if composition.type == 'center-shift' %}selected{% endif %}>Center Shift</option>
-                                            <option value="star-shift" {% if composition.type == 'star-shift' %}selected{% endif %}>Layered Squares</option>
-                                            <option value="prism-burst" {% if composition.type == 'prism-burst' %}selected{% endif %}>Prism Burst (Constructivist)</option>
-                                            <option value="prism-burst-neon" {% if composition.type == 'prism-burst-neon' %}selected{% endif %}>Prism Burst (Neon)</option>
-                                            <option value="sleep-drift" {% if composition.type == 'sleep-drift' %}selected{% endif %}>Sleep Drift</option>
-                                            <option value="calm-wave" {% if composition.type == 'calm-wave' %}selected{% endif %}>Calm Wave</option>
-                                            <option value="anger-surge" {% if composition.type == 'anger-surge' %}selected{% endif %}>Anger Surge</option>
-                                            <option value="anxiety-loop" {% if composition.type == 'anxiety-loop' %}selected{% endif %}>Anxiety Loop</option>
-                                            <option value="box-room" {% if composition.type == 'box-room' %}selected{% endif %}>Box Room 3D</option>
-                                            <option value="cylinder-room" {% if composition.type == 'cylinder-room' %}selected{% endif %}>Cylinder Room 3D</option>
-                                            <option value="triple-cylinder-room" {% if composition.type == 'triple-cylinder-room' %}selected{% endif %}>Triple Cylinder 3D</option>
-                                            <option value="left-to-right" {% if composition.type == 'left-to-right' %}selected{% endif %}>Left To Right</option>
-                                            <option value="top-and-bottom" {% if composition.type == 'top-and-bottom' %}selected{% endif %}>Top and Bottom</option>
+                                            <optgroup label="3D Rooms">
+                                                <option value="box-room" {% if composition.type == 'box-room' %}selected{% endif %}>Box Room 3D</option>
+                                                <option value="cylinder-room" {% if composition.type == 'cylinder-room' %}selected{% endif %}>Cylinder Room 3D</option>
+                                                <option value="triple-cylinder-room" {% if composition.type == 'triple-cylinder-room' %}selected{% endif %}>Triple Cylinder 3D</option>
+                                            </optgroup>
+                                            <optgroup label="Classic &amp; Foreground">
+                                                <option value="bat-foreground" {% if composition.type == 'bat-foreground' %}selected{% endif %}>Bat Foreground</option>
+                                                <option value="bat-foreground-rotate" {% if composition.type == 'bat-foreground-rotate' %}selected{% endif %}>Bat Foreground (Rotate)</option>
+                                                <option value="circle-foreground" {% if composition.type == 'circle-foreground' %}selected{% endif %}>Circle Foreground</option>
+                                                <option value="circle-foreground-rotate" {% if composition.type == 'circle-foreground-rotate' %}selected{% endif %}>Circle Foreground (Rotate)</option>
+                                                <option value="circle-foreground-rotate-mirror" {% if composition.type == 'circle-foreground-rotate-mirror' %}selected{% endif %}>Circle Foreground (Rotate + Mirror)</option>
+                                                <option value="classic" {% if composition.type == 'classic' %}selected{% endif %}>Classic</option>
+                                                <option value="cross-foreground" {% if composition.type == 'cross-foreground' %}selected{% endif %}>Cross Foreground</option>
+                                                <option value="cross-foreground-rotate" {% if composition.type == 'cross-foreground-rotate' %}selected{% endif %}>Cross Foreground (Rotate)</option>
+                                                <option value="cross-foreground-tunnel" {% if composition.type == 'cross-foreground-tunnel' %}selected{% endif %}>Cross Foreground (Tunnel Radiate)</option>
+                                                <option value="psychedelic-classic" {% if composition.type == 'psychedelic-classic' %}selected{% endif %}>Psychedelic Classic</option>
+                                                <option value="single" {% if composition.type == 'single' or composition.type == 'morph' %}selected{% endif %}>Single</option>
+                                                <option value="vibrate" {% if composition.type == 'vibrate' %}selected{% endif %}>Vibrate</option>
+                                            </optgroup>
+                                            <optgroup label="Distortion">
+                                                <option value="liquid-mirror" {% if composition.type == 'liquid-mirror' %}selected{% endif %}>Liquid Mirror</option>
+                                                <option value="liquid-mirror-extreme" {% if composition.type == 'liquid-mirror-extreme' %}selected{% endif %}>Liquid Mirror Extreme</option>
+                                                <option value="wax-melt" {% if composition.type == 'wax-melt' %}selected{% endif %}>Wax Melt</option>
+                                            </optgroup>
+                                            <optgroup label="Layout">
+                                                <option value="left-to-right" {% if composition.type == 'left-to-right' %}selected{% endif %}>Left To Right</option>
+                                                <option value="top-and-bottom" {% if composition.type == 'top-and-bottom' %}selected{% endif %}>Top and Bottom</option>
+                                            </optgroup>
+                                            <optgroup label="Mash &amp; Mosaic">
+                                                <option value="mash" {% if composition.type == 'mash' %}selected{% endif %}>Mash</option>
+                                                <option value="mash-fine" {% if composition.type == 'mash-fine' %}selected{% endif %}>Mash (fine)</option>
+                                                <option value="mash-fine-double" {% if composition.type == 'mash-fine-double' %}selected{% endif %}>Mash Fine Double</option>
+                                                <option value="mash-fine-flux" {% if composition.type == 'mash-fine-flux' %}selected{% endif %}>Mash (fine flux)</option>
+                                                <option value="mash-superfine" {% if composition.type == 'mash-superfine' %}selected{% endif %}>Mash (super fine)</option>
+                                                <option value="mash-superfine-flux" {% if composition.type == 'mash-superfine-flux' %}selected{% endif %}>Mash (super fine flux)</option>
+                                                <option value="quad" {% if composition.type == 'quad' %}selected{% endif %}>Quad</option>
+                                            </optgroup>
+                                            <optgroup label="Mood">
+                                                <option value="anger-surge" {% if composition.type == 'anger-surge' %}selected{% endif %}>Anger Surge</option>
+                                                <option value="anxiety-loop" {% if composition.type == 'anxiety-loop' %}selected{% endif %}>Anxiety Loop</option>
+                                                <option value="calm-wave" {% if composition.type == 'calm-wave' %}selected{% endif %}>Calm Wave</option>
+                                                <option value="sleep-drift" {% if composition.type == 'sleep-drift' %}selected{% endif %}>Sleep Drift</option>
+                                            </optgroup>
+                                            <optgroup label="Morph">
+                                                <option value="eye-morph" {% if composition.type == 'eye-morph' %}selected{% endif %}>Eye Morph</option>
+                                                <option value="morph-fast" {% if composition.type == 'morph-fast' %}selected{% endif %}>Morph Fast</option>
+                                            </optgroup>
+                                            <optgroup label="Other">
+                                                <option value="associations" {% if composition.type == 'associations' %}selected{% endif %}>Associations</option>
+                                            </optgroup>
+                                            <optgroup label="Psychedelic">
+                                                <option value="kaleidoscope" {% if composition.type == 'kaleidoscope' %}selected{% endif %}>Kaleidoscope</option>
+                                                <option value="psychedelic" {% if composition.type == 'psychedelic' %}selected{% endif %}>Psychedelic</option>
+                                                <option value="psychedelic-calm" {% if composition.type == 'psychedelic-calm' %}selected{% endif %}>Psychedelic Calm</option>
+                                                <option value="psychedelic-intense" {% if composition.type == 'psychedelic-intense' %}selected{% endif %}>Psychedelic Intense</option>
+                                            </optgroup>
+                                            <optgroup label="Scroll">
+                                                <option value="dirty-scroll" {% if composition.type == 'dirty-scroll' or composition.type == 'social-scroll' %}selected{% endif %}>Dirty Scroll</option>
+                                                <option value="scrollhole" {% if composition.type == 'scrollhole' %}selected{% endif %}>Scrollhole</option>
+                                            </optgroup>
+                                            <optgroup label="Shift &amp; Burst">
+                                                <option value="center-shift" {% if composition.type == 'center-shift' %}selected{% endif %}>Center Shift</option>
+                                                <option value="star-shift" {% if composition.type == 'star-shift' %}selected{% endif %}>Layered Squares</option>
+                                                <option value="prism-burst" {% if composition.type == 'prism-burst' %}selected{% endif %}>Prism Burst (Constructivist)</option>
+                                                <option value="prism-burst-neon" {% if composition.type == 'prism-burst-neon' %}selected{% endif %}>Prism Burst (Neon)</option>
+                                            </optgroup>
+                                            <optgroup label="Strobe">
+                                                <option value="strobe" {% if composition.type == 'strobe' %}selected{% endif %}>Strobe</option>
+                                                <option value="strobe-double" {% if composition.type == 'strobe-double' %}selected{% endif %}>Strobe Double</option>
+                                            </optgroup>
+                                            <optgroup label="Stripes">
+                                                <option value="horizontal-stripes" {% if composition.type == 'horizontal-stripes' %}selected{% endif %}>Horizontal Stripes</option>
+                                                <option value="horizontal-stripes-thick" {% if composition.type == 'horizontal-stripes-thick' %}selected{% endif %}>Horizontal Stripes (Thick)</option>
+                                                <option value="vertical-stripes" {% if composition.type == 'vertical-stripes' %}selected{% endif %}>Vertical Stripes</option>
+                                                <option value="vertical-stripes-thick" {% if composition.type == 'vertical-stripes-thick' %}selected{% endif %}>Vertical Stripes (Thick)</option>
+                                            </optgroup>
+                                            <optgroup label="Tunnel &amp; Swirl">
+                                                <option value="psychedelic-tunnel" {% if composition.type == 'psychedelic-tunnel' %}selected{% endif %}>Psychedelic Tunnel</option>
+                                                <option value="swirl" {% if composition.type == 'swirl' %}selected{% endif %}>Swirl</option>
+                                                <option value="tunnel" {% if composition.type == 'tunnel' %}selected{% endif %}>Tunnel</option>
+                                                <option value="tunnel-burst" {% if composition.type == 'tunnel-burst' %}selected{% endif %}>Tunnel Burst (Explode)</option>
+                                                <option value="tunnel-double" {% if composition.type == 'tunnel-double' %}selected{% endif %}>Tunnel Double</option>
+                                            </optgroup>
                                         </select>
                                         <small class="text-muted">Start here, then choose the image sources that feed this composition.</small>
                                     </div>
@@ -521,6 +552,7 @@
                                                     <option value="circle_rotate" {% if selected_overlay_effect == 'circle_rotate' %}selected{% endif %}>Circle rotate</option>
                                                     <option value="circle_rotate_mirror" {% if selected_overlay_effect == 'circle_rotate_mirror' %}selected{% endif %}>Circle rotate mirror</option>
                                                     <option value="mash" {% if selected_overlay_effect == 'mash' %}selected{% endif %}>Mash</option>
+                                                    <option value="orb" {% if selected_overlay_effect == 'orb' %}selected{% endif %}>Folder Orb</option>
                                                 </select>
                                                 <div class="form-check mt-4">
                                                     <input class="form-check-input" type="checkbox" id="overlay_rotate" name="overlay_rotate" {% if composition and composition.overlay_rotate %}checked{% endif %}>

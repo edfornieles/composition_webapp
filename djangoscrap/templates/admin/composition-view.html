@@ -107,12 +107,10 @@
                                             {% for comp in compositions %}
                                             <tr>
                                                 <td>
-                                                    {% if comp.img %}
-                                                        <img src="{{ comp.img.url }}" alt="Composition preview" style="width: 36px; height: 36px; object-fit: cover; border: 1px solid #ccc;">
-                                                    {% elif comp.preview_url %}
-                                                        <img src="{{ comp.preview_url }}" alt="Composition preview" style="width: 36px; height: 36px; object-fit: cover; border: 1px solid #ccc;">
+                                                    {% if comp.list_thumbnail_src %}
+                                                        <img src="{{ comp.list_thumbnail_src }}" alt="" loading="lazy" width="36" height="36" style="width: 36px; height: 36px; object-fit: cover; border: 1px solid #ccc;" onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2736%27 height=%2736%27%3E%3Crect fill=%27%23e9ecef%27 width=%2736%27 height=%2736%27/%3E%3C/svg%3E'">
                                                     {% else %}
-                                                        <span class="text-muted">No Image</span>
+                                                        <span class="text-muted">—</span>
                                                     {% endif %}
                                                 </td>
                                                 <td><a href="{% url 'composition_detail' comp.id %}">{{ comp.name }}</a></td>

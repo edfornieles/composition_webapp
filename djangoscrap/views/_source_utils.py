@@ -59,6 +59,10 @@ __all__ = [
 ]
 
 def _local_source_filename_allowed(filename: str) -> bool:
+    n = (filename or "").strip().lower()
+    # Incomplete browser downloads / temp shards — never treat as catalog media.
+    if n.endswith(".crdownload") or n.endswith(".part") or n.endswith(".filepart"):
+        return False
     ext = Path(filename).suffix.lower()
     return bool(ext) and ext in LOCAL_SOURCE_ALLOWED_MEDIA_EXTS
 
