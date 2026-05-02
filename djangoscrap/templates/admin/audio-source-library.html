@@ -1,0 +1,70 @@
+{% extends "layouts/admin.html" %}
+
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<div class="content-wrapper">
+  <section class="content">
+    <div class="container-fluid">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h3 class="card-title mb-0">Audio Source Library</h3>
+          <div class="d-flex gap-2">
+            <button type="button" id="selectAllAudioSourcesBtn" class="btn btn-outline-secondary btn-sm">Select all</button>
+            <button type="button" id="clearAudioSourcesBtn" class="btn btn-outline-secondary btn-sm">Clear</button>
+            <button type="submit" form="deleteAudioSourcesForm" id="deleteAudioSourcesBtn" class="btn btn-danger btn-sm">Delete selected</button>
+            <a href="{% url 'noise-studio' %}" class="btn btn-outline-primary btn-sm">Noise Studio</a>
+            <a href="{% url 'new-audio-source' %}" class="btn btn-success btn-sm">New Audio Source</a>
+          </div>
+        </div>
+        <div class="card-body">
+          <form id="deleteAudioSourcesForm" method="POST" action="{% url 'delete_audio_sources' %}">
+            {% csrf_token %}
+            <div class="row">
+              {% for source in sources %}
+              <div class="col-md-4 col-lg-3 mb-4">
+                <div class="card h-100 shadow-sm">
+                  <div class="card-header bg-white border-0 pb-0 d-flex justify-content-end">
+                    <input type="checkbox" class="audio-source-select" name="sources" value="{{ source.name }}" title="Select {{ source.name }}">
+                  </div>
+                  <div class="card-body">
+                    <h5 class="card-title mb-1">{{ source.name }}</h5>
+                    <p class="text-muted mb-2">{{ source.file_count }} file{{ source.file_count|pluralize }}</p>
+                    <p class="small text-muted mb-3">Updated {{ source.updated_at|date:"d/m/Y H:i" }}</p>
+                    <a href="{% url 'audio_source_contents' source.name %}" class="btn btn-primary btn-sm w-100">Open Audio Source</a>
+                  </div>
+                </div>
+              </div>
+              {% empty %}
+              <div class="col-12"><p class="text-muted mb-0">No audio sources found yet.</p></div>
+              {% endfor %}
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+<script>
+  (function () {
+    const selectAllBtn = document.getElementById("selectAllAudioSourcesBtn");
+    const clearBtn = document.getElementById("clearAudioSourcesBtn");
+    const deleteBtn = document.getElementById("deleteAudioSourcesBtn");
+    const checkboxes = () => Array.from(document.querySelectorAll(".audio-source-select"));
+    if (selectAllBtn) selectAllBtn.addEventListener("click", () => checkboxes().forEach((cb) => { cb.checked = true; }));
+    if (clearBtn) clearBtn.addEventListener("click", () => checkboxes().forEach((cb) => { cb.checked = false; }));
+    if (deleteBtn) {
+      deleteBtn.addEventListener("click", (event) => {
+        const selectedCount = checkboxes().filter((cb) => cb.checked).length;
+        if (!selectedCount) {
+          event.preventDefault();
+          alert("Please select at least one audio source to delete.");
+          return;
+        }
+        if (!confirm(`Delete ${selectedCount} selected audio source(s)?`)) {
+          event.preventDefault();
+        }
+      });
+    }
+  })();
+</script>
+{% endblock %}

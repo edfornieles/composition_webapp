@@ -1,0 +1,231 @@
+{
+  "_comment": "Extended URL-rewrite ruleset. Loaded as a JSON overlay by djangoscrap.ingestion_url_rewriter. Rules here are prepended to the built-in registry. Delete or edit entries freely — the tests in djangoscrap/tests/test_url_rewriter_overlay.py pin the behavior so a typo surfaces immediately. Schema is documented in INGESTION_IMPLEMENTATION_PLAN.md Phase 1A.",
+
+  "ignore": [
+    "canstockphoto.com",
+    "mostphotos.com",
+    "bigstockphoto.com",
+    "rawpixel.com",
+    "prostockphoto.com",
+    "picfair.com",
+    "featurepics.com",
+    "pxhere.com",
+    "pikwizard.com",
+    "stocksnap.io",
+    "hippopx.com",
+    "pixnio.com",
+    "imagefootball.com",
+    "imagesearch.eb.com",
+    "thumbs.dreamstime.com",
+    "as1.ftcdn.net",
+    "as2.ftcdn.net",
+    "image.shutterstock.com",
+    "lookbook.nu",
+    "keepfit.com.cn"
+  ],
+
+  "upgrade": [
+    {
+      "name": "imgur-thumb-suffix",
+      "host_suffix": "imgur.com",
+      "pattern": "([0-9A-Za-z]{7,8})(?:_d|b|h|l|m|r|s|t)(\\.(?:jpg|jpeg|png|gif|webp))$",
+      "replacement": "\\1\\2"
+    },
+    {
+      "name": "blogger-size-bucket",
+      "host_suffix": "blogspot.com",
+      "pattern": "/s\\d+(?:-[a-z])?/",
+      "replacement": "/s0/"
+    },
+    {
+      "name": "googleusercontent-size",
+      "host_suffix": "googleusercontent.com",
+      "pattern": "=[swh]\\d+(?:-[a-z0-9\\-]+)*$",
+      "replacement": "=s0",
+      "apply_to_query": true
+    },
+    {
+      "name": "twimg-size",
+      "host_suffix": "twimg.com",
+      "pattern": "(\\.(?:jpg|jpeg|png|gif|webp)):(?:thumb|small|medium|large)$",
+      "replacement": "\\1:orig"
+    },
+    {
+      "name": "twimg-name-query",
+      "host_suffix": "twimg.com",
+      "pattern": "([?&])name=(?:thumb|small|medium|large|\\d+x\\d+)",
+      "replacement": "\\1name=orig",
+      "apply_to_query": true
+    },
+    {
+      "name": "fbcdn-scale",
+      "host_suffix": "fbcdn.net",
+      "pattern": "/[sp]\\d+x\\d+/",
+      "replacement": "/"
+    },
+    {
+      "name": "cdninstagram-scale",
+      "host_suffix": "cdninstagram.com",
+      "pattern": "/[sp]\\d+x\\d+/",
+      "replacement": "/"
+    },
+    {
+      "name": "shopify-size",
+      "host_suffix": "shopify.com",
+      "pattern": "_(?:pico|icon|thumb|small|compact|medium|large|grande|\\d+x(?:\\d+)?|master)(?=\\.(?:jpg|jpeg|png|gif|webp))",
+      "replacement": ""
+    },
+    {
+      "name": "cdnshopify-size",
+      "host_suffix": "cdn.shopify.com",
+      "pattern": "_(?:pico|icon|thumb|small|compact|medium|large|grande|\\d+x(?:\\d+)?|master)(?=\\.(?:jpg|jpeg|png|gif|webp))",
+      "replacement": ""
+    },
+    {
+      "name": "amazon-size-suffix",
+      "host_suffix": "images-amazon.com",
+      "pattern": "\\._[A-Z0-9_,]+_\\.(jpg|jpeg|png|gif|webp)$",
+      "replacement": ".\\1"
+    },
+    {
+      "name": "media-amazon-size",
+      "host_suffix": "media-amazon.com",
+      "pattern": "\\._[A-Z0-9_,]+_\\.(jpg|jpeg|png|gif|webp)$",
+      "replacement": ".\\1"
+    },
+    {
+      "name": "ssl-images-amazon",
+      "host_suffix": "ssl-images-amazon.com",
+      "pattern": "\\._[A-Z0-9_,]+_\\.(jpg|jpeg|png|gif|webp)$",
+      "replacement": ".\\1"
+    },
+    {
+      "name": "behance-size",
+      "host_suffix": "behance.net",
+      "pattern": "/projects/\\d+/",
+      "replacement": "/projects/max_3840/"
+    },
+    {
+      "name": "artstation-size",
+      "host_suffix": "artstation.com",
+      "pattern": "/(?:smaller_square|medium_square|small|medium|large|micro|assets\\d+)/",
+      "replacement": "/original/"
+    },
+    {
+      "name": "artstation-image-assets",
+      "host_suffix": "artstation.com",
+      "pattern": "/assets/(?:smaller_square|medium_square|small|medium|large|micro)/",
+      "replacement": "/assets/original/"
+    },
+    {
+      "name": "deviantart-pre00-size",
+      "host_suffix": "deviantart.com",
+      "pattern": "/v1/fill/w_\\d+,h_\\d+",
+      "replacement": "/v1/fill/w_4096,h_4096"
+    },
+    {
+      "name": "wixstatic-size",
+      "host_suffix": "wixstatic.com",
+      "pattern": "/v1/fill/w_\\d+,h_\\d+,[^/]+",
+      "replacement": "/v1/fill/w_4096,h_4096,al_c"
+    },
+    {
+      "name": "pixiv-thumb",
+      "host_suffix": "pximg.net",
+      "pattern": "/c/\\d+x\\d+[^/]*/img-master/",
+      "replacement": "/img-original/"
+    },
+    {
+      "name": "pixiv-master-to-original",
+      "host_suffix": "pximg.net",
+      "pattern": "/img-master/",
+      "replacement": "/img-original/"
+    },
+    {
+      "name": "mzstatic-size",
+      "host_suffix": "mzstatic.com",
+      "pattern": "/\\d+x\\d+[a-z]{0,3}\\.(jpg|jpeg|png|webp)$",
+      "replacement": "/999999999x0w.\\1"
+    },
+    {
+      "name": "discordapp-size",
+      "host_suffix": "discordapp.net",
+      "pattern": "([?&])(?:width|height)=\\d+",
+      "replacement": "\\1",
+      "apply_to_query": true
+    },
+    {
+      "name": "discordapp-com-attachments",
+      "host_suffix": "discordapp.com",
+      "pattern": "([?&])(?:width|height)=\\d+",
+      "replacement": "\\1",
+      "apply_to_query": true
+    },
+    {
+      "name": "redbubble-size",
+      "host_suffix": "redbubble.net",
+      "pattern": ",(?:small|medium|large)\\.(?:jpg|jpeg|png|webp)$",
+      "replacement": ",x2000.jpg"
+    },
+    {
+      "name": "artsy-size",
+      "host_suffix": "artsy.net",
+      "pattern": "/(?:small|medium|large|square|tall|wide)\\.(?:jpg|jpeg|png|webp)$",
+      "replacement": "/larger.jpg"
+    },
+    {
+      "name": "saatchiart-size",
+      "host_suffix": "saatchiart.com",
+      "pattern": "/(?:\\d+-h|\\d+-w)/",
+      "replacement": "/canvas/"
+    },
+    {
+      "name": "weibo-orj",
+      "host_suffix": "sinaimg.cn",
+      "pattern": "/(?:thumb150|bmiddle|mw\\d+|square|orj360|thumb180|small|wap\\d+|mw690)/",
+      "replacement": "/large/"
+    },
+    {
+      "name": "postimg-thumb",
+      "host_suffix": "postimg.cc",
+      "pattern": "/thumb/",
+      "replacement": "/"
+    },
+    {
+      "name": "imgbb-resize",
+      "host_suffix": "ibb.co",
+      "pattern": "\\.(?:th|md)\\.(jpg|jpeg|png|gif|webp)$",
+      "replacement": ".\\1"
+    },
+    {
+      "name": "tiktokcdn-size",
+      "host_suffix": "tiktokcdn.com",
+      "pattern": "~tplv-[^:/?]+",
+      "replacement": ""
+    },
+    {
+      "name": "tiktokcdn-com-size",
+      "host_suffix": "tiktokcdn-us.com",
+      "pattern": "~tplv-[^:/?]+",
+      "replacement": ""
+    },
+    {
+      "name": "vk-user-size",
+      "host_suffix": "userapi.com",
+      "pattern": "/\\d+x\\d+/",
+      "replacement": "/orig/"
+    },
+    {
+      "name": "flickr-com-staticflickr-s",
+      "host_suffix": "flickr.com",
+      "pattern": "/(\\d+)/(\\d+_[0-9a-f]+)(?:_(?:[smtnozbhqkc]|\\dk))?(\\.(?:jpg|jpeg|png|gif))$",
+      "replacement": "/\\1/\\2_b\\3"
+    },
+    {
+      "name": "xiaohongshu-size",
+      "host_suffix": "xhscdn.com",
+      "pattern": "!\\w+$",
+      "replacement": ""
+    }
+  ]
+}

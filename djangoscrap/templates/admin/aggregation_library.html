@@ -1,0 +1,110 @@
+{% extends "layouts/admin.html" %}
+
+{% block content %}
+<style>
+  .agg-image-card {
+    width: 150px;
+  }
+  .agg-image-thumb {
+    width: 100%;
+    height: 110px;
+    object-fit: cover;
+    border: 1px solid #ddd;
+  }
+</style>
+<div class="content-wrapper">
+  <section class="content">
+    <div class="container-fluid">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h3 class="card-title mb-0">Aggregation Library</h3>
+          <a href="{% url 'associations_studio' %}" class="btn btn-primary btn-sm">
+            <i class="fas fa-plus"></i> New Associations Chain
+          </a>
+        </div>
+        <div class="card-body">
+          {% if messages %}
+            {% for message in messages %}
+              <div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+
+          <p class="text-muted">
+            Manage association chains: remove single images or delete a full chain and its archive folder.
+          </p>
+
+          {% for chain in chains %}
+            <div class="border rounded p-3 mb-3">
+              <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
+                <div>
+                  <div><strong>{{ chain.composition.name }}</strong></div>
+                  <div class="text-muted small">
+                    Slug: {{ chain.slug|default:"-" }} |
+                    Source: {{ chain.source_name|default:"-" }} |
+                    Images: {{ chain.image_count }}
+                  </div>
+                  {% if chain.composition.url %}
+                    <a href="{{ chain.composition.url }}" target="_blank" rel="noopener">{{ chain.composition.url }}</a>
+                  {% endif %}
+                </div>
+                <form method="POST" action="{% url 'aggregation_library' %}" class="mt-2 mt-md-0">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete_chain">
+                  <input type="hidden" name="composition_id" value="{{ chain.composition.id }}">
+                  <button type="submit" class="btn btn-danger btn-sm js-delete-chain">
+                    <i class="fas fa-trash"></i> Delete Entire Chain
+                  </button>
+                </form>
+              </div>
+
+              {% if chain.images %}
+                <div class="d-flex flex-wrap">
+                  {% for image in chain.images %}
+                    <div class="border rounded p-2 mr-2 mb-2 agg-image-card">
+                      <img src="{{ image.url }}" alt="{{ image.name }}" class="agg-image-thumb">
+                      <div class="small text-muted mt-1" title="{{ image.name }}">{{ image.name|truncatechars:20 }}</div>
+                      <div class="small text-muted">{{ image.size_kb }} KB</div>
+                      <form method="POST" action="{% url 'aggregation_library' %}" class="mt-1">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="delete_image">
+                        <input type="hidden" name="composition_id" value="{{ chain.composition.id }}">
+                        <input type="hidden" name="file_name" value="{{ image.name }}">
+                        <button type="submit" class="btn btn-outline-danger btn-xs btn-block js-delete-image">Delete image</button>
+                      </form>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <div class="text-muted">No saved images in this chain.</div>
+              {% endif %}
+            </div>
+          {% empty %}
+            <div class="text-muted">No associations chains yet.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  (function () {
+    const chainButtons = Array.from(document.querySelectorAll(".js-delete-chain"));
+    chainButtons.forEach((btn) => {
+      btn.addEventListener("click", (event) => {
+        if (!confirm("Delete this entire association chain and all its saved images?")) {
+          event.preventDefault();
+        }
+      });
+    });
+    const imageButtons = Array.from(document.querySelectorAll(".js-delete-image"));
+    imageButtons.forEach((btn) => {
+      btn.addEventListener("click", (event) => {
+        if (!confirm("Delete this image from the chain?")) {
+          event.preventDefault();
+        }
+      });
+    });
+  })();
+</script>
+{% endblock %}

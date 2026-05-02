@@ -1,0 +1,49 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Django / local data
+*.sqlite3
+db.sqlite3
+staticfiles/
+
+# Local backup archives (keep off-machine copies; do not commit)
+backups/
+
+# User-generated media (keep folder with .gitkeep if needed)
+/media/*
+!/media/.gitkeep
+
+# OS / editor noise
+.DS_Store
+._*
+Thumbs.db
+*.swp
+*~
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# Logs & temp
+*.log
+tmp/
+temp/
+
+# Contracts (standalone Foundry repo)
+contracts/

@@ -1,0 +1,41 @@
+asgiref==3.8.1
+beautifulsoup4>=4.12.0
+boto3>=1.34.0
+colorama==0.4.6
+decorator==5.2.1
+Django==5.1.7
+django-crispy-forms==2.3
+imageio==2.37.0
+imageio-ffmpeg==0.6.0
+moviepy==2.1.2
+mysql==0.0.3
+mysql-connector==2.2.9
+mysqlclient==2.2.7
+numpy==2.2.4
+openai>=1.70.0,<2.0
+pillow==10.4.0
+proglog==0.1.10
+pyarrow==19.0.1
+pylance==0.24.1
+PyMySQL==1.1.1
+playwright==1.53.0
+python-dotenv==1.0.1
+# CLIP-based semantic dedupe for ingestion (views._clip_embed_path). Optional
+# at runtime — the ingestion pipeline falls back to phash-only if torch /
+# sentence-transformers fail to import — but strongly recommended. First run
+# downloads the ~600 MB ViT-B/32 weights from Hugging Face.
+sentence-transformers>=3.0,<4.0
+sqlparse==0.5.3
+torch>=2.2,<3.0
+tqdm==4.67.1
+tzdata==2025.1
+# Test harness — required by scripts/run_tests.sh and the ingestion test
+# suite at djangoscrap/tests/. Kept lightweight so a fresh clone can run
+# the tests without pulling the heavy optional adapter deps.
+pytest>=8.0,<9.0
+pytest-django>=4.8,<5.0
+responses>=0.25,<1.0
+gunicorn>=22.0,<23.0
+celery>=5.4,<6.0
+redis>=5.0,<6.0
+django-storages[s3]>=1.14,<2.0

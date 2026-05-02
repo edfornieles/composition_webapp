@@ -1,0 +1,3 @@
+file 'media/merged_images\merged_0.jpg'
+file 'media/merged_images\merged_000.png'
+file 'media/merged_images\merged_001.png'

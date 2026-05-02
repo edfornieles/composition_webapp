@@ -1,0 +1,198 @@
+{% extends "layouts/admin.html" %}
+{% block content %}
+<div class="content-wrapper">
+  <section class="content">
+    <div class="container-fluid">
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+      <div class="card mb-3" id="ingestion-new-batch">
+        <div class="card-header"><h3 class="card-title mb-0">New AI Ingestion Batch</h3></div>
+        <div class="card-body">
+          <form method="POST" action="{% url 'ingestion_batches' %}">
+            {% csrf_token %}
+            <div class="row">
+              <div class="col-md-5">
+                <label>Source</label>
+                <input name="destination_source_name" class="form-control" placeholder="e.g. dragons_search or beach tumblr style" value="{{ prefill_destination }}" title="Batch title and destination folder slug" required>
+                <small class="text-muted">Same as the folder under sources; spaces become hyphens. New rows appear in <strong>Ingestion Batches</strong> below; use <strong>Source folders</strong> + Aggregate for existing disk folders.</small>
+              </div>
+              <div class="col-md-2">
+                <label>Target assets</label>
+                <input name="target_asset_count" type="number" class="form-control" value="800" min="100" max="20000" title="Target asset count">
+              </div>
+              <div class="col-md-2">
+                <label>Folder</label>
+                <select name="destination_mode" class="form-control" title="Create new folder or use one that already exists">
+                  <option value="new" {% if prefill_mode == 'new' %}selected{% endif %}>Create new source</option>
+                  <option value="existing" {% if prefill_mode != 'new' %}selected{% endif %}>Use existing source</option>
+                </select>
+              </div>
+              <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary btn-sm w-100">Create</button>
+              </div>
+            </div>
+            <div class="row mt-2">
+              <div class="col-md-5">
+                <label>Concept brief</label>
+                <input name="concept_brief" class="form-control" placeholder="e.g. cherry blossom city walk, dreamy lighting, macro petals">
+                <small class="text-muted">Short phrases; combined with your source name to build search queries.</small>
+              </div>
+              <div class="col-md-7">
+                <label>Seed URL <span class="text-muted">(optional)</span></label>
+                <input name="seed_url" type="url" class="form-control" placeholder="https://yandex.com/images/search?text=gollum — pastes images from this page as seeds and starts the campaign">
+                <small class="text-muted">If set: scrapes this page for seed images, auto-accepts them, starts the campaign, and runs the first aggregation cycle immediately.</small>
+              </div>
+            </div>
+          </form>
+        </div>
+
+      </div>
+
+      <div class="card mb-3" id="ingestion-active-campaigns">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
+          <h3 class="card-title mb-0">Active Aggregation Campaigns</h3>
+          <form method="POST" action="{% url 'ingestion_campaign_tick' %}" class="m-0">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-dark btn-sm">Run due campaigns</button>
+          </form>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-sm table-hover mb-0 align-middle">
+            <thead class="thead-light">
+              <tr>
+                <th>ID</th>
+                <th>Title</th>
+                <th class="text-right">Files</th>
+                <th class="text-right">Target</th>
+                <th>Campaign</th>
+                <th>Destination</th>
+                <th>Created</th>
+                <th class="text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in active_campaign_rows %}
+                {% with b=row.batch %}
+                {% with tgt=b.campaign_target_count|default:b.target_asset_count|default:0 %}
+                <tr>
+                  <td>{{ b.id }}</td>
+                  <td>{{ b.title|default:b.destination_source_name|default:"—" }}</td>
+                  <td class="text-right"><strong>{{ row.media_count|default:0 }}</strong></td>
+                  <td class="text-right">{% if tgt %}{{ tgt }}{% else %}—{% endif %}</td>
+                  <td>
+                    {% if b.campaign_last_status == "target_reached" %}
+                      <span class="badge badge-success">Target reached</span>
+                    {% elif b.campaign_last_status == "review_backlog" %}
+                      <span class="badge badge-warning">Review backlog</span>
+                    {% elif b.campaign_last_status == "error" %}
+                      <span class="badge badge-danger">Error</span>
+                    {% elif b.campaign_last_status == "blocked" or b.campaign_last_status == "publish_failed" %}
+                      <span class="badge badge-danger">{{ b.campaign_last_status }}</span>
+                    {% elif b.campaign_next_run_at and b.campaign_next_run_at <= now_ts %}
+                      <span class="badge badge-warning">Due now</span>
+                    {% elif b.campaign_last_status == "ok" or b.campaign_next_run_at %}
+                      <span class="badge badge-primary">Running</span>
+                    {% else %}
+                      <span class="badge badge-light">On</span>
+                    {% endif %}
+                    {% if b.campaign_next_run_at %}
+                      <div class="small text-muted mt-1">Next: {{ b.campaign_next_run_at|date:"m-d H:i" }}</div>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if b.destination_source_name %}
+                      <a href="{% url 'bucket_contents' b.destination_source_name %}"><code>{{ b.destination_source_name }}</code></a>
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td>{{ b.created_at|date:"Y-m-d H:i" }}</td>
+                  <td class="text-right">
+                    <a class="btn btn-dark btn-sm" href="{% url 'ingestion_batch_detail' b.id %}">Open</a>
+                  </td>
+                </tr>
+                {% endwith %}
+                {% endwith %}
+              {% empty %}
+              <tr><td colspan="8" class="text-muted p-3">No active campaigns. Open a source folder below and toggle its campaign on to start an aggregation loop.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card mb-3" id="ingestion-source-folders">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
+          <div>
+            <h3 class="card-title mb-0">Source folders (on disk)</h3>
+            <small class="text-muted d-block">Every folder under <code>{{ source_root_path }}</code> has an ingestion batch (created automatically if missing). <strong>Media</strong> = allowed images/videos only (other file types are not valid here). <strong>Aggregate</strong> opens <code>/ingestion/&lt;id&gt;/</code>. <strong>Updated</strong> = folder modified time on disk.</small>
+            <small class="text-muted d-block mt-1"><strong>Running</strong> = campaign is on and either the last cycle finished OK or a next run is scheduled. <strong>Due now</strong> = scheduler is due to run. <strong>On</strong> = enabled but no next time set yet. <strong>Off</strong> = disabled.</small>
+          </div>
+          <form method="POST" action="{% url 'ingestion_campaign_tick' %}" class="m-0">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-dark btn-sm">Run due campaigns</button>
+          </form>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-bordered table-sm mb-0">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Batch</th>
+                <th>Media</th>
+                <th>Updated</th>
+                <th>Campaign</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in source_rows %}
+              <tr>
+                <td>
+                  <a href="{% url 'bucket_contents' row.name %}" title="{{ row.disk_path }}"><code>{{ row.name }}</code></a>
+                </td>
+                <td class="text-muted"><a href="{% url 'ingestion_batch_detail' row.batch.id %}">{{ row.batch.id }}</a></td>
+                <td>{{ row.media_count }}</td>
+                <td>{% if row.mtime %}{{ row.mtime|date:"Y-m-d H:i" }}{% else %}—{% endif %}</td>
+                <td>
+                  {% with b=row.batch %}
+                  {% if not b.campaign_enabled %}
+                    <span class="badge badge-secondary">Off</span>
+                  {% elif b.campaign_last_status == "target_reached" %}
+                    <span class="badge badge-success">Target reached</span>
+                  {% elif b.campaign_last_status == "review_backlog" %}
+                    <span class="badge badge-warning">Review backlog</span>
+                  {% elif b.campaign_last_status == "error" %}
+                    <span class="badge badge-danger">Error</span>
+                  {% elif b.campaign_last_status == "blocked" or b.campaign_last_status == "publish_failed" %}
+                    <span class="badge badge-danger">{{ b.campaign_last_status|default:"blocked" }}</span>
+                  {% elif b.campaign_next_run_at and b.campaign_next_run_at <= now_ts %}
+                    <span class="badge badge-warning">Due now</span>
+                  {% elif b.campaign_last_status == "ok" or b.campaign_enabled and b.campaign_next_run_at %}
+                    <span class="badge badge-primary">Running</span>
+                  {% elif b.campaign_enabled %}
+                    <span class="badge badge-light">On</span>
+                  {% endif %}
+                  {% if b.campaign_enabled and b.campaign_next_run_at %}
+                    <div class="small text-muted mt-1">Next: {{ b.campaign_next_run_at|date:"m-d H:i" }}</div>
+                  {% endif %}
+                  {% endwith %}
+                </td>
+                <td>
+                  <a class="btn btn-outline-primary btn-sm" href="{% url 'ingestion_batch_detail' row.batch.id %}?from_folder={{ row.name|urlencode }}" title="Open ingestion for this folder; sets campaign/publish target to this folder name">Aggregate</a>
+                </td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="6" class="text-muted p-3">No source folders yet. Create a batch with “Create new source” or add folders under the path above.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

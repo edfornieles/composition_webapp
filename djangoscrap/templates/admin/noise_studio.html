@@ -1,0 +1,1848 @@
+{% extends "layouts/admin.html" %}
+{% load static %}
+
+{% block content %}
+{% csrf_token %}
+{{ audio_source_map|json_script:"ns-audio-map" }}
+
+<style>
+/* ── Reset & base ── */
+.ns-wrap { background: #f4f6f9; min-height: 100vh; padding-bottom: 40px; }
+.content-wrapper { background: #f4f6f9 !important; }
+
+/* ── Sticky transport bar ── */
+.ns-bar {
+  position: sticky; top: 0; z-index: 1000;
+  background: #fff; height: 52px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 16px; border-bottom: 1px solid #dee2e6;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+.ns-bar-title {
+  font-size: 11px; font-weight: 700; letter-spacing: 3px;
+  color: #007bff; text-transform: uppercase; white-space: nowrap;
+}
+.ns-bar-status {
+  font-size: 11px; color: #6c757d; flex: 1; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.ns-bar-source {
+  font-size: 11px; color: #495057; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 180px;
+  font-weight: 500;
+}
+.ns-transport-btn {
+  background: #fff; border: 1px solid #ced4da; color: #495057;
+  border-radius: 4px; padding: 0 10px; height: 30px; font-size: 12px;
+  cursor: pointer; white-space: nowrap; transition: all 0.15s;
+}
+.ns-transport-btn:hover { background: #f8f9fa; border-color: #adb5bd; color: #212529; }
+.ns-transport-btn.primary { border-color: #007bff; color: #007bff; background: #fff; }
+.ns-transport-btn.primary:hover { background: #e8f0fe; }
+.ns-transport-btn:disabled { opacity: 0.4; cursor: default; }
+.ns-led { width: 8px; height: 8px; border-radius: 50%; background: #ced4da; flex-shrink: 0; }
+.ns-led.active { background: #28a745; box-shadow: 0 0 5px #28a74580; }
+.ns-led.paused { background: #fd7e14; box-shadow: 0 0 5px #fd7e1480; }
+
+/* ── Main layout ── */
+.ns-body { padding: 12px 16px 0; }
+.ns-row { display: flex; gap: 12px; margin-bottom: 12px; }
+.ns-col-source { width: 260px; flex-shrink: 0; }
+.ns-col-viz { flex: 1; min-width: 0; }
+
+/* ── Cards ── */
+.ns-card {
+  background: #fff; border: 1px solid #dee2e6; border-radius: 6px;
+  overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.ns-card-hd {
+  background: #f8f9fa; padding: 6px 10px;
+  font-size: 10px; font-weight: 700; letter-spacing: 2px;
+  color: #6c757d; text-transform: uppercase;
+  border-bottom: 1px solid #dee2e6;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.ns-card-hd .accent { color: #007bff; }
+.ns-card-body { padding: 10px; }
+
+/* ── Form controls ── */
+.ns-input, .ns-select {
+  background: #fff; border: 1px solid #ced4da; color: #495057;
+  border-radius: 4px; padding: 4px 8px; font-size: 12px; width: 100%;
+}
+.ns-input:focus, .ns-select:focus { outline: none; border-color: #80bdff; box-shadow: 0 0 0 2px #007bff20; }
+.ns-label { font-size: 10px; color: #6c757d; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 3px; display: block; }
+.ns-form-row { margin-bottom: 8px; }
+.ns-btn {
+  background: #fff; border: 1px solid #ced4da; color: #495057;
+  border-radius: 4px; padding: 4px 10px; font-size: 11px; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+}
+.ns-btn:hover { background: #f8f9fa; border-color: #adb5bd; color: #212529; }
+.ns-btn.cyan { border-color: #007bff; color: #007bff; }
+.ns-btn.cyan:hover { background: #e8f0fe; }
+.ns-btn.green { border-color: #28a745; color: #28a745; }
+.ns-btn.green:hover { background: #e8f5ec; }
+.ns-btn.warn { border-color: #ffc107; color: #856404; }
+.ns-btn.warn:hover { background: #fff8e0; }
+.ns-btn:disabled { opacity: 0.35; cursor: default; }
+.ns-btn-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+/* ── Visualizers ── */
+#nsWaveform {
+  display: block; width: 100%; height: 90px;
+  background: #f0f2f5; border-radius: 4px 4px 0 0;
+}
+#nsOscilloscope {
+  display: block; width: 100%; height: 70px;
+  background: #e9ecef; border-radius: 0 0 4px 4px;
+  border-top: 1px solid #dee2e6;
+}
+.ns-viz-row {
+  display: flex; gap: 0; align-items: stretch; margin-bottom: 0;
+}
+.ns-vu-wrap {
+  display: flex; gap: 3px; padding: 6px;
+  background: #f0f2f5;
+}
+.ns-vu-track {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+.ns-vu-label { font-size: 9px; color: #adb5bd; letter-spacing: 1px; }
+.ns-vu-bar-wrap {
+  width: 10px; height: 136px; background: #dee2e6;
+  border-radius: 3px; overflow: hidden; display: flex;
+  flex-direction: column; justify-content: flex-end;
+  border: 1px solid #ced4da;
+}
+.ns-vu-bar {
+  width: 100%; background: linear-gradient(to top, #28a745 0%, #8bc34a 60%, #ffc107 80%, #dc3545 100%);
+  transition: height 50ms linear; border-radius: 0 0 2px 2px;
+  height: 0%;
+}
+.ns-peak-dot {
+  width: 10px; height: 2px; background: #dc3545; border-radius: 1px;
+  margin-top: 2px; opacity: 0; transition: opacity 0.5s;
+}
+
+/* ── Preset strip ── */
+.ns-preset-strip {
+  display: flex; gap: 6px; align-items: center;
+  overflow-x: auto; padding: 8px 0; margin-bottom: 10px;
+  scrollbar-width: none;
+}
+.ns-preset-strip::-webkit-scrollbar { display: none; }
+.preset-pill {
+  background: #fff; border: 1px solid #dee2e6; color: #6c757d;
+  border-radius: 20px; padding: 3px 12px; font-size: 11px;
+  cursor: pointer; white-space: nowrap; transition: all 0.15s; flex-shrink: 0;
+}
+.preset-pill:hover { border-color: #007bff; color: #007bff; }
+.preset-pill.active { background: #007bff; color: #fff; border-color: #007bff; font-weight: 600; }
+.ns-preset-divider { width: 1px; height: 20px; background: #dee2e6; flex-shrink: 0; }
+
+/* ── Signal chain ── */
+.ns-chain-wrap {
+  overflow-x: auto; padding: 0 0 8px; margin-bottom: 10px;
+  scrollbar-width: thin; scrollbar-color: #ced4da transparent;
+}
+.ns-chain-wrap::-webkit-scrollbar { height: 4px; }
+.ns-chain-wrap::-webkit-scrollbar-track { background: transparent; }
+.ns-chain-wrap::-webkit-scrollbar-thumb { background: #ced4da; border-radius: 2px; }
+.ns-chain { display: flex; gap: 8px; align-items: flex-start; width: max-content; padding: 4px 2px; }
+.ns-chain-arrow { color: #ced4da; font-size: 16px; margin-top: 32px; flex-shrink: 0; }
+
+/* ── Effect blocks ── */
+.ns-block {
+  background: #fff; border: 1px solid #dee2e6;
+  border-radius: 6px; padding: 10px 10px 8px;
+  width: 155px; flex-shrink: 0; display: flex; flex-direction: column;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.ns-block:hover { border-color: #adb5bd; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+.ns-block.active { border-color: #007bff; box-shadow: 0 0 0 2px #007bff18; }
+.ns-block.bypassed { opacity: 0.45; }
+.ns-block-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.ns-block-name {
+  font-size: 9px; font-weight: 700; letter-spacing: 2px;
+  color: #adb5bd; text-transform: uppercase;
+}
+.ns-block.active .ns-block-name { color: #007bff; }
+.ns-bypass {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #28a745; border: 1px solid #1e7e34;
+  cursor: pointer; flex-shrink: 0; transition: all 0.15s;
+  box-shadow: 0 0 3px #28a74560;
+}
+.ns-bypass:hover { transform: scale(1.2); }
+.ns-bypass.off { background: #dee2e6; border-color: #ced4da; box-shadow: none; }
+
+/* ── Sliders inside blocks ── */
+.ns-sl-row { margin-bottom: 6px; }
+.ns-sl-lbl {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 9px; color: #6c757d; margin-bottom: 2px;
+}
+.ns-sl-lbl span:last-child { color: #495057; font-family: monospace; font-size: 10px; }
+.ns-range {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 3px; background: #dee2e6;
+  border-radius: 2px; outline: none; cursor: pointer;
+}
+.ns-range::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px;
+  border-radius: 50%; background: #007bff; cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,123,255,0.4);
+}
+.ns-range::-moz-range-thumb {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #007bff; cursor: pointer; border: none;
+}
+.ns-select-sm {
+  background: #fff; border: 1px solid #ced4da; color: #495057;
+  border-radius: 3px; padding: 2px 4px; font-size: 10px; width: 100%;
+  margin-top: 3px;
+}
+
+/* ── Block details expand ── */
+.ns-block-more { display: none; }
+.ns-block-more.open { display: block; }
+.ns-expand-btn {
+  background: none; border: none; color: #ced4da; font-size: 9px;
+  cursor: pointer; padding: 2px 0; margin-top: 4px; width: 100%;
+  text-align: center; letter-spacing: 1px;
+}
+.ns-expand-btn:hover { color: #6c757d; }
+
+/* ── Export bar ── */
+.ns-export-bar {
+  background: #fff; border: 1px solid #dee2e6; border-radius: 6px;
+  padding: 12px 14px; margin-top: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.ns-export-hd {
+  font-size: 10px; font-weight: 700; letter-spacing: 2px; color: #6c757d;
+  text-transform: uppercase; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 8px;
+}
+.ns-export-hd::after { content: ""; flex: 1; height: 1px; background: #dee2e6; }
+</style>
+
+<div class="content-wrapper ns-wrap">
+
+  <!-- 1. Sticky transport bar -->
+  <div class="ns-bar">
+    <div class="ns-led" id="nsBarLed"></div>
+    <div class="ns-bar-title">Noise Studio</div>
+    <div class="ns-bar-status" id="nsStatus">Load a source to begin.</div>
+    <div class="ns-bar-source" id="nsBarSource">—</div>
+    <button class="ns-transport-btn primary" id="nsPlay" disabled>&#9654; Play</button>
+    <button class="ns-transport-btn" id="nsStop" disabled>&#9632; Stop</button>
+    <a href="{% url 'audio-source-library' %}" class="ns-transport-btn" style="text-decoration:none; line-height:28px;">&#8594; Library</a>
+  </div>
+
+  <div class="ns-body">
+
+    <!-- 2. Source + Viz row -->
+    <div class="ns-row">
+
+      <!-- Source card -->
+      <div class="ns-col-source">
+        <div class="ns-card" style="height:100%;">
+          <div class="ns-card-hd"><span>Source</span><span class="accent">IN</span></div>
+          <div class="ns-card-body">
+
+            <div class="ns-form-row">
+              <label class="ns-label">Load file</label>
+              <input type="file" id="nsFile" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac" class="ns-input" style="padding:2px 4px;">
+            </div>
+
+            <div class="ns-form-row">
+              <label class="ns-label">Library folder</label>
+              <select id="nsLibFolder" class="ns-select">
+                <option value="">—</option>
+                {% for name in audio_source_map.keys %}
+                <option value="{{ name }}">{{ name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="ns-form-row">
+              <label class="ns-label">Track</label>
+              <select id="nsLibTrack" class="ns-select">
+                <option value="">—</option>
+              </select>
+            </div>
+            <div class="ns-btn-row" style="margin-bottom:8px;">
+              <button type="button" class="ns-btn cyan" id="nsLoadLib" style="flex:1;">Load track</button>
+              <button type="button" class="ns-btn" id="nsRefreshTracks">&#8635;</button>
+              <button type="button" class="ns-btn" id="nsDeleteTrack" title="Delete selected track from noise_studio" style="color:#ff4444; border-color:#44181844;">&#128465;</button>
+            </div>
+            <div class="ns-form-row">
+              <button type="button" class="ns-btn green" id="nsQuickSave" disabled style="width:100%;">&#9660; Quick save (overwrite)</button>
+            </div>
+
+            <div class="ns-form-row" style="margin-top:10px;">
+              <label class="ns-label">Stream URL</label>
+              <input type="url" id="nsUrl" class="ns-input" placeholder="https://…">
+            </div>
+            <div class="ns-btn-row">
+              <button type="button" class="ns-btn" id="nsLoadUrl" style="flex:1;">Load URL</button>
+            </div>
+            <p id="nsUrlHint" class="d-none" style="font-size:10px; color:#ffaa00; margin-top:6px; margin-bottom:0;"></p>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Visualizer -->
+      <div class="ns-col-viz">
+        <div class="ns-card">
+          <div class="ns-card-hd"><span>Waveform</span><span id="nsVizInfo" style="color:#333; font-family:monospace;">—</span></div>
+          <div class="ns-card-body" style="padding:0;">
+            <canvas id="nsWaveform"></canvas>
+            <div class="ns-viz-row" style="padding:0; gap:0;">
+              <canvas id="nsOscilloscope" style="flex:1;"></canvas>
+              <div class="ns-vu-wrap" style="border-left: 1px solid #0e0e1e;">
+                <div class="ns-vu-track">
+                  <div class="ns-vu-label">L</div>
+                  <div class="ns-vu-bar-wrap"><div class="ns-vu-bar" id="nsVuL"></div></div>
+                  <div class="ns-peak-dot" id="nsPeakL"></div>
+                </div>
+                <div class="ns-vu-track">
+                  <div class="ns-vu-label">R</div>
+                  <div class="ns-vu-bar-wrap"><div class="ns-vu-bar" id="nsVuR"></div></div>
+                  <div class="ns-peak-dot" id="nsPeakR"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /ns-row -->
+
+    <!-- 3. Preset strip -->
+    <div class="ns-preset-strip" id="nsPresetStrip">
+      <span style="font-size:9px; color:#333; letter-spacing:2px; text-transform:uppercase; flex-shrink:0;">PRESET</span>
+      <div class="ns-preset-divider"></div>
+      <button class="preset-pill" data-preset="hnw">NHW</button>
+      <button class="preset-pill" data-preset="harsh">HARSH</button>
+      <button class="preset-pill" data-preset="ambient_wall">AMBIENT</button>
+      <button class="preset-pill" data-preset="concrete">CONCRETE</button>
+      <button class="preset-pill" data-preset="cage">CAGE</button>
+      <button class="preset-pill" data-preset="tape_echo">TAPE ECHO</button>
+      <button class="preset-pill" data-preset="void">VOID</button>
+      <button class="preset-pill" data-preset="shimmer">SHIMMER</button>
+      <button class="preset-pill" data-preset="pulse">PULSE</button>
+      <button class="preset-pill" data-preset="basement">BASEMENT</button>
+      <div class="ns-preset-divider"></div>
+      <button class="ns-btn warn" id="nsChance" title="Randomize all params">&#9670; Chance</button>
+      <button class="ns-btn" id="nsReset">Reset</button>
+    </div>
+
+    <!-- 4. Signal chain -->
+    <div class="ns-card" style="margin-bottom:10px;">
+      <div class="ns-card-hd">
+        <span>Signal Chain</span>
+        <span style="font-size:9px; color:#333;">&#8592; scroll &#8594;</span>
+      </div>
+      <div class="ns-chain-wrap">
+        <div class="ns-chain" id="nsChain">
+
+          <!-- INPUT / EQ -->
+          <div class="ns-block" id="blk-input">
+            <div class="ns-block-hd">
+              <span class="ns-block-name">Input / EQ</span>
+              <div class="ns-bypass" id="byp-input" title="Bypass EQ" data-block="input"></div>
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>TRIM</span><span id="vTrim">0.85</span></div>
+              <input type="range" class="ns-range" id="nsTrim" min="5" max="150" value="85">
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>EQ LOW</span><span id="vEqLow">0 dB</span></div>
+              <input type="range" class="ns-range" id="nsEqLow" min="-12" max="12" step="0.5" value="0">
+            </div>
+            <button class="ns-expand-btn" data-target="more-input">&#9660; more</button>
+            <div class="ns-block-more" id="more-input">
+              <div class="ns-sl-row">
+                <div class="ns-sl-lbl"><span>EQ MID</span><span id="vEqMid">0 dB</span></div>
+                <input type="range" class="ns-range" id="nsEqMid" min="-12" max="12" step="0.5" value="0">
+              </div>
+              <div class="ns-sl-row">
+                <div class="ns-sl-lbl"><span>MID FREQ</span><span id="vEqMidFreq">1000 Hz</span></div>
+                <input type="range" class="ns-range" id="nsEqMidFreq" min="80" max="4000" value="1000">
+              </div>
+              <div class="ns-sl-row">
+                <div class="ns-sl-lbl"><span>EQ HIGH</span><span id="vEqHigh">0 dB</span></div>
+                <input type="range" class="ns-range" id="nsEqHigh" min="-12" max="12" step="0.5" value="0">
+              </div>
+            </div>
+          </div>
+
+          <div class="ns-chain-arrow">&#8250;</div>
+
+          <!-- DRIVE -->
+          <div class="ns-block" id="blk-drive">
+            <div class="ns-block-hd">
+              <span class="ns-block-name">Drive</span>
+              <div class="ns-bypass" id="byp-drive" data-block="drive"></div>
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>DRIVE</span><span id="vDrive">40</span></div>
+              <input type="range" class="ns-range" id="nsDrive" min="0" max="100" value="40">
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>RING</span><span id="vRing">0</span></div>
+              <input type="range" class="ns-range" id="nsRing" min="0" max="100" value="0">
+            </div>
+            <button class="ns-expand-btn" data-target="more-drive">&#9660; more</button>
+            <div class="ns-block-more" id="more-drive">
+              <div class="ns-sl-row">
+                <div class="ns-sl-lbl"><span>RING FREQ</span><span id="vRingFreq">220 Hz</span></div>
+                <input type="range" class="ns-range" id="nsRingFreq" min="20" max="4000" value="220">
+              </div>
+              <div class="ns-sl-row">
+                <div class="ns-sl-lbl"><span>DETUNE</span><span id="vDetune">0 st</span></div>
+                <input type="range" class="ns-range" id="nsDetune" min="-12" max="12" value="0">
+              </div>
+              <div class="ns-sl-row">
+                <div class="ns-sl-lbl"><span>RATE</span><span id="vRate">1.00x</span></div>
+                <input type="range" class="ns-range" id="nsRate" min="50" max="150" value="100">
+              </div>
+            </div>
+          </div>
+
+          <div class="ns-chain-arrow">&#8250;</div>
+
+          <!-- CRUSH -->
+          <div class="ns-block" id="blk-crush">
+            <div class="ns-block-hd">
+              <span class="ns-block-name">Crush</span>
+              <div class="ns-bypass" id="byp-crush" data-block="crush"></div>
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>BITS</span><span id="vCrush">0</span></div>
+              <input type="range" class="ns-range" id="nsCrush" min="0" max="16" value="0">
+            </div>
+          </div>
+
+          <div class="ns-chain-arrow">&#8250;</div>
+
+          <!-- FILTER -->
+          <div class="ns-block" id="blk-filter">
+            <div class="ns-block-hd">
+              <span class="ns-block-name">Filter</span>
+              <div class="ns-bypass" id="byp-filter" data-block="filter"></div>
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>LP FREQ</span><span id="vLp">8000 Hz</span></div>
+              <input type="range" class="ns-range" id="nsLp" min="200" max="18000" value="8000">
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>HP FREQ</span><span id="vHp">80 Hz</span></div>
+              <input type="range" class="ns-range" id="nsHp" min="20" max="2000" value="80">
+            </div>
+            <button class="ns-expand-btn" data-target="more-filter">&#9660; more</button>
+            <div class="ns-block-more" id="more-filter">
+              <div class="ns-sl-row">
+                <div class="ns-sl-lbl"><span>DRIFT</span><span id="vDrift">0</span></div>
+                <input type="range" class="ns-range" id="nsDrift" min="0" max="100" value="0">
+              </div>
+              <div class="ns-sl-row">
+                <div class="ns-sl-lbl"><span>DRIFT RATE</span><span id="vDriftRate">0.40 Hz</span></div>
+                <input type="range" class="ns-range" id="nsDriftRate" min="1" max="400" value="40">
+              </div>
+            </div>
+          </div>
+
+          <div class="ns-chain-arrow">&#8250;</div>
+
+          <!-- DELAY -->
+          <div class="ns-block" id="blk-delay">
+            <div class="ns-block-hd">
+              <span class="ns-block-name">Delay</span>
+              <div class="ns-bypass" id="byp-delay" data-block="delay"></div>
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>TIME</span><span id="vDelay">0.18 s</span></div>
+              <input type="range" class="ns-range" id="nsDelay" min="0" max="950" value="180">
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>FEEDBACK</span><span id="vFb">0.28</span></div>
+              <input type="range" class="ns-range" id="nsFb" min="0" max="95" value="28">
+            </div>
+            <button class="ns-expand-btn" data-target="more-delay">&#9660; more</button>
+            <div class="ns-block-more" id="more-delay">
+              <div class="ns-sl-row">
+                <div class="ns-sl-lbl"><span>DRY/WET</span><span id="vMix">0.55</span></div>
+                <input type="range" class="ns-range" id="nsMix" min="0" max="100" value="55">
+              </div>
+              <div class="ns-sl-row">
+                <div class="ns-sl-lbl"><span>FLUTTER</span><span id="vWobble">0</span></div>
+                <input type="range" class="ns-range" id="nsWobble" min="0" max="100" value="0">
+              </div>
+              <div class="ns-sl-row">
+                <div class="ns-sl-lbl"><span>FLUTTER RATE</span><span id="vWobbleRate">1.2 Hz</span></div>
+                <input type="range" class="ns-range" id="nsWobbleRate" min="5" max="300" value="50">
+              </div>
+            </div>
+          </div>
+
+          <div class="ns-chain-arrow">&#8250;</div>
+
+          <!-- REVERB -->
+          <div class="ns-block" id="blk-reverb">
+            <div class="ns-block-hd">
+              <span class="ns-block-name">Reverb</span>
+              <div class="ns-bypass" id="byp-reverb" data-block="reverb"></div>
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>AMOUNT</span><span id="vReverb">0</span></div>
+              <input type="range" class="ns-range" id="nsReverb" min="0" max="100" value="0">
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>DECAY</span><span id="vReverbDecay">1.8 s</span></div>
+              <input type="range" class="ns-range" id="nsReverbDecay" min="3" max="60" value="18">
+            </div>
+          </div>
+
+          <div class="ns-chain-arrow">&#8250;</div>
+
+          <!-- CHORUS -->
+          <div class="ns-block" id="blk-chorus">
+            <div class="ns-block-hd">
+              <span class="ns-block-name">Chorus</span>
+              <div class="ns-bypass" id="byp-chorus" data-block="chorus"></div>
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>DEPTH</span><span id="vChorus">0</span></div>
+              <input type="range" class="ns-range" id="nsChorus" min="0" max="100" value="0">
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>RATE</span><span id="vChorusRate">0.6 Hz</span></div>
+              <input type="range" class="ns-range" id="nsChorusRate" min="1" max="40" value="6">
+            </div>
+          </div>
+
+          <div class="ns-chain-arrow">&#8250;</div>
+
+          <!-- TREMOLO -->
+          <div class="ns-block" id="blk-tremolo">
+            <div class="ns-block-hd">
+              <span class="ns-block-name">Tremolo</span>
+              <div class="ns-bypass" id="byp-tremolo" data-block="tremolo"></div>
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>DEPTH</span><span id="vTremolo">0</span></div>
+              <input type="range" class="ns-range" id="nsTremolo" min="0" max="100" value="0">
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>RATE</span><span id="vTremoloRate">4.0 Hz</span></div>
+              <input type="range" class="ns-range" id="nsTremoloRate" min="5" max="120" value="40">
+            </div>
+          </div>
+
+          <div class="ns-chain-arrow">&#8250;</div>
+
+          <!-- GATE -->
+          <div class="ns-block" id="blk-gate">
+            <div class="ns-block-hd">
+              <span class="ns-block-name">Gate</span>
+              <div class="ns-bypass" id="byp-gate" data-block="gate"></div>
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>OPEN</span><span id="vGate">0</span></div>
+              <input type="range" class="ns-range" id="nsGate" min="0" max="100" value="0">
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>RATE</span><span id="vGateRate">8 Hz</span></div>
+              <input type="range" class="ns-range" id="nsGateRate" min="2" max="32" value="8">
+            </div>
+          </div>
+
+          <div class="ns-chain-arrow">&#8250;</div>
+
+          <!-- NOISE -->
+          <div class="ns-block" id="blk-noise">
+            <div class="ns-block-hd">
+              <span class="ns-block-name">Noise</span>
+              <div class="ns-bypass" id="byp-noise" data-block="noise"></div>
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>TEXTURE</span><span id="vNoise">0</span></div>
+              <input type="range" class="ns-range" id="nsNoise" min="0" max="100" value="0">
+            </div>
+            <div class="ns-sl-row">
+              <label class="ns-label" style="margin-bottom:2px;">COLOR</label>
+              <select id="nsNoiseColor" class="ns-select-sm">
+                <option value="white">White</option>
+                <option value="pink">Pink</option>
+                <option value="brown">Brown</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="ns-chain-arrow">&#8250;</div>
+
+          <!-- WALL -->
+          <div class="ns-block" id="blk-wall">
+            <div class="ns-block-hd">
+              <span class="ns-block-name">Wall</span>
+              <div class="ns-bypass" id="byp-wall" data-block="wall"></div>
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>SQUASH</span><span id="vWall">0</span></div>
+              <input type="range" class="ns-range" id="nsWall" min="0" max="100" value="0">
+            </div>
+          </div>
+
+          <div class="ns-chain-arrow">&#8250;</div>
+
+          <!-- MASTER -->
+          <div class="ns-block active" id="blk-master">
+            <div class="ns-block-hd">
+              <span class="ns-block-name">Master</span>
+              <div class="ns-bypass active" id="byp-master" data-block="master" style="cursor:default; pointer-events:none;"></div>
+            </div>
+            <div class="ns-sl-row">
+              <div class="ns-sl-lbl"><span>LEVEL</span><span id="vMaster">0.92</span></div>
+              <input type="range" class="ns-range" id="nsMaster" min="0" max="150" value="92">
+            </div>
+          </div>
+
+        </div><!-- /ns-chain -->
+      </div><!-- /ns-chain-wrap -->
+    </div>
+
+    <!-- 5. Export bar -->
+    <div class="ns-export-bar">
+      <div class="ns-export-hd">Export</div>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div style="flex:1; min-width:180px;">
+          <label class="ns-label">Save name</label>
+          <input type="text" id="nsSaveName" class="ns-input" placeholder="my-track.wav" maxlength="120">
+        </div>
+        <div style="width:90px;">
+          <label class="ns-label">Trim start (s)</label>
+          <input type="number" id="nsTrimStart" class="ns-input" min="0" step="0.01" value="0">
+        </div>
+        <div style="width:90px;">
+          <label class="ns-label">Trim end (s)</label>
+          <input type="number" id="nsTrimEnd" class="ns-input" min="0" step="0.01" value="0">
+        </div>
+        <div style="font-size:10px; color:#444; align-self:flex-end; padding-bottom:4px;" id="nsTrimSummary">Exporting full source.</div>
+      </div>
+      <div style="margin-top:10px;" class="ns-btn-row">
+        <button type="button" class="ns-btn cyan" id="nsExport" disabled>&#9660; Render &amp; Download WAV</button>
+        <button type="button" class="ns-btn green" id="nsSaveLib" disabled>&#9650; Save to library</button>
+        <label style="display:flex; align-items:center; gap:5px; font-size:10px; color:#444; cursor:pointer; margin-left:8px;">
+          <input type="checkbox" id="nsOverwrite" checked style="accent-color:#00e5ff;">
+          Overwrite
+        </label>
+      </div>
+      <p style="font-size:10px; color:#333; margin:8px 0 0;">Renders offline with current chain. Files land in <code style="color:#555;">composition_audio_sources/noise_studio/</code>.</p>
+    </div>
+
+  </div><!-- /ns-body -->
+</div><!-- /ns-wrap -->
+
+<script>
+(function () {
+"use strict";
+
+const el = (id) => document.getElementById(id);
+let audioMap = JSON.parse(el("ns-audio-map").textContent || "{}");
+const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]")?.value || "";
+
+let audioCtx = null;
+let currentBuffer = null;
+let bufferSource = null;
+let mediaNode = null;
+let mediaEl = null;
+let graph = null;
+let lastLoadedTrackName = "";
+let animRafId = null;
+
+// ── Bypass state ──────────────────────────────────────────────────────────────
+const bypassState = {
+  input: false, drive: false, crush: false, filter: false,
+  delay: false, reverb: false, chorus: false, tremolo: false,
+  gate: false, noise: false, wall: false,
+};
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const LINEAR_SHAPER = (() => {
+  const c = new Float32Array(1024);
+  for (let i = 0; i < 1024; i++) c[i] = (i / 1023) * 2 - 1;
+  return c;
+})();
+
+// ── Presets ───────────────────────────────────────────────────────────────────
+const DEFAULT_NEW = { eqLow:0, eqMid:0, eqHigh:0, eqMidFreq:1000, reverb:0, reverbDecay:18, chorus:0, chorusRate:6, tremolo:0, tremoloRate:40, gate:0, gateRate:8 };
+
+const PRESETS = {
+  hnw:          { drive:92,  trim:78,  lp:5200,  hp:55,  delayMs:40,  fb:48, crush:1,  noise:6,  mix:38, master:72, noiseColor:"pink",  drift:18, driftRate:55,  wobble:6,  wobbleRate:45,  wall:78, ring:4,  ringFreq:130, detune:0, rate:100, ...DEFAULT_NEW },
+  harsh:        { drive:78,  trim:88,  lp:12000, hp:120, delayMs:280, fb:62, crush:3,  noise:4,  mix:62, master:85, noiseColor:"white", drift:8,  driftRate:90,  wobble:22, wobbleRate:70,  wall:25, ring:35, ringFreq:440, detune:0, rate:100, ...DEFAULT_NEW },
+  ambient_wall: { drive:52,  trim:95,  lp:6500,  hp:90,  delayMs:420, fb:38, crush:0,  noise:22, mix:58, master:68, noiseColor:"brown", drift:25, driftRate:35,  wobble:18, wobbleRate:40,  wall:55, ring:0,  ringFreq:110, detune:0, rate:100, ...DEFAULT_NEW },
+  concrete:     { drive:48,  trim:90,  lp:9000,  hp:200, delayMs:190, fb:22, crush:10, noise:8,  mix:48, master:80, noiseColor:"pink",  drift:5,  driftRate:120, wobble:45, wobbleRate:100, wall:15, ring:12, ringFreq:90,  detune:0, rate:100, ...DEFAULT_NEW },
+  cage:         { drive:18,  trim:100, lp:14000, hp:40,  delayMs:600, fb:12, crush:0,  noise:38, mix:72, master:55, noiseColor:"brown", drift:40, driftRate:25,  wobble:8,  wobbleRate:30,  wall:5,  ring:0,  ringFreq:60,  detune:0, rate:100, ...DEFAULT_NEW },
+  tape_echo:    { drive:22,  trim:92,  lp:9500,  hp:60,  delayMs:380, fb:55, crush:0,  noise:3,  mix:70, master:88, noiseColor:"pink",  drift:12, driftRate:30,  wobble:35, wobbleRate:25,  wall:8,  ring:0,  ringFreq:110, detune:0, rate:100, eqLow:3,  eqMid:-2, eqHigh:-4, eqMidFreq:800,  reverb:40, reverbDecay:28, chorus:0,  chorusRate:6,  tremolo:0,  tremoloRate:40, gate:0, gateRate:8  },
+  void:         { drive:99,  trim:110, lp:3800,  hp:45,  delayMs:25,  fb:72, crush:2,  noise:18, mix:22, master:65, noiseColor:"pink",  drift:28, driftRate:80,  wobble:8,  wobbleRate:55,  wall:92, ring:18, ringFreq:80,  detune:0, rate:100, eqLow:6,  eqMid:4,  eqHigh:-8, eqMidFreq:300,  reverb:8,  reverbDecay:15, chorus:0,  chorusRate:6,  tremolo:0,  tremoloRate:40, gate:0, gateRate:8  },
+  shimmer:      { drive:12,  trim:80,  lp:16000, hp:200, delayMs:520, fb:45, crush:0,  noise:12, mix:65, master:72, noiseColor:"brown", drift:38, driftRate:20,  wobble:5,  wobbleRate:18,  wall:5,  ring:0,  ringFreq:1200,detune:0, rate:100, eqLow:-4, eqMid:0,  eqHigh:6,  eqMidFreq:2000, reverb:75, reverbDecay:48, chorus:30, chorusRate:8,  tremolo:0,  tremoloRate:40, gate:0, gateRate:8  },
+  pulse:        { drive:65,  trim:95,  lp:7000,  hp:120, delayMs:140, fb:78, crush:4,  noise:8,  mix:52, master:82, noiseColor:"white", drift:6,  driftRate:110, wobble:15, wobbleRate:85,  wall:45, ring:55, ringFreq:220, detune:0, rate:100, eqLow:2,  eqMid:5,  eqHigh:-2, eqMidFreq:500,  reverb:12, reverbDecay:12, chorus:0,  chorusRate:6,  tremolo:55, tremoloRate:60, gate:70, gateRate:8  },
+  basement:     { drive:35,  trim:88,  lp:5500,  hp:55,  delayMs:280, fb:32, crush:0,  noise:28, mix:48, master:75, noiseColor:"brown", drift:22, driftRate:18,  wobble:12, wobbleRate:20,  wall:38, ring:0,  ringFreq:80,  detune:0, rate:100, eqLow:8,  eqMid:-3, eqHigh:-7, eqMidFreq:600,  reverb:60, reverbDecay:42, chorus:8,  chorusRate:4,  tremolo:0,  tremoloRate:40, gate:0, gateRate:8  },
+};
+
+// ── Trim / export helpers ─────────────────────────────────────────────────────
+function getTrimRange(buffer) {
+  const duration = Number(buffer?.duration || 0);
+  const startRaw = Number(el("nsTrimStart")?.value || 0);
+  const endRaw   = Number(el("nsTrimEnd")?.value || 0);
+  const start    = Math.max(0, Math.min(Math.max(0, duration - 0.05), Number.isFinite(startRaw) ? startRaw : 0));
+  const endTrim  = Math.max(0, Math.min(Math.max(0, duration - start - 0.05), Number.isFinite(endRaw) ? endRaw : 0));
+  const renderDuration = Math.max(0.05, duration - start - endTrim);
+  return { start, endTrim, renderDuration, duration };
+}
+
+function updateTrimSummary() {
+  const s = el("nsTrimSummary");
+  if (!s) return;
+  if (!currentBuffer) { s.textContent = "Load a source to trim."; return; }
+  const r = getTrimRange(currentBuffer);
+  s.textContent = r.start || r.endTrim
+    ? `Exporting ${r.renderDuration.toFixed(2)}s from ${r.start.toFixed(2)}s–${(r.duration - r.endTrim).toFixed(2)}s.`
+    : `Exporting full ${r.duration.toFixed(2)}s source.`;
+}
+
+// ── DSP helpers ───────────────────────────────────────────────────────────────
+function makeDistortionCurve(amount) {
+  const n = 441, curve = new Float32Array(n);
+  const deg = Math.PI / 180;
+  const a = Math.max(0, Math.min(100, amount)) / 30;
+  for (let i = 0; i < n; i++) {
+    const x = (i * 2) / n - 1;
+    curve[i] = ((3 + a) * x * 20 * deg) / (Math.PI + a * Math.abs(x));
+  }
+  return curve;
+}
+
+function makeCrushCurve(bits) {
+  const b = Math.max(0, Math.min(16, bits));
+  if (b <= 0.5) return null;
+  const steps = Math.max(2, Math.floor(Math.pow(2, Math.min(8, b))));
+  const n = 1024, curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i * 2) / (n - 1) - 1;
+    curve[i] = Math.round(x * steps) / steps;
+  }
+  return curve;
+}
+
+function buildNoiseBuffer(ctx, color) {
+  const len = Math.min(ctx.sampleRate * 4, 480000);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  if (color === "pink") {
+    let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+    for (let i = 0; i < len; i++) {
+      const w = Math.random() * 2 - 1;
+      b0 = 0.99886*b0 + w*0.0555179; b1 = 0.99332*b1 + w*0.0750759;
+      b2 = 0.96900*b2 + w*0.1538520; b3 = 0.86650*b3 + w*0.3104856;
+      b4 = 0.55000*b4 + w*0.5329522; b5 = -0.7616*b5 - w*0.0168980;
+      const out = (b0+b1+b2+b3+b4+b5+b6)*0.15 + w*0.11;
+      b6 = w * 0.115926;
+      d[i] = Math.max(-1, Math.min(1, out));
+    }
+  } else if (color === "brown") {
+    let l = 0;
+    for (let i = 0; i < len; i++) {
+      const w = Math.random() * 2 - 1;
+      l = l * 0.985 + w * 0.015;
+      d[i] = Math.max(-1, Math.min(1, l * 5.5));
+    }
+  } else {
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  }
+  return buf;
+}
+
+function makeImpulseResponse(ctx, duration, decay) {
+  const len = Math.ceil(ctx.sampleRate * duration);
+  const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay * 2);
+    }
+  }
+  return buf;
+}
+
+// ── readParams ────────────────────────────────────────────────────────────────
+function readParams() {
+  return {
+    drive:        +el("nsDrive").value,
+    trim:         +el("nsTrim").value / 100,
+    lp:           +el("nsLp").value,
+    hp:           +el("nsHp").value,
+    delayMs:      +el("nsDelay").value,
+    fb:           +el("nsFb").value / 100,
+    crush:        +el("nsCrush").value,
+    noiseAmt:     +el("nsNoise").value / 100,
+    mix:          +el("nsMix").value / 100,
+    master:       +el("nsMaster").value / 100,
+    noiseColor:   el("nsNoiseColor").value || "white",
+    drift:        +el("nsDrift").value,
+    driftRate:    +el("nsDriftRate").value,
+    wobble:       +el("nsWobble").value,
+    wobbleRate:   +el("nsWobbleRate").value,
+    wall:         +el("nsWall").value,
+    ring:         +el("nsRing").value,
+    ringFreq:     +el("nsRingFreq").value,
+    detuneSemi:   +el("nsDetune").value,
+    rate:         (+el("nsRate").value || 100) / 100,
+    eqLow:        +el("nsEqLow").value,
+    eqMid:        +el("nsEqMid").value,
+    eqHigh:       +el("nsEqHigh").value,
+    eqMidFreq:    +el("nsEqMidFreq").value,
+    reverb:       +el("nsReverb").value,
+    reverbDecay:  +el("nsReverbDecay").value / 10,
+    chorus:       +el("nsChorus").value,
+    chorusRate:   +el("nsChorusRate").value / 10,
+    tremolo:      +el("nsTremolo").value,
+    tremoloRate:  +el("nsTremoloRate").value / 10,
+    gate:         +el("nsGate").value,
+    gateRate:     +el("nsGateRate").value,
+  };
+}
+
+// ── updateLabels ──────────────────────────────────────────────────────────────
+function updateLabels() {
+  const p = readParams();
+  el("vDrive").textContent       = Math.round(p.drive);
+  el("vTrim").textContent        = p.trim.toFixed(2);
+  el("vLp").textContent          = Math.round(p.lp) + " Hz";
+  el("vHp").textContent          = Math.round(p.hp) + " Hz";
+  el("vDelay").textContent       = (p.delayMs/1000).toFixed(2) + " s";
+  el("vFb").textContent          = p.fb.toFixed(2);
+  el("vCrush").textContent       = Math.round(p.crush);
+  el("vNoise").textContent       = Math.round(p.noiseAmt * 100);
+  el("vMix").textContent         = p.mix.toFixed(2);
+  el("vMaster").textContent      = p.master.toFixed(2);
+  const dr = 0.02 + (p.driftRate / 400) * 7.98;
+  el("vDrift").textContent       = Math.round(p.drift);
+  el("vDriftRate").textContent   = dr.toFixed(2) + " Hz";
+  el("vWobble").textContent      = Math.round(p.wobble);
+  const wr = 0.1 + (p.wobbleRate / 300) * 9.9;
+  el("vWobbleRate").textContent  = wr.toFixed(2) + " Hz";
+  el("vWall").textContent        = Math.round(p.wall);
+  el("vRing").textContent        = Math.round(p.ring);
+  el("vRingFreq").textContent    = Math.round(p.ringFreq) + " Hz";
+  el("vDetune").textContent      = p.detuneSemi.toFixed(1) + " st";
+  el("vRate").textContent        = p.rate.toFixed(2) + "x";
+  el("vEqLow").textContent       = (p.eqLow >= 0 ? "+" : "") + p.eqLow.toFixed(1) + " dB";
+  el("vEqMid").textContent       = (p.eqMid >= 0 ? "+" : "") + p.eqMid.toFixed(1) + " dB";
+  el("vEqHigh").textContent      = (p.eqHigh >= 0 ? "+" : "") + p.eqHigh.toFixed(1) + " dB";
+  el("vEqMidFreq").textContent   = Math.round(p.eqMidFreq) + " Hz";
+  el("vReverb").textContent      = Math.round(p.reverb);
+  el("vReverbDecay").textContent = p.reverbDecay.toFixed(1) + " s";
+  el("vChorus").textContent      = Math.round(p.chorus);
+  el("vChorusRate").textContent  = p.chorusRate.toFixed(1) + " Hz";
+  el("vTremolo").textContent     = Math.round(p.tremolo);
+  el("vTremoloRate").textContent = p.tremoloRate.toFixed(1) + " Hz";
+  el("vGate").textContent        = Math.round(p.gate);
+  el("vGateRate").textContent    = Math.round(p.gateRate) + " Hz";
+}
+
+// ── applyParams ───────────────────────────────────────────────────────────────
+function applyParams(g) {
+  if (!g) return;
+  const p = readParams();
+  const bypass = bypassState;
+
+  // Input / trim
+  g.trimGain.gain.value = bypass.input ? 1.0 : p.trim;
+
+  // EQ
+  g.eqLow.gain.value  = bypass.input ? 0 : p.eqLow;
+  g.eqMid.gain.value  = bypass.input ? 0 : p.eqMid;
+  g.eqHigh.gain.value = bypass.input ? 0 : p.eqHigh;
+  g.eqMid.frequency.value  = p.eqMidFreq;
+  g.eqLow.frequency.value  = 200;
+  g.eqHigh.frequency.value = 6000;
+
+  // Drive / shaper
+  g.shaper.curve = bypass.drive ? LINEAR_SHAPER : makeDistortionCurve(p.drive);
+
+  // FM ring
+  if (g.fmOsc) {
+    g.fmOsc.frequency.value = Math.max(20, Math.min(4000, p.ringFreq));
+    g.fmGain.gain.value = bypass.drive ? 0 : (p.ring / 100) * 0.14;
+  }
+
+  // Crush
+  if (bypass.crush) {
+    g.crush.curve = LINEAR_SHAPER;
+  } else {
+    const cc = makeCrushCurve(p.crush);
+    g.crush.curve = cc || LINEAR_SHAPER;
+  }
+
+  // Filter
+  g.lp.frequency.value = bypass.filter ? 22050 : p.lp;
+  g.lp.Q.value         = 0.85;
+  g.hp.frequency.value = bypass.filter ? 10 : p.hp;
+  g.hp.Q.value         = 0.7;
+
+  // Drift
+  if (g.driftOsc) {
+    g.driftOsc.frequency.value = 0.02 + (p.driftRate / 400) * 7.98;
+    g.driftDepth.gain.value    = bypass.filter ? 0 : (p.drift / 100) * 420;
+  }
+
+  // Delay
+  const delayT = bypass.delay ? 0 : Math.min(0.98, Math.max(0, p.delayMs / 1000));
+  g.delay.delayTime.value  = delayT;
+  g.feedback.gain.value    = bypass.delay ? 0 : Math.min(0.95, Math.max(0, p.fb));
+  g.dryGain.gain.value     = bypass.delay ? 1 : 1 - p.mix;
+  g.wetGain.gain.value     = bypass.delay ? 0 : p.mix;
+
+  // Wobble (tape flutter)
+  if (g.wobbleOsc) {
+    g.wobbleOsc.frequency.value = 0.1 + (p.wobbleRate / 300) * 9.9;
+    g.wobbleDepth.gain.value    = bypass.delay ? 0 : (p.wobble / 100) * 0.012;
+  }
+
+  // Reverb
+  const revAmt = bypass.reverb ? 0 : p.reverb / 100;
+  g.reverbWetGain.gain.value = revAmt * 0.8;
+  g.reverbDryGain.gain.value = 1 - revAmt * 0.5;
+
+  // Regenerate impulse if decay changed significantly
+  if (Math.abs((g._lastReverbDecay || 0) - p.reverbDecay) > 0.15 && g.convolver && g._ctx) {
+    g.convolver.buffer = makeImpulseResponse(g._ctx, Math.min(6, p.reverbDecay + 0.5), p.reverbDecay);
+    g._lastReverbDecay = p.reverbDecay;
+  }
+
+  // Chorus
+  const chorusMix = bypass.chorus ? 0 : (p.chorus / 100) * 0.4;
+  g.chorusMixGain.gain.value = chorusMix;
+  if (g.chorusLfo1) {
+    g.chorusLfo1.frequency.value = p.chorusRate;
+    g.chorusLfo2.frequency.value = p.chorusRate * 1.3;
+    g.chorusDepth1.gain.value    = bypass.chorus ? 0 : 0.004 * (p.chorus / 100);
+    g.chorusDepth2.gain.value    = bypass.chorus ? 0 : 0.004 * (p.chorus / 100);
+  }
+
+  // Tremolo
+  if (g.tremoloOsc) {
+    const tDepth = bypass.tremolo ? 0 : p.tremolo / 100;
+    g.tremoloOsc.frequency.value = p.tremoloRate;
+    g.tremoloDepthGain.gain.value = tDepth * 0.5;
+    if (g.tremoloConst) g.tremoloConst.offset.value = 1.0 - tDepth * 0.5;
+  }
+
+  // Gate (rhythmic automation)
+  if (g.gateGain) {
+    const gateDepth = bypass.gate ? 0 : p.gate / 100;
+    if (gateDepth < 0.01) {
+      g.gateGain.gain.cancelScheduledValues(0);
+      g.gateGain.gain.value = 1;
+    } else {
+      scheduleGate(g, p.gateRate, gateDepth);
+    }
+  }
+
+  // Noise
+  g.noiseGain.gain.value = bypass.noise ? 0 : p.noiseAmt * 0.38;
+
+  // Wall (compressor)
+  g.comp.threshold.value = -20;
+  g.comp.knee.value = 20;
+  g.comp.ratio.value  = bypass.wall ? 3 : 3 + (p.wall / 100) * 5;
+  g.comp.attack.value  = 0.003;
+  g.comp.release.value = 0.12 + (p.wall / 100) * 0.35;
+  g.squash.threshold.value = bypass.wall ? -60 : -8 - (p.wall / 100) * 28;
+  g.squash.knee.value   = 6;
+  g.squash.ratio.value  = bypass.wall ? 1 : 1 + (p.wall / 100) * 19;
+  g.squash.attack.value = 0.001;
+  g.squash.release.value = 0.08;
+
+  // Master
+  g.master.gain.value = p.master;
+}
+
+// ── Gate scheduler ────────────────────────────────────────────────────────────
+function scheduleGate(g, rate, depth) {
+  if (!g || !g.gateGain || !g._ctx) return;
+  const ctx = g._ctx;
+  const t = ctx.currentTime;
+  const period = 1 / Math.max(2, rate);
+  const onVal  = 1;
+  const offVal = 1 - depth;
+  g.gateGain.gain.cancelScheduledValues(t);
+  // schedule 4 seconds ahead
+  const steps = Math.ceil(4 / period) + 1;
+  for (let i = 0; i < steps; i++) {
+    const tOn  = t + i * period;
+    const tOff = tOn + period * 0.5;
+    g.gateGain.gain.setValueAtTime(onVal,  tOn);
+    g.gateGain.gain.setValueAtTime(offVal, tOff);
+  }
+  // reschedule periodically
+  if (g._gateTimer) clearTimeout(g._gateTimer);
+  g._gateTimer = setTimeout(() => { if (graph === g && bypassState.gate === false) applyParams(g); }, 3800);
+}
+
+// ── Graph builder ──────────────────────────────────────────────────────────────
+function createGraph(ctx, noiseColor) {
+  const g = { _ctx: ctx, _lastReverbDecay: 0 };
+
+  // Input chain
+  g.inputGain = ctx.createGain();  // kept for src.connect compatibility
+  g.trimGain  = ctx.createGain();
+  g.inputGain.connect(g.trimGain);
+
+  // 3-band EQ
+  g.eqLow  = ctx.createBiquadFilter(); g.eqLow.type  = "lowshelf";   g.eqLow.frequency.value  = 200;
+  g.eqMid  = ctx.createBiquadFilter(); g.eqMid.type  = "peaking";    g.eqMid.frequency.value  = 1000; g.eqMid.Q.value = 1.4;
+  g.eqHigh = ctx.createBiquadFilter(); g.eqHigh.type = "highshelf";  g.eqHigh.frequency.value = 6000;
+  g.trimGain.connect(g.eqLow);
+  g.eqLow.connect(g.eqMid);
+  g.eqMid.connect(g.eqHigh);
+
+  // FM / ring
+  g.premix = ctx.createGain();
+  g.fmOsc  = ctx.createOscillator(); g.fmOsc.type = "sine";
+  g.fmGain = ctx.createGain(); g.fmGain.gain.value = 0;
+  g.fmOsc.connect(g.fmGain);
+  g.fmGain.connect(g.premix);
+  g.eqHigh.connect(g.premix);
+
+  // Shaper + crush
+  g.shaper = ctx.createWaveShaper(); g.shaper.oversample = "4x";
+  g.crush  = ctx.createWaveShaper(); g.crush.oversample  = "none"; g.crush.curve = LINEAR_SHAPER;
+  g.premix.connect(g.shaper);
+  g.shaper.connect(g.crush);
+
+  // Filter + drift
+  g.lp       = ctx.createBiquadFilter(); g.lp.type = "lowpass";
+  g.driftOsc = ctx.createOscillator();   g.driftOsc.type = "sine";
+  g.driftDepth = ctx.createGain();
+  g.driftOsc.connect(g.driftDepth);
+  g.driftDepth.connect(g.lp.detune);
+
+  g.hp = ctx.createBiquadFilter(); g.hp.type = "highpass";
+  g.crush.connect(g.lp);
+  g.lp.connect(g.hp);
+
+  // Delay + wobble
+  g.delay = ctx.createDelay(1);
+  g.wobbleOsc   = ctx.createOscillator(); g.wobbleOsc.type = "sine";
+  g.wobbleDepth = ctx.createGain();
+  g.wobbleOsc.connect(g.wobbleDepth);
+  g.wobbleDepth.connect(g.delay.delayTime);
+
+  g.dryGain  = ctx.createGain();
+  g.wetGain  = ctx.createGain();
+  g.feedback = ctx.createGain();
+  g.merge    = ctx.createGain();
+  g.hp.connect(g.dryGain);
+  g.dryGain.connect(g.merge);
+  g.hp.connect(g.delay);
+  g.delay.connect(g.wetGain);
+  g.wetGain.connect(g.merge);
+  g.wetGain.connect(g.feedback);
+  g.feedback.connect(g.delay);
+
+  // Reverb
+  g.convolver   = ctx.createConvolver();
+  g.convolver.buffer = makeImpulseResponse(ctx, 2.3, 1.8);
+  g._lastReverbDecay = 1.8;
+  g.reverbWetGain = ctx.createGain(); g.reverbWetGain.gain.value = 0;
+  g.reverbDryGain = ctx.createGain(); g.reverbDryGain.gain.value = 1;
+  const reverbMix = ctx.createGain();
+  g.merge.connect(g.reverbDryGain);
+  g.merge.connect(g.convolver);
+  g.convolver.connect(g.reverbWetGain);
+  g.reverbDryGain.connect(reverbMix);
+  g.reverbWetGain.connect(reverbMix);
+  g.reverbMix = reverbMix;
+
+  // Chorus (two parallel delay lines)
+  g.chorusDelay1  = ctx.createDelay(0.05); g.chorusDelay1.delayTime.value  = 0.012;
+  g.chorusDelay2  = ctx.createDelay(0.05); g.chorusDelay2.delayTime.value  = 0.017;
+  g.chorusLfo1    = ctx.createOscillator(); g.chorusLfo1.type  = "sine"; g.chorusLfo1.frequency.value = 0.6;
+  g.chorusLfo2    = ctx.createOscillator(); g.chorusLfo2.type  = "sine"; g.chorusLfo2.frequency.value = 0.78;
+  g.chorusDepth1  = ctx.createGain(); g.chorusDepth1.gain.value = 0;
+  g.chorusDepth2  = ctx.createGain(); g.chorusDepth2.gain.value = 0;
+  g.chorusMixGain = ctx.createGain(); g.chorusMixGain.gain.value = 0;
+  g.chorusMerge   = ctx.createGain();
+
+  g.chorusLfo1.connect(g.chorusDepth1); g.chorusDepth1.connect(g.chorusDelay1.delayTime);
+  g.chorusLfo2.connect(g.chorusDepth2); g.chorusDepth2.connect(g.chorusDelay2.delayTime);
+  reverbMix.connect(g.chorusDelay1);
+  reverbMix.connect(g.chorusDelay2);
+  g.chorusDelay1.connect(g.chorusMixGain);
+  g.chorusDelay2.connect(g.chorusMixGain);
+  g.chorusMixGain.connect(g.chorusMerge);
+  reverbMix.connect(g.chorusMerge);
+
+  // Tremolo
+  g.tremoloGain   = ctx.createGain();
+  g.tremoloOsc    = ctx.createOscillator(); g.tremoloOsc.type = "sine"; g.tremoloOsc.frequency.value = 4;
+  g.tremoloDepthGain = ctx.createGain(); g.tremoloDepthGain.gain.value = 0;
+  g.tremoloConst  = null;
+  if (typeof ConstantSourceNode !== "undefined") {
+    g.tremoloConst = ctx.createConstantSource ? ctx.createConstantSource() : null;
+  }
+  if (g.tremoloConst) {
+    g.tremoloConst.offset.value = 1.0;
+    g.tremoloConst.connect(g.tremoloGain.gain);
+    g.tremoloOsc.connect(g.tremoloDepthGain);
+    g.tremoloDepthGain.connect(g.tremoloGain.gain);
+    g.tremoloConst.start(0);
+  } else {
+    g.tremoloGain.gain.value = 1.0;
+  }
+  g.chorusMerge.connect(g.tremoloGain);
+
+  // Gate
+  g.gateGain = ctx.createGain(); g.gateGain.gain.value = 1;
+  g.tremoloGain.connect(g.gateGain);
+
+  // Compressor / wall
+  g.comp   = ctx.createDynamicsCompressor();
+  g.squash = ctx.createDynamicsCompressor();
+  g.noiseGain = ctx.createGain();
+  const noiseBuf = buildNoiseBuffer(ctx, noiseColor);
+  const ns = ctx.createBufferSource(); ns.buffer = noiseBuf; ns.loop = true;
+  ns.connect(g.noiseGain);
+  g.noiseGain.connect(g.comp);
+  g.gateGain.connect(g.comp);
+  g.comp.connect(g.squash);
+  g.noiseBufferSource = ns;
+
+  // Master + analyser
+  g.master   = ctx.createGain();
+  g.analyser = ctx.createAnalyser();
+  g.analyser.fftSize = 2048;
+  g.analyserL = ctx.createAnalyser(); g.analyserL.fftSize = 1024;
+  g.analyserR = ctx.createAnalyser(); g.analyserR.fftSize = 1024;
+  g.squash.connect(g.master);
+  g.master.connect(g.analyser);
+  // also feed L/R analysers from mono master (simplified — no actual channel split needed for VU)
+  g.master.connect(g.analyserL);
+  g.master.connect(g.analyserR);
+
+  // Start oscillators
+  g.fmOsc.start(0);
+  g.driftOsc.start(0);
+  g.wobbleOsc.start(0);
+  g.tremoloOsc.start(0);
+  g.chorusLfo1.start(0);
+  g.chorusLfo2.start(0);
+
+  return g;
+}
+
+function wireGraph(ctx, dest, noiseColor) {
+  const g = createGraph(ctx, noiseColor);
+  g.analyser.connect(dest);
+  g.noiseBufferSource.start(0);
+  applyParams(g);
+  return g;
+}
+
+// ── AudioContext ───────────────────────────────────────────────────────────────
+function ensureCtx() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AC();
+  }
+  return audioCtx;
+}
+
+// ── Graph teardown ────────────────────────────────────────────────────────────
+function stopModulators(g) {
+  if (!g) return;
+  [g.fmOsc, g.driftOsc, g.wobbleOsc, g.tremoloOsc, g.chorusLfo1, g.chorusLfo2, g.tremoloConst].forEach((n) => {
+    if (!n) return;
+    try { n.stop(); } catch (e) {}
+    try { n.disconnect(); } catch (e) {}
+  });
+  if (g._gateTimer) clearTimeout(g._gateTimer);
+}
+
+function disconnectGraph() {
+  stopModulators(graph);
+  if (graph?.noiseBufferSource) {
+    try { graph.noiseBufferSource.stop(); } catch (e) {}
+    try { graph.noiseBufferSource.disconnect(); } catch (e) {}
+  }
+  if (graph?.analyser) { try { graph.analyser.disconnect(); } catch (e) {} }
+  if (graph?.master)   { try { graph.master.disconnect(); } catch (e) {} }
+  if (bufferSource) {
+    try { bufferSource.stop(); } catch (e) {}
+    try { bufferSource.disconnect(); } catch (e) {}
+    bufferSource = null;
+  }
+  if (mediaNode) { try { mediaNode.disconnect(); } catch (e) {} mediaNode = null; }
+  if (mediaEl)   { try { mediaEl.pause(); } catch (e) {} mediaEl = null; }
+  if (animRafId) { cancelAnimationFrame(animRafId); animRafId = null; }
+  graph = null;
+}
+
+// ── Playback ──────────────────────────────────────────────────────────────────
+function startPlaybackBuffer(buffer) {
+  disconnectGraph();
+  const ctx = ensureCtx(); ctx.resume();
+  graph = wireGraph(ctx, ctx.destination, readParams().noiseColor);
+  bufferSource = ctx.createBufferSource();
+  bufferSource.buffer = buffer;
+  bufferSource.loop   = true;
+  const p = readParams();
+  bufferSource.playbackRate.value = Math.max(0.5, Math.min(1.5, p.rate));
+  if (typeof bufferSource.detune !== "undefined") {
+    bufferSource.detune.value = Math.max(-1200, Math.min(1200, p.detuneSemi * 100));
+  }
+  bufferSource.connect(graph.inputGain);
+  bufferSource.start(0);
+  setBarState("playing");
+  startViz();
+  el("nsPlay").textContent = "⏸ Pause";
+  el("nsStop").disabled = false;
+  el("nsQuickSave").disabled = !lastLoadedTrackName;
+}
+
+function startPlaybackMedia(element) {
+  disconnectGraph();
+  const ctx = ensureCtx(); ctx.resume();
+  graph = wireGraph(ctx, ctx.destination, readParams().noiseColor);
+  mediaNode = ctx.createMediaElementSource(element);
+  mediaNode.connect(graph.inputGain);
+  const p = readParams();
+  element.playbackRate = Math.max(0.5, Math.min(1.5, p.rate));
+  element.play().catch(() => { setStatus("Playback blocked — click Play again."); });
+  setBarState("playing");
+  startViz();
+  el("nsPlay").textContent = "⏸ Pause";
+  el("nsStop").disabled = false;
+}
+
+function pauseOrResume() {
+  if (mediaEl) {
+    if (mediaEl.paused) { mediaEl.play(); ensureCtx().resume(); el("nsPlay").textContent = "⏸ Pause"; setBarState("playing"); }
+    else { mediaEl.pause(); el("nsPlay").textContent = "▶ Play"; setBarState("paused"); }
+    return;
+  }
+  if (!audioCtx) return;
+  if (audioCtx.state === "running") { audioCtx.suspend(); el("nsPlay").textContent = "▶ Play"; setBarState("paused"); }
+  else { audioCtx.resume(); el("nsPlay").textContent = "⏸ Pause"; setBarState("playing"); }
+}
+
+// ── UI state helpers ──────────────────────────────────────────────────────────
+function setStatus(msg) { el("nsStatus").textContent = msg; }
+function setBarSource(name) { el("nsBarSource").textContent = name || "—"; }
+function setBarState(state) {
+  const led = el("nsBarLed");
+  led.className = "ns-led";
+  if (state === "playing") led.classList.add("active");
+  if (state === "paused")  led.classList.add("paused");
+}
+
+// ── Waveform draw ─────────────────────────────────────────────────────────────
+function drawWaveform(buffer) {
+  const canvas = el("nsWaveform");
+  if (!canvas || !buffer) return;
+  const ctx2 = canvas.getContext("2d");
+  const W = canvas.width = canvas.offsetWidth || 600;
+  const H = canvas.height = 90;
+  ctx2.fillStyle = "#0a0a10";
+  ctx2.fillRect(0, 0, W, H);
+  const data = buffer.getChannelData(0);
+  const step = Math.ceil(data.length / W);
+  // Grid line
+  ctx2.strokeStyle = "#0e1a20";
+  ctx2.lineWidth = 1;
+  ctx2.beginPath(); ctx2.moveTo(0, H/2); ctx2.lineTo(W, H/2); ctx2.stroke();
+  // Waveform
+  ctx2.strokeStyle = "#00e5ff";
+  ctx2.lineWidth = 1;
+  ctx2.beginPath();
+  for (let x = 0; x < W; x++) {
+    let mn = 1, mx = -1;
+    for (let j = 0; j < step; j++) {
+      const s = data[x * step + j] || 0;
+      if (s < mn) mn = s; if (s > mx) mx = s;
+    }
+    const y1 = ((1 + mn) / 2) * H;
+    const y2 = ((1 + mx) / 2) * H;
+    if (x === 0) ctx2.moveTo(x, y1); else ctx2.lineTo(x, y1);
+    ctx2.lineTo(x, y2);
+  }
+  ctx2.stroke();
+}
+
+// ── Oscilloscope + VU animation loop ──────────────────────────────────────────
+let peakL = 0, peakR = 0, peakLTimer = 0, peakRTimer = 0;
+
+function startViz() {
+  if (animRafId) cancelAnimationFrame(animRafId);
+  const oscCanvas = el("nsOscilloscope");
+  const ctx2 = oscCanvas ? oscCanvas.getContext("2d") : null;
+  const timeBuf = new Uint8Array(2048);
+  const freqBuf = new Uint8Array(1024);
+
+  function tick() {
+    animRafId = requestAnimationFrame(tick);
+    if (!graph || !graph.analyser) return;
+
+    // Oscilloscope
+    if (ctx2 && oscCanvas) {
+      const W = oscCanvas.width = oscCanvas.offsetWidth || 600;
+      const H = oscCanvas.height = 70;
+      graph.analyser.getByteTimeDomainData(timeBuf);
+      ctx2.fillStyle = "#060610";
+      ctx2.fillRect(0, 0, W, H);
+      ctx2.strokeStyle = "#0e1a22";
+      ctx2.lineWidth = 1;
+      ctx2.beginPath(); ctx2.moveTo(0, H/2); ctx2.lineTo(W, H/2); ctx2.stroke();
+      ctx2.strokeStyle = "#7b00ff";
+      ctx2.lineWidth = 1.5;
+      ctx2.beginPath();
+      const sliceW = W / timeBuf.length;
+      for (let i = 0; i < timeBuf.length; i++) {
+        const y = (timeBuf[i] / 128.0) * (H / 2);
+        if (i === 0) ctx2.moveTo(0, y); else ctx2.lineTo(i * sliceW, y);
+      }
+      ctx2.stroke();
+    }
+
+    // VU meters (using analyser frequency data for RMS-like reading)
+    graph.analyserL.getByteFrequencyData(freqBuf);
+    let sumL = 0;
+    for (let i = 0; i < freqBuf.length; i++) sumL += freqBuf[i] * freqBuf[i];
+    const rmsL = Math.sqrt(sumL / freqBuf.length) / 255;
+
+    // Simulate R as slightly different
+    graph.analyserR.getByteFrequencyData(freqBuf);
+    let sumR = 0;
+    for (let i = 0; i < freqBuf.length; i++) sumR += freqBuf[i] * freqBuf[i];
+    const rmsR = Math.sqrt(sumR / freqBuf.length) / 255 * 0.95;
+
+    const barL = el("nsVuL"), barR = el("nsVuR");
+    if (barL) barL.style.height = Math.min(100, rmsL * 220) + "%";
+    if (barR) barR.style.height = Math.min(100, rmsR * 220) + "%";
+
+    // Peak hold
+    const now = Date.now();
+    if (rmsL > peakL) { peakL = rmsL; peakLTimer = now; }
+    if (rmsR > peakR) { peakR = rmsR; peakRTimer = now; }
+    if (now - peakLTimer > 1500) peakL = 0;
+    if (now - peakRTimer > 1500) peakR = 0;
+    const dotL = el("nsPeakL"), dotR = el("nsPeakR");
+    if (dotL) dotL.style.opacity = peakL > 0.9 ? "1" : "0";
+    if (dotR) dotR.style.opacity = peakR > 0.9 ? "1" : "0";
+  }
+  tick();
+}
+
+// ── Slider + control wiring ───────────────────────────────────────────────────
+const ALL_SLIDER_IDS = [
+  "nsDrive","nsTrim","nsLp","nsHp","nsDelay","nsFb","nsCrush","nsNoise","nsMix","nsMaster",
+  "nsDrift","nsDriftRate","nsWobble","nsWobbleRate","nsWall","nsRing","nsRingFreq","nsDetune","nsRate",
+  "nsEqLow","nsEqMid","nsEqHigh","nsEqMidFreq","nsReverb","nsReverbDecay",
+  "nsChorus","nsChorusRate","nsTremolo","nsTremoloRate","nsGate","nsGateRate",
+];
+
+ALL_SLIDER_IDS.forEach((id) => {
+  const node = el(id);
+  if (!node) return;
+  node.addEventListener("input", () => {
+    updateLabels();
+    applyParams(graph);
+    if (bufferSource) {
+      const p = readParams();
+      bufferSource.playbackRate.value = Math.max(0.5, Math.min(1.5, p.rate));
+      if (typeof bufferSource.detune !== "undefined") {
+        bufferSource.detune.value = Math.max(-1200, Math.min(1200, p.detuneSemi * 100));
+      }
+    }
+    if (mediaEl) { const p = readParams(); mediaEl.playbackRate = Math.max(0.5, Math.min(1.5, p.rate)); }
+  });
+});
+
+el("nsNoiseColor").addEventListener("change", () => {
+  updateLabels();
+  if (!graph || !audioCtx) return;
+  const nc = readParams().noiseColor;
+  try { graph.noiseBufferSource.stop(); } catch (e) {}
+  try { graph.noiseBufferSource.disconnect(); } catch (e) {}
+  const nb = buildNoiseBuffer(audioCtx, nc);
+  const ns = audioCtx.createBufferSource();
+  ns.buffer = nb; ns.loop = true;
+  ns.connect(graph.noiseGain); ns.start(0);
+  graph.noiseBufferSource = ns;
+  applyParams(graph);
+});
+
+// ── Transport buttons ─────────────────────────────────────────────────────────
+el("nsPlay").addEventListener("click", () => {
+  if (mediaEl) { pauseOrResume(); return; }
+  if (!audioCtx || !bufferSource) return;
+  if (audioCtx.state === "running") { audioCtx.suspend(); el("nsPlay").textContent = "▶ Play"; setBarState("paused"); }
+  else { audioCtx.resume(); el("nsPlay").textContent = "⏸ Pause"; setBarState("playing"); }
+});
+
+el("nsStop").addEventListener("click", () => {
+  disconnectGraph();
+  if (audioCtx) audioCtx.suspend().catch(() => {});
+  el("nsPlay").textContent = "▶ Play"; el("nsPlay").disabled = !currentBuffer;
+  el("nsStop").disabled = true;
+  el("nsQuickSave").disabled = !lastLoadedTrackName || !currentBuffer;
+  setBarState("stopped");
+  if (currentBuffer) setStatus("Stopped.");
+  // Clear viz
+  const oscCanvas = el("nsOscilloscope");
+  if (oscCanvas) {
+    const c = oscCanvas.getContext("2d");
+    c.fillStyle = "#060610"; c.fillRect(0, 0, oscCanvas.width, oscCanvas.height);
+  }
+  const barL = el("nsVuL"), barR = el("nsVuR");
+  if (barL) barL.style.height = "0%";
+  if (barR) barR.style.height = "0%";
+});
+
+// ── Bypass toggles ────────────────────────────────────────────────────────────
+document.querySelectorAll(".ns-bypass[data-block]").forEach((btn) => {
+  const block = btn.dataset.block;
+  if (block === "master") return;
+  btn.addEventListener("click", () => {
+    bypassState[block] = !bypassState[block];
+    const blkEl = el("blk-" + block);
+    if (bypassState[block]) {
+      btn.classList.add("off");
+      if (blkEl) blkEl.classList.add("bypassed");
+    } else {
+      btn.classList.remove("off");
+      if (blkEl) blkEl.classList.remove("bypassed");
+    }
+    applyParams(graph);
+  });
+});
+
+// ── Expand / collapse block sections ────────────────────────────────────────-
+document.querySelectorAll(".ns-expand-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const target = el(btn.dataset.target);
+    if (!target) return;
+    target.classList.toggle("open");
+    btn.textContent = target.classList.contains("open") ? "▲ less" : "▼ more";
+  });
+});
+
+// ── Active block highlight (based on signal level) ───────────────────────────
+// Just highlight the block that corresponds to the highest-value parameter
+function refreshActiveBlocks() {
+  const p = readParams();
+  const scores = {
+    "blk-input":   Math.abs(p.eqLow) + Math.abs(p.eqMid) + Math.abs(p.eqHigh),
+    "blk-drive":   p.drive / 10,
+    "blk-crush":   p.crush,
+    "blk-filter":  (18000 - p.lp) / 1000 + p.hp / 100,
+    "blk-delay":   p.mix * 100,
+    "blk-reverb":  p.reverb,
+    "blk-chorus":  p.chorus,
+    "blk-tremolo": p.tremolo,
+    "blk-gate":    p.gate,
+    "blk-noise":   p.noiseAmt * 100,
+    "blk-wall":    p.wall,
+  };
+  Object.entries(scores).forEach(([id, score]) => {
+    const blk = el(id);
+    if (!blk) return;
+    if (score > 5 && !bypassState[id.replace("blk-","")]) blk.classList.add("active");
+    else blk.classList.remove("active");
+  });
+}
+
+// ── Presets ───────────────────────────────────────────────────────────────────
+function applyPresetKey(key) {
+  const pr = PRESETS[key];
+  if (!pr) return;
+  const map = {
+    drive:"nsDrive", trim:"nsTrim", lp:"nsLp", hp:"nsHp", delayMs:"nsDelay", fb:"nsFb",
+    crush:"nsCrush", noise:"nsNoise", mix:"nsMix", master:"nsMaster", noiseColor:"nsNoiseColor",
+    drift:"nsDrift", driftRate:"nsDriftRate", wobble:"nsWobble", wobbleRate:"nsWobbleRate",
+    wall:"nsWall", ring:"nsRing", ringFreq:"nsRingFreq", detune:"nsDetune", rate:"nsRate",
+    eqLow:"nsEqLow", eqMid:"nsEqMid", eqHigh:"nsEqHigh", eqMidFreq:"nsEqMidFreq",
+    reverb:"nsReverb", reverbDecay:"nsReverbDecay",
+    chorus:"nsChorus", chorusRate:"nsChorusRate",
+    tremolo:"nsTremolo", tremoloRate:"nsTremoloRate",
+    gate:"nsGate", gateRate:"nsGateRate",
+  };
+  Object.entries(pr).forEach(([k, v]) => {
+    const id = map[k]; if (!id) return;
+    const node = el(id); if (!node) return;
+    node.value = (k === "noiseColor") ? v : String(Math.round(Number(v) * 10) / 10);
+  });
+  // Highlight active pill
+  document.querySelectorAll(".preset-pill").forEach((p) => {
+    p.classList.toggle("active", p.dataset.preset === key);
+  });
+  updateLabels();
+  applyParams(graph);
+  refreshActiveBlocks();
+}
+
+document.querySelectorAll(".preset-pill").forEach((btn) => {
+  btn.addEventListener("click", () => applyPresetKey(btn.dataset.preset));
+});
+
+// ── Reset ─────────────────────────────────────────────────────────────────────
+el("nsReset").addEventListener("click", () => {
+  const defs = {
+    nsDrive:40, nsTrim:85, nsLp:8000, nsHp:80, nsDelay:180, nsFb:28, nsCrush:0, nsNoise:0,
+    nsMix:55, nsMaster:92, nsDrift:0, nsDriftRate:40, nsWobble:0, nsWobbleRate:50,
+    nsWall:0, nsRing:0, nsRingFreq:220, nsDetune:0, nsRate:100,
+    nsEqLow:0, nsEqMid:0, nsEqHigh:0, nsEqMidFreq:1000,
+    nsReverb:0, nsReverbDecay:18, nsChorus:0, nsChorusRate:6,
+    nsTremolo:0, nsTremoloRate:40, nsGate:0, nsGateRate:8,
+  };
+  Object.entries(defs).forEach(([id, v]) => { const n = el(id); if (n) n.value = v; });
+  el("nsNoiseColor").value = "white";
+  document.querySelectorAll(".preset-pill").forEach((p) => p.classList.remove("active"));
+  updateLabels(); applyParams(graph); refreshActiveBlocks();
+});
+
+// ── Chance ────────────────────────────────────────────────────────────────────
+el("nsChance").addEventListener("click", () => {
+  const r = (a, b) => a + Math.random() * (b - a);
+  const ri = (a, b) => Math.round(r(a, b));
+  el("nsDrive").value      = ri(15, 98);
+  el("nsTrim").value       = ri(55, 115);
+  el("nsLp").value         = ri(800, 16000);
+  el("nsHp").value         = ri(25, 900);
+  el("nsDelay").value      = ri(0, 750);
+  el("nsFb").value         = ri(5, 88);
+  el("nsCrush").value      = ri(0, 12);
+  el("nsNoise").value      = ri(0, 45);
+  el("nsMix").value        = ri(20, 85);
+  el("nsMaster").value     = ri(45, 105);
+  el("nsDrift").value      = ri(0, 55);
+  el("nsDriftRate").value  = ri(15, 200);
+  el("nsWobble").value     = ri(0, 70);
+  el("nsWobbleRate").value = ri(20, 280);
+  el("nsWall").value       = ri(0, 95);
+  el("nsRing").value       = ri(0, 60);
+  el("nsRingFreq").value   = ri(40, 2000);
+  el("nsDetune").value     = ri(-7, 7);
+  el("nsRate").value       = ri(75, 125);
+  el("nsEqLow").value      = r(-10, 10).toFixed(1);
+  el("nsEqMid").value      = r(-10, 10).toFixed(1);
+  el("nsEqHigh").value     = r(-10, 10).toFixed(1);
+  el("nsEqMidFreq").value  = ri(100, 3500);
+  el("nsReverb").value     = ri(0, 80);
+  el("nsReverbDecay").value = ri(3, 50);
+  el("nsChorus").value     = ri(0, 60);
+  el("nsChorusRate").value = ri(1, 30);
+  el("nsTremolo").value    = ri(0, 75);
+  el("nsTremoloRate").value= ri(5, 100);
+  el("nsGate").value       = ri(0, 70);
+  el("nsGateRate").value   = ri(2, 24);
+  const cols = ["white", "pink", "brown"];
+  el("nsNoiseColor").value = cols[Math.floor(Math.random() * cols.length)];
+  document.querySelectorAll(".preset-pill").forEach((p) => p.classList.remove("active"));
+  updateLabels(); applyParams(graph); refreshActiveBlocks();
+});
+
+// ── File loading ──────────────────────────────────────────────────────────────
+async function decodeFile(file) {
+  const ctx = ensureCtx();
+  const ab = await file.arrayBuffer();
+  return await ctx.decodeAudioData(ab.slice(0));
+}
+
+el("nsFile").addEventListener("change", async (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  setStatus("Decoding…");
+  try {
+    currentBuffer = await decodeFile(f);
+    mediaEl = null;
+    lastLoadedTrackName = f.name;
+    if (!el("nsSaveName").value.trim()) el("nsSaveName").value = f.name;
+    setBarSource(f.name);
+    el("nsVizInfo").textContent = currentBuffer.duration.toFixed(1) + "s  " + currentBuffer.sampleRate + " Hz";
+    drawWaveform(currentBuffer);
+    startPlaybackBuffer(currentBuffer);
+    el("nsExport").disabled = false;
+    el("nsSaveLib").disabled = false;
+    el("nsQuickSave").disabled = false;
+    el("nsPlay").disabled = false;
+    updateTrimSummary();
+    setStatus("Ready — " + f.name + " (" + currentBuffer.duration.toFixed(1) + "s)");
+  } catch (err) { setStatus("Could not decode file."); console.error(err); }
+});
+
+// ── Library folder / track selects ───────────────────────────────────────────
+el("nsLibFolder").addEventListener("change", () => {
+  const folder = el("nsLibFolder").value;
+  const sel = el("nsLibTrack");
+  sel.innerHTML = "<option value=\"\">—</option>";
+  if (!folder || !audioMap[folder]) return;
+  audioMap[folder].forEach((name) => {
+    const o = document.createElement("option");
+    o.value = name; o.textContent = name;
+    sel.appendChild(o);
+  });
+});
+
+el("nsRefreshTracks").addEventListener("click", async () => {
+  try {
+    const r = await fetch("{% url 'audio_source_map_json' %}", { credentials: "same-origin" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const payload = await r.json();
+    audioMap = (payload && payload.audio_source_map) || {};
+    const fs = el("nsLibFolder");
+    const cur = fs.value || "noise_studio";
+    fs.innerHTML = "<option value=\"\">—</option>";
+    Object.keys(audioMap).forEach((name) => {
+      const o = document.createElement("option"); o.value = name; o.textContent = name; fs.appendChild(o);
+    });
+    fs.value = audioMap[cur] ? cur : (audioMap.noise_studio ? "noise_studio" : "");
+    fs.dispatchEvent(new Event("change"));
+    setStatus("Track list refreshed.");
+  } catch (err) { setStatus("Could not refresh track list."); }
+});
+
+el("nsLoadLib").addEventListener("click", async () => {
+  const folder = el("nsLibFolder").value;
+  const track  = el("nsLibTrack").value;
+  if (!folder || !track) { setStatus("Pick a folder and track."); return; }
+  const url = "/audio-source-media/" + encodeURIComponent(folder) + "/" + encodeURIComponent(track);
+  setStatus("Loading…");
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const ab = await r.arrayBuffer();
+    const ctx = ensureCtx();
+    currentBuffer = await ctx.decodeAudioData(ab.slice(0));
+    mediaEl = null;
+    lastLoadedTrackName = track;
+    el("nsSaveName").value = track;
+    setBarSource(track);
+    el("nsVizInfo").textContent = currentBuffer.duration.toFixed(1) + "s  " + currentBuffer.sampleRate + " Hz";
+    drawWaveform(currentBuffer);
+    startPlaybackBuffer(currentBuffer);
+    el("nsExport").disabled = false;
+    el("nsSaveLib").disabled = false;
+    el("nsQuickSave").disabled = false;
+    el("nsPlay").disabled = false;
+    updateTrimSummary();
+    setStatus("Ready — " + track);
+  } catch (err) { setStatus("Failed to load track."); console.error(err); }
+});
+
+el("nsDeleteTrack").addEventListener("click", async () => {
+  const folder = el("nsLibFolder").value;
+  const track  = el("nsLibTrack").value;
+  if (!folder || !track) { setStatus("Pick a folder and track to delete."); return; }
+  if (!confirm(`Delete "${track}" from ${folder}?`)) return;
+  try {
+    const body = new URLSearchParams({ track, csrfmiddlewaretoken: csrfToken });
+    const r = await fetch("{% url 'delete_noise_studio_track' %}", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
+      body: body.toString(),
+    });
+    const payload = await r.json().catch(() => ({}));
+    if (!r.ok || !payload.ok) throw new Error(payload.error || `HTTP ${r.status}`);
+    audioMap = payload.audio_source_map || audioMap;
+    el("nsLibFolder").dispatchEvent(new Event("change"));
+    setStatus(`Deleted ${track}.`);
+  } catch (err) { setStatus(`Delete failed: ${err.message}`); }
+});
+
+el("nsLoadUrl").addEventListener("click", async () => {
+  const url = (el("nsUrl").value || "").trim();
+  const hint = el("nsUrlHint");
+  hint.classList.add("d-none");
+  if (!url) return;
+  setStatus("Trying stream…");
+  try {
+    const a = new Audio();
+    a.crossOrigin = "anonymous"; a.src = url; a.loop = true;
+    await new Promise((res, rej) => { a.oncanplay = res; a.onerror = () => rej(new Error("media error")); a.load(); });
+    disconnectGraph();
+    currentBuffer = null; lastLoadedTrackName = ""; mediaEl = a;
+    const ctx = ensureCtx(); ctx.resume();
+    graph = wireGraph(ctx, ctx.destination, readParams().noiseColor);
+    mediaNode = ctx.createMediaElementSource(a);
+    mediaNode.connect(graph.inputGain);
+    await a.play();
+    el("nsExport").disabled = true; el("nsSaveLib").disabled = true; el("nsQuickSave").disabled = true;
+    el("nsPlay").disabled = false; el("nsStop").disabled = false;
+    el("nsPlay").textContent = "⏸ Pause"; setBarState("playing");
+    setBarSource(url.split("/").pop() || "stream");
+    startViz();
+    setStatus("Streaming — export disabled.");
+    hint.textContent = "Many streams block CORS; if this fails, download the audio and load as a file.";
+    hint.classList.remove("d-none");
+  } catch (err) {
+    setStatus("Could not play URL (CORS or format).");
+    hint.textContent = "Try a direct file URL or download and use Load file.";
+    hint.classList.remove("d-none"); console.error(err);
+  }
+});
+
+// ── WAV encoding ──────────────────────────────────────────────────────────────
+function encodeWav(buffer) {
+  const numCh = buffer.numberOfChannels, sr = buffer.sampleRate, len = buffer.length;
+  const interleaved = new Float32Array(len * numCh);
+  for (let ch = 0; ch < numCh; ch++) {
+    const cd = buffer.getChannelData(ch);
+    for (let i = 0; i < len; i++) interleaved[i * numCh + ch] = cd[i];
+  }
+  const pcm = new DataView(new ArrayBuffer(44 + interleaved.length * 2));
+  const ws  = (off, s) => { for (let i = 0; i < s.length; i++) pcm.setUint8(off+i, s.charCodeAt(i)); };
+  ws(0,"RIFF"); pcm.setUint32(4, 36+interleaved.length*2, true); ws(8,"WAVE"); ws(12,"fmt ");
+  pcm.setUint32(16,16,true); pcm.setUint16(20,1,true); pcm.setUint16(22,numCh,true);
+  pcm.setUint32(24,sr,true); pcm.setUint32(28,sr*numCh*2,true); pcm.setUint16(32,numCh*2,true);
+  pcm.setUint16(34,16,true); ws(36,"data"); pcm.setUint32(40,interleaved.length*2,true);
+  let off = 44;
+  for (let i = 0; i < interleaved.length; i++, off += 2) {
+    const s = Math.max(-1, Math.min(1, interleaved[i]));
+    pcm.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return new Blob([pcm], { type: "audio/wav" });
+}
+
+// ── Offline render ────────────────────────────────────────────────────────────
+async function renderOffline(buffer) {
+  const p = readParams();
+  const trim = getTrimRange(buffer);
+  const renderLength = Math.max(1, Math.ceil(trim.renderDuration * buffer.sampleRate));
+  const ctx = new OfflineAudioContext(buffer.numberOfChannels, renderLength, buffer.sampleRate);
+  const g = createGraph(ctx, p.noiseColor);
+  g.analyser.connect(ctx.destination);
+  g.noiseBufferSource.start(0);
+  applyParams(g);
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  src.playbackRate.value = Math.max(0.5, Math.min(1.5, p.rate));
+  if (typeof src.detune !== "undefined") src.detune.value = Math.max(-1200, Math.min(1200, p.detuneSemi * 100));
+  src.connect(g.inputGain);
+  src.start(0, trim.start, trim.renderDuration);
+  return await ctx.startRendering();
+}
+
+// ── Export / save ─────────────────────────────────────────────────────────────
+function safeSaveFileName(raw) {
+  let s = (raw || "").trim().replace(/[^a-zA-Z0-9._\- ]/g, "").replace(/\s+/g, "-");
+  if (!s) return "noise-studio-" + Date.now() + ".wav";
+  if (!/\.(wav|ogg|webm)$/i.test(s)) s += ".wav";
+  return s.slice(0, 120);
+}
+
+el("nsExport").addEventListener("click", async () => {
+  if (!currentBuffer) return;
+  setStatus("Rendering…");
+  try {
+    const rendered = await renderOffline(currentBuffer);
+    const blob = encodeWav(rendered);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = safeSaveFileName(el("nsSaveName").value);
+    a.click(); URL.revokeObjectURL(a.href);
+    setStatus("Download started.");
+  } catch (err) { setStatus("Render failed."); console.error(err); }
+});
+
+async function saveCurrentToLibrary(saveName, overwrite) {
+  if (!currentBuffer) return;
+  setStatus("Rendering for upload…");
+  try {
+    const rendered = await renderOffline(currentBuffer);
+    const blob = encodeWav(rendered);
+    const fd = new FormData();
+    const fname = safeSaveFileName(saveName);
+    fd.append("file", blob, fname);
+    fd.append("save_name", fname);
+    fd.append("overwrite", overwrite ? "1" : "0");
+    fd.append("csrfmiddlewaretoken", csrfToken);
+    const r = await fetch("{% url 'noise_studio_save' %}", {
+      method: "POST", body: fd, credentials: "same-origin",
+      headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
+    });
+    if (r.ok) {
+      try { localStorage.setItem("noiseStudioSavedAt", String(Date.now())); } catch (_) {}
+      setStatus("Saved to noise_studio (" + fname + ").");
+      lastLoadedTrackName = fname;
+      if (!el("nsSaveName").value.trim()) el("nsSaveName").value = fname;
+      return;
+    }
+    setStatus("Save failed (" + r.status + ").");
+  } catch (err) { setStatus("Save failed."); console.error(err); }
+}
+
+el("nsSaveLib").addEventListener("click", async () => {
+  await saveCurrentToLibrary(el("nsSaveName").value, el("nsOverwrite").checked);
+});
+
+el("nsQuickSave").addEventListener("click", async () => {
+  if (!currentBuffer || !lastLoadedTrackName) { setStatus("Load a track first."); return; }
+  await saveCurrentToLibrary(lastLoadedTrackName, true);
+});
+
+["nsTrimStart", "nsTrimEnd"].forEach((id) => {
+  const node = el(id);
+  if (!node) return;
+  node.addEventListener("input", updateTrimSummary);
+  node.addEventListener("change", updateTrimSummary);
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+updateLabels();
+refreshActiveBlocks();
+if (audioMap.noise_studio) {
+  el("nsLibFolder").value = "noise_studio";
+  el("nsLibFolder").dispatchEvent(new Event("change"));
+}
+if (lastLoadedTrackName && !el("nsSaveName").value.trim()) {
+  el("nsSaveName").value = lastLoadedTrackName;
+}
+el("nsQuickSave").disabled = true;
+
+// Draw empty waveform placeholder
+(function initWaveformPlaceholder() {
+  const canvas = el("nsWaveform");
+  if (!canvas) return;
+  const W = canvas.width = canvas.offsetWidth || 600;
+  const H = canvas.height = 90;
+  const c = canvas.getContext("2d");
+  c.fillStyle = "#0a0a10"; c.fillRect(0, 0, W, H);
+  c.strokeStyle = "#0e1a20"; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(0, H/2); c.lineTo(W, H/2); c.stroke();
+  c.fillStyle = "#1a2020"; c.font = "10px monospace";
+  c.textAlign = "center"; c.fillText("load a source", W/2, H/2 + 4);
+})();
+
+// Draw empty oscilloscope placeholder
+(function initOscPlaceholder() {
+  const canvas = el("nsOscilloscope");
+  if (!canvas) return;
+  const W = canvas.width = canvas.offsetWidth || 600;
+  const H = canvas.height = 70;
+  const c = canvas.getContext("2d");
+  c.fillStyle = "#060610"; c.fillRect(0, 0, W, H);
+  c.strokeStyle = "#0e1a22"; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(0, H/2); c.lineTo(W, H/2); c.stroke();
+})();
+
+})();
+</script>
+{% endblock %}

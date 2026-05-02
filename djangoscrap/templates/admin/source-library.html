@@ -1,0 +1,255 @@
+{% extends "layouts/admin.html" %}
+
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  .source-select-column { width: 46px; }
+  .source-preview-column { width: 86px; }
+  .source-media-column { width: 120px; }
+  .source-updated-column { width: 180px; }
+  .source-action-column { width: 130px; }
+  .source-preview-thumb,
+  .source-preview-placeholder {
+    width: 64px;
+    height: 64px;
+    border: 1px solid #ddd;
+  }
+  .source-preview-thumb { object-fit: cover; }
+</style>
+  
+<!-- Content Wrapper. Contains page content -->
+  <div class="content-wrapper">
+    <section class="content">
+      <div class="container-fluid">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h3 class="card-title mb-0">Source Library</h3>
+            <div class="d-flex gap-2">
+              <form id="refreshSourcesForm" method="POST" action="{% url 'refresh_source_library' %}" class="d-inline">
+                {% csrf_token %}
+                <input type="hidden" name="snapshot" id="sourceLibrarySnapshot" value="{}">
+                <button type="submit" id="refreshSourcesBtn" class="btn btn-outline-primary btn-sm">Refresh</button>
+              </form>
+              <button type="button" id="selectAllSourcesBtn" class="btn btn-outline-secondary btn-sm">Select all</button>
+              <button type="button" id="clearSourcesBtn" class="btn btn-outline-secondary btn-sm">Clear</button>
+              <button type="submit" form="dedupeSourcesForm" id="dedupeSourcesBtn" class="btn btn-outline-warning btn-sm">Dedupe sources</button>
+              <button type="submit" form="deleteSourcesForm" id="deleteSourcesBtn" class="btn btn-danger btn-sm">Delete selected</button>
+              <a href="{% url 'new-source' %}" class="btn btn-success btn-sm">New Source</a>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="mb-3">
+              <input
+                type="text"
+                id="sourceSearchInput"
+                class="form-control"
+                placeholder="Search sources by name..."
+                title="Search sources by name">
+            </div>
+            <div class="alert alert-light border d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <span>Select one or more sources to delete, or open a source to manage its files.</span>
+              <span class="small text-muted">Selected: <strong id="selectedSourcesCount">0</strong></span>
+            </div>
+            <form id="deleteSourcesForm" method="POST" action="{% url 'delete_buckets' %}">
+              {% csrf_token %}
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle">
+                  <thead class="thead-light">
+                    <tr>
+                      <th class="source-select-column">
+                        <input type="checkbox" id="selectVisibleSourcesCheckbox" title="Select visible sources">
+                      </th>
+                      <th class="source-preview-column">Preview</th>
+                      <th>Source name</th>
+                      <th class="source-media-column">Media</th>
+                      <th class="source-updated-column">Updated</th>
+                      <th class="source-action-column">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for source in sources %}
+                    <tr class="source-row" data-source-name="{{ source.name|lower }}" data-file-count="{{ source.file_count }}">
+                      <td class="text-center">
+                        <input type="checkbox" class="source-select" name="buckets" value="{{ source.name }}" title="Select {{ source.name }}">
+                      </td>
+                      <td>
+                        {% if source.thumbnail_url %}
+                        <img
+                          data-src="{{ source.thumbnail_url }}"
+                          alt="{{ source.name }} preview"
+                          class="source-preview-thumb js-lazy-source-thumb"
+                          loading="lazy"
+                          decoding="async">
+                        {% else %}
+                        <div class="source-preview-placeholder d-flex align-items-center justify-content-center bg-light text-muted">
+                          -
+                        </div>
+                        {% endif %}
+                      </td>
+                      <td>{{ source.name }}</td>
+                      <td>{{ source.file_count_label|default:source.file_count }}</td>
+                      <td>{{ source.updated_at|date:"d/m/Y H:i" }}</td>
+                      <td>
+                        <a href="{% url 'bucket_contents' source.name %}" class="btn btn-primary btn-sm">Open Source</a>
+                      </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                      <td colspan="6" class="text-muted">No sources found yet.</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </form>
+            <form id="dedupeSourcesForm" method="POST" action="{% url 'dedupe_source_folders' %}" class="d-none">
+              {% csrf_token %}
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+<script>
+  (function () {
+    const selectAllBtn = document.getElementById("selectAllSourcesBtn");
+    const selectVisibleCheckbox = document.getElementById("selectVisibleSourcesCheckbox");
+    const clearBtn = document.getElementById("clearSourcesBtn");
+    const deleteBtn = document.getElementById("deleteSourcesBtn");
+    const dedupeBtn = document.getElementById("dedupeSourcesBtn");
+    const searchInput = document.getElementById("sourceSearchInput");
+    const refreshForm = document.getElementById("refreshSourcesForm");
+    const snapshotInput = document.getElementById("sourceLibrarySnapshot");
+    const selectedCountNode = document.getElementById("selectedSourcesCount");
+    const checkboxes = () => Array.from(document.querySelectorAll(".source-select"));
+    const sourceRows = () => Array.from(document.querySelectorAll(".source-row"));
+    const isRowVisible = (row) => row && row.style.display !== "none";
+    const visibleCheckboxes = () =>
+      sourceRows()
+        .filter((row) => isRowVisible(row))
+        .map((row) => row.querySelector(".source-select"))
+        .filter(Boolean);
+
+    const updateSelectedCount = () => {
+      const selected = checkboxes().filter((cb) => cb.checked).length;
+      if (selectedCountNode) selectedCountNode.textContent = String(selected);
+      if (selectVisibleCheckbox) {
+        const visibles = visibleCheckboxes();
+        const selectedVisible = visibles.filter((cb) => cb.checked).length;
+        selectVisibleCheckbox.checked = visibles.length > 0 && selectedVisible === visibles.length;
+        selectVisibleCheckbox.indeterminate = selectedVisible > 0 && selectedVisible < visibles.length;
+      }
+    };
+    const setRowSelectedClass = (cb) => {
+      const row = cb.closest(".source-row");
+      if (!row) return;
+      row.classList.toggle("table-active", !!cb.checked);
+    };
+
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener("click", () => {
+        visibleCheckboxes().forEach((cb) => {
+          cb.checked = true;
+          setRowSelectedClass(cb);
+        });
+        updateSelectedCount();
+      });
+    }
+    if (selectVisibleCheckbox) {
+      selectVisibleCheckbox.addEventListener("change", () => {
+        const checked = !!selectVisibleCheckbox.checked;
+        visibleCheckboxes().forEach((cb) => {
+          cb.checked = checked;
+          setRowSelectedClass(cb);
+        });
+        updateSelectedCount();
+      });
+    }
+    if (clearBtn) {
+      clearBtn.addEventListener("click", () => {
+        checkboxes().forEach((cb) => {
+          cb.checked = false;
+          setRowSelectedClass(cb);
+        });
+        updateSelectedCount();
+      });
+    }
+    if (deleteBtn) {
+      deleteBtn.addEventListener("click", (event) => {
+        const selectedCount = checkboxes().filter((cb) => cb.checked).length;
+        if (!selectedCount) {
+          event.preventDefault();
+          alert("Please select at least one source to delete.");
+          return;
+        }
+        if (!confirm(`Delete ${selectedCount} selected source(s)? This removes all files inside them.`)) {
+          event.preventDefault();
+        }
+      });
+    }
+    if (dedupeBtn) {
+      dedupeBtn.addEventListener("click", (event) => {
+        if (!confirm("Merge duplicate source folders now? This moves unique files into canonical folders.")) {
+          event.preventDefault();
+        }
+      });
+    }
+    if (searchInput) {
+      searchInput.addEventListener("input", () => {
+        const query = searchInput.value.trim().toLowerCase();
+        sourceRows().forEach((row) => {
+          const name = row.dataset.sourceName || "";
+          row.style.display = (!query || name.includes(query)) ? "" : "none";
+        });
+        updateSelectedCount();
+      });
+    }
+    checkboxes().forEach((cb) => {
+      cb.addEventListener("change", () => {
+        setRowSelectedClass(cb);
+        updateSelectedCount();
+      });
+      setRowSelectedClass(cb);
+    });
+    updateSelectedCount();
+    if (refreshForm && snapshotInput) {
+      refreshForm.addEventListener("submit", () => {
+        const snapshot = {};
+        sourceRows().forEach((row) => {
+          const name = row.dataset.sourceName || "";
+          const count = Number(row.dataset.fileCount || "0");
+          if (name) snapshot[name] = count;
+        });
+        snapshotInput.value = JSON.stringify(snapshot);
+      });
+    }
+
+    // Progressive thumbnail loading prevents Safari from choking on large
+    // source libraries with many images/videos.
+    const lazyThumbs = Array.from(document.querySelectorAll(".js-lazy-source-thumb"));
+    const loadThumb = (img) => {
+      if (!img || img.dataset.loaded === "1") return;
+      const src = img.getAttribute("data-src");
+      if (!src) return;
+      img.src = src;
+      img.dataset.loaded = "1";
+    };
+    if ("IntersectionObserver" in window) {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          loadThumb(entry.target);
+          observer.unobserve(entry.target);
+        });
+      }, { rootMargin: "250px 0px" });
+      lazyThumbs.forEach((img) => observer.observe(img));
+    } else {
+      // Fallback for older Safari: load a small initial batch, then the rest.
+      lazyThumbs.slice(0, 40).forEach(loadThumb);
+      setTimeout(() => lazyThumbs.slice(40).forEach(loadThumb), 120);
+    }
+  })();
+</script>
+
+{% endblock %}

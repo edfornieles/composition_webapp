@@ -1,0 +1,77 @@
+{% extends "layouts/admin.html" %}
+
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  
+  <div class="content-wrapper">
+    <section class="content">
+      <div class="container-fluid">
+        <div class="row justify-content-center">
+          <div class="col-lg-10 col-xl-9">
+            <div class="card shadow-lg">
+              <div class="card-header">
+                <h3 class="card-title mb-0">Create or Update Source Collection</h3>
+              </div>
+              <div class="card-body">
+                {% if messages %}
+                  {% for message in messages %}
+                    <div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+                  {% endfor %}
+                {% endif %}
+                <div class="alert alert-light border">
+                  Create a source folder (example: <code>inst_hotdogs</code>) and upload large batches of images.  
+                  If the source already exists, enable append mode to add more images later.
+                </div>
+                <form method="POST" action="{% url 'create_bucket' %}" enctype="multipart/form-data">
+                  {% csrf_token %}
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <label for="sourceName" class="form-label">Source name</label>
+                      <input id="sourceName" type="text" name="name" class="form-control" placeholder="inst_hotdogs" required>
+                      <small class="text-muted">Spaces are converted to dashes.</small>
+                    </div>
+                    <div class="col-md-3">
+                      <label for="sourceType" class="form-label">Collection type</label>
+                      <select id="sourceType" class="form-select" name="type" title="Collection type">
+                        <option value="manual-upload">Manual upload</option>
+                        <option value="instagram-tag">Instagram tag</option>
+                        <option value="instagram-account">Instagram account</option>
+                        <option value="google-search">Google search</option>
+                        <option value="pinterest-search">Pinterest search</option>
+                      </select>
+                    </div>
+                    <div class="col-md-3">
+                      <label for="sourceId" class="form-label">Optional source id</label>
+                      <input id="sourceId" type="text" class="form-control" name="source_id" placeholder="hotdogs" title="Optional source id">
+                    </div>
+                  </div>
+
+                  <div class="form-check mt-3">
+                    <input class="form-check-input" type="checkbox" value="on" id="appendExisting" name="append_existing">
+                    <label class="form-check-label" for="appendExisting">
+                      Append to existing source if it already exists
+                    </label>
+                  </div>
+
+                  <div class="mt-4">
+                    <label for="sourceFiles" class="form-label">Upload images (batch)</label>
+                    <input id="sourceFiles" type="file" name="files" class="form-control" accept=".jpg,.jpeg,.png,.webp,.gif,.avif,.bmp,.tif,.tiff,.mp4,.mov,.webm" multiple title="Images or short video clips only">
+                    <small class="text-muted">You can upload hundreds or thousands at once. Supported: jpg, jpeg, png, webp, gif.</small>
+                  </div>
+
+                  <div class="d-flex justify-content-between mt-4">
+                    <a href="{% url 'source-library' %}" class="btn btn-outline-secondary">Back to Source Library</a>
+                    <button type="submit" class="btn btn-success">
+                      <i class="fas fa-cloud-upload-alt"></i> Create / Upload
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+{% endblock %}

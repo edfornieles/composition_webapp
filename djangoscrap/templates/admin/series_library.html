@@ -1,0 +1,51 @@
+{% extends "layouts/admin.html" %}
+{% load static %}
+{% block content %}
+<div class="content-wrapper">
+  <section class="content">
+    <div class="container-fluid">
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Series Library</h3>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-bordered text-center align-middle">
+              <thead class="table-primary">
+                <tr>
+                  <th>Preview</th>
+                  <th>Series Name</th>
+                  <th>Compositions</th>
+                  <th>Last Updated</th>
+                  <th>Open</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in series_rows %}
+                <tr>
+                  <td>
+                    {% if row.preview_url %}
+                    <img src="{{ row.preview_url }}" alt="{{ row.name }}" style="width: 44px; height: 44px; object-fit: cover; border: 1px solid #bbb;">
+                    {% else %}
+                    <span class="text-muted">No image</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ row.name }}</td>
+                  <td>{{ row.count }}</td>
+                  <td>{% if row.latest_date %}{{ row.latest_date|date:"d/m/Y H:i" }}{% else %}<span class="text-muted">No compositions</span>{% endif %}</td>
+                  <td><a class="btn btn-sm btn-primary" href="{% url 'series-detail' row.id %}">Open Series</a></td>
+                </tr>
+                {% empty %}
+                <tr>
+                  <td colspan="5" class="text-muted">No series found.</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

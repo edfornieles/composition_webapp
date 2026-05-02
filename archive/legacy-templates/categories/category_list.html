@@ -1,0 +1,10 @@
+{% extends admin.html" %}
+{% block content %}
+    <h2>Categories</h2>
+    <a href="{% url 'add_category' %}">Add New Category</a>
+    <ul>
+        {% for category in categories %}
+            <li>{{ category.name }} - {{ category.description }}</li>
+        {% endfor %}
+    </ul>
+{% endblock %}

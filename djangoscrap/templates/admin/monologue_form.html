@@ -1,0 +1,124 @@
+{% extends "layouts/admin.html" %}
+{% load static %}
+
+{% block content %}
+<div class="content-wrapper">
+  <section class="content">
+    <div class="container-fluid">
+      <div class="row justify-content-center">
+        <div class="col-lg-10">
+          {% if messages %}
+            {% for message in messages %}
+              <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+
+          <div class="card card-primary">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center">
+              <h3 class="card-title mb-0">{% if is_new %}New character thought page{% else %}Edit: {{ persona.title }}{% endif %}</h3>
+              {% if not is_new %}
+              <form method="post" action="{% url 'monologue_ai_research' persona.id %}" class="mb-0">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-info" title="Merges curated links from the archetype research pack. Wire an LLM for live web research later.">
+                  <i class="fas fa-robot"></i> AI: deep research &amp; update sources
+                </button>
+              </form>
+              {% endif %}
+            </div>
+            <form method="post" action="{% if is_new %}{% url 'monologue_add' %}{% else %}{% url 'monologue_edit' persona.id %}{% endif %}">
+              {% csrf_token %}
+              <div class="card-body">
+                {% if form.non_field_errors %}
+                  <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+                {% endif %}
+
+                <div class="row">
+                  <div class="col-md-8 mb-3">
+                    <label for="{{ form.title.id_for_label }}">{{ form.title.label }}</label>
+                    {{ form.title }}
+                    {{ form.title.errors }}
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label for="{{ form.slug.id_for_label }}">{{ form.slug.label }}</label>
+                    {{ form.slug }}
+                    <small class="form-text text-muted">URL segment: <code>/thoughts/&lt;slug&gt;/</code></small>
+                    {{ form.slug.errors }}
+                  </div>
+                </div>
+
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label for="{{ form.character_name.id_for_label }}">{{ form.character_name.label }}</label>
+                    {{ form.character_name }}
+                    {{ form.character_name.errors }}
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label for="{{ form.archetype.id_for_label }}">{{ form.archetype.label }}</label>
+                    {{ form.archetype }}
+                    {{ form.archetype.errors }}
+                  </div>
+                </div>
+
+                <div class="mb-3">
+                  <label for="{{ form.source_urls_text.id_for_label }}">{{ form.source_urls_text.label }}</label>
+                  {{ form.source_urls_text }}
+                  {{ form.source_urls_text.errors }}
+                </div>
+
+                <div class="mb-3">
+                  <label for="{{ form.stream_seed_text.id_for_label }}">{{ form.stream_seed_text.label }}</label>
+                  {{ form.stream_seed_text }}
+                  {{ form.stream_seed_text.errors }}
+                </div>
+
+                <div class="mb-3">
+                  <label for="{{ form.style_corpus.id_for_label }}">{{ form.style_corpus.label }}</label>
+                  {{ form.style_corpus }}
+                  {{ form.style_corpus.errors }}
+                </div>
+
+                <div class="mb-3">
+                  <label for="{{ form.system_prompt_hint.id_for_label }}">{{ form.system_prompt_hint.label }}</label>
+                  {{ form.system_prompt_hint }}
+                  {{ form.system_prompt_hint.errors }}
+                </div>
+
+                <div class="row">
+                  <div class="col-md-4 mb-3">
+                    <label for="{{ form.typing_min_ms.id_for_label }}">{{ form.typing_min_ms.label }}</label>
+                    {{ form.typing_min_ms }}
+                    {{ form.typing_min_ms.errors }}
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label for="{{ form.typing_max_ms.id_for_label }}">{{ form.typing_max_ms.label }}</label>
+                    {{ form.typing_max_ms }}
+                    {{ form.typing_max_ms.errors }}
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label for="{{ form.pause_between_segments_ms.id_for_label }}">{{ form.pause_between_segments_ms.label }}</label>
+                    {{ form.pause_between_segments_ms }}
+                    {{ form.pause_between_segments_ms.errors }}
+                  </div>
+                </div>
+
+                <div class="form-check mb-3">
+                  {{ form.is_published }}
+                  <label class="form-check-label" for="{{ form.is_published.id_for_label }}">{{ form.is_published.label }}</label>
+                  {{ form.is_published.errors }}
+                </div>
+              </div>
+              <div class="card-footer">
+                <button type="submit" class="btn btn-primary">Save</button>
+                <a href="{% url 'monologue_list' %}" class="btn btn-default border">Back to list</a>
+                {% if persona and persona.is_published %}
+                  <a href="{% url 'monologue_public' persona.slug %}" class="btn btn-outline-secondary float-right" target="_blank" rel="noopener">Open public page</a>
+                {% endif %}
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

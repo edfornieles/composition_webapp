@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mint Random Works</title>
+  <style>
+    :root {
+      --bg: #000;
+      --fg: #fff;
+      --muted: rgba(255,255,255,0.62);
+      --line: rgba(255,255,255,0.22);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .wrap { width: min(1380px, calc(100% - 32px)); margin: 0 auto; padding: 42px 0 64px; }
+    .header {
+      min-height: 72px;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .wallet-menu {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+      overflow: hidden;
+    }
+    .profile-button,
+    .connect-wallet {
+      height: 42px;
+      border: 0;
+      background: transparent;
+      color: var(--fg);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .profile-button {
+      width: 46px;
+      border-right: 1px solid var(--line);
+    }
+    .profile-button svg {
+      width: 21px;
+      height: 21px;
+      display: block;
+    }
+    .connect-wallet {
+      padding: 0 16px;
+      font-size: 0.9rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 18px;
+      margin-bottom: 32px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(3rem, 8vw, 8rem);
+      line-height: 0.86;
+      letter-spacing: -0.08em;
+      text-transform: uppercase;
+    }
+    p { color: var(--muted); max-width: 760px; line-height: 1.5; }
+    a { color: var(--fg); }
+    .back {
+      font-weight: 800;
+      text-decoration: none;
+      border-bottom: 1px solid var(--fg);
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .mint-panel {
+      border: 1px solid var(--line);
+      padding: 16px;
+      margin-bottom: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .mint-panel label,
+    .mint-panel strong {
+      text-transform: uppercase;
+      font-weight: 850;
+    }
+    .price-tiers {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(160px, 1fr));
+      gap: 10px;
+    }
+    .tier {
+      border: 1px solid var(--line);
+      padding: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .tier strong {
+      display: block;
+      color: var(--fg);
+      margin-bottom: 4px;
+    }
+    select {
+      margin-left: 8px;
+      background: #000;
+      color: var(--fg);
+      border: 1px solid var(--line);
+      border-radius: 0;
+      height: 38px;
+      padding: 0 10px;
+    }
+    .mint-button {
+      border: 0;
+      background: #ff1010;
+      color: #fff;
+      min-height: 42px;
+      padding: 0 18px;
+      font-weight: 900;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .mint-button:hover { background: #ff3b3b; }
+    .status {
+      width: 100%;
+      color: var(--muted);
+      min-height: 1.3em;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 24px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      display: block;
+      aspect-ratio: 1 / 1;
+      overflow: hidden;
+      position: relative;
+      background: #000;
+      text-decoration: none;
+    }
+    .card img,
+    .card video,
+    .card iframe {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border: 0;
+      display: block;
+      background: #000;
+    }
+    .title {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: 16px;
+      background: linear-gradient(180deg, transparent, rgba(0,0,0,0.86));
+      font-size: clamp(1.6rem, 3vw, 3.4rem);
+      font-weight: 900;
+      letter-spacing: -0.08em;
+      line-height: 0.9;
+      text-transform: lowercase;
+      opacity: 0;
+      overflow: hidden;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      display: -webkit-box;
+      transition: opacity 140ms ease;
+    }
+    .card:hover .title,
+    .card:focus-visible .title { opacity: 1; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="header">
+      <div class="wallet-menu">
+        <button type="button" class="profile-button" aria-label="Profile">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="8.5" r="3.25" stroke="currentColor" stroke-width="2"></circle>
+            <path d="M5.5 19c1.2-3.6 3.35-5.3 6.5-5.3s5.3 1.7 6.5 5.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+          </svg>
+        </button>
+        <button type="button" class="connect-wallet" id="connectWalletBtn">Connect wallet</button>
+      </div>
+    </header>
+    <div class="top">
+      <div>
+        <h1>Mint</h1>
+        <p>
+          1000 total supply. Up to ten works are randomly assigned per mint.
+          Finiliar NFT holders mint at 0.05 ETH, public mint is 0.07 ETH, and the last 20% (tokens 801&ndash;1000) mint at 0.1 ETH.
+        </p>
+      </div>
+      <a class="back" href="{% url 'mint_site' %}">The Feed</a>
+    </div>
+    <section class="mint-panel" aria-label="Mint controls">
+      <form method="get">
+        <label for="count">Quantity</label>
+        <select id="count" name="count" onchange="this.form.submit()">
+          {% for option in count_options %}
+          <option value="{{ option }}" {% if option == count %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      <div><strong>{{ active_price_eth }} ETH</strong> public price</div>
+      <div><strong>{{ total_eth }} ETH</strong> total</div>
+      <button type="button" class="mint-button" id="mintButton" data-contract-address="{{ contract_address }}">Mint {{ count }}</button>
+      <div class="price-tiers" aria-label="Mint price tiers">
+        <div class="tier"><strong>{{ holder_price_eth }} ETH</strong> Finiliar NFT holders</div>
+        <div class="tier"><strong>{{ public_price_eth }} ETH</strong> Public</div>
+        <div class="tier"><strong>{{ last_phase_price_eth }} ETH</strong> Last 20%</div>
+      </div>
+      <div class="status" id="mintStatus"></div>
+    </section>
+  </main>
+  <script>
+    const connectWalletBtn = document.getElementById("connectWalletBtn");
+    const mintButton = document.getElementById("mintButton");
+    const mintStatus = document.getElementById("mintStatus");
+    let connectedWallet = "";
+    const shortWallet = (wallet) => wallet ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}` : "";
+    const connectWallet = async () => {
+      if (!window.ethereum || !window.ethereum.request) {
+        mintStatus.textContent = "No Ethereum wallet found.";
+        return "";
+      }
+      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+      connectedWallet = (accounts && accounts[0] ? accounts[0] : "").toLowerCase();
+      if (connectedWallet) connectWalletBtn.textContent = shortWallet(connectedWallet);
+      return connectedWallet;
+    };
+    connectWalletBtn?.addEventListener("click", async () => {
+      try {
+        await connectWallet();
+        if (connectedWallet) mintStatus.textContent = "Wallet connected.";
+      } catch (error) {
+        mintStatus.textContent = "Wallet connection was cancelled.";
+      }
+    });
+    mintButton?.addEventListener("click", async () => {
+      try {
+        const wallet = connectedWallet || await connectWallet();
+        if (!wallet) return;
+        if (!mintButton.dataset.contractAddress) {
+          mintStatus.textContent = "Wallet connected. Contract address is not configured yet.";
+          return;
+        }
+        mintStatus.textContent = "Wallet connected. Mint transaction wiring is ready for contract integration.";
+      } catch (error) {
+        mintStatus.textContent = "Mint was cancelled.";
+      }
+    });
+  </script>
+</body>
+</html>

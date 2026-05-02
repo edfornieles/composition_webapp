@@ -1,0 +1,1329 @@
+{% extends "layouts/admin.html" %}
+{% block content %}
+{% comment %}
+  Ingestion batch page — grid-first UX.
+  Design principles:
+    * The grid is the content. Everything else folds into a sticky
+      header strip or collapsible panels.
+    * A sticky action bar appears only when items are selected, so
+      Accept / Reject / Delete / Publish are always one click away.
+    * Filters are a single unified chip row above the grid.
+    * Campaign status live-updates (polls /status.json every 4s while
+      running) so the operator can actually *watch* a campaign.
+    * Published items ("inactive") are hidden from the grid by default
+      via a client-side toggle, so old/done batches don't clutter the
+      active work view.
+  All form endpoints and field names are identical to the previous
+  template so the backend is untouched.
+{% endcomment %}
+<style>
+  /* --- Layout primitives ----------------------------------------- */
+  :root {
+    --ix-primary: #1479ff;
+    --ix-primary-dark: #0d66dd;
+    --ix-ink: #1f355b;
+    --ix-mute: #5876a6;
+    --ix-soft: #f8fbff;
+    --ix-border: #d9e7ff;
+    --ix-border-strong: #b7c9e8;
+    --ix-accept: #1f9d55;
+    --ix-reject: #c53030;
+    --ix-danger: #c53030;
+    --ix-warn: #c07a00;
+  }
+  .ix-page { max-width: 1560px; margin: 0 auto; }
+  .ix-alert-wrap { margin-bottom: 12px; }
+  .ix-alert-wrap .alert { margin-bottom: 6px; }
+
+  /* --- Header strip --------------------------------------------- */
+  .ix-header {
+    position: sticky; top: 0; z-index: 20;
+    background: #fff;
+    border-bottom: 1px solid var(--ix-border);
+    padding: 12px 16px;
+    margin: -16px -16px 14px -16px;
+  }
+  .ix-header-top { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .ix-header-top h1 { font-size: 22px; color: var(--ix-ink); margin: 0; font-weight: 800; letter-spacing: -0.01em; }
+  .ix-header-top .ix-subtitle { font-size: 13px; color: var(--ix-mute); }
+  .ix-header-top .ix-spacer { flex: 1; }
+  .ix-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px; font-weight: 700; font-size: 12px;
+    background: #eef2f7; color: #44566a; border: 1px solid #d9e1eb;
+    white-space: nowrap;
+  }
+  .ix-pill.ix-pill-running { background: #e8f5ec; color: #157f3c; border-color: #bfe4c9; }
+  .ix-pill.ix-pill-stopped { background: #eef2f7; color: #44566a; border-color: #d9e1eb; }
+  .ix-pill .ix-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .ix-pill.ix-pill-running .ix-dot { animation: ix-pulse 1.4s ease-in-out infinite; }
+  @keyframes ix-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+  /* Counter strip */
+  .ix-counts { display: flex; gap: 22px; margin-top: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .ix-count { display: flex; flex-direction: column; gap: 1px; min-width: 90px; }
+  .ix-count .ix-count-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ix-mute); font-weight: 700; }
+  .ix-count .ix-count-val { font-size: 26px; font-weight: 800; color: var(--ix-ink); line-height: 1; }
+  .ix-count .ix-count-sub { font-size: 11px; color: var(--ix-mute); }
+
+  /* Progress bar */
+  .ix-progress {
+    flex: 1 1 240px; min-width: 220px; max-width: 480px;
+    align-self: center; margin-top: 12px;
+  }
+  .ix-progress-label {
+    display: flex; justify-content: space-between; font-size: 11px; font-weight: 700;
+    color: var(--ix-mute); letter-spacing: 0.03em; text-transform: uppercase; margin-bottom: 4px;
+  }
+  .ix-progress-bar { height: 8px; background: #e6eef9; border-radius: 999px; overflow: hidden; }
+  .ix-progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #1479ff 0%, #3aa1ff 100%); transition: width .5s ease; border-radius: 999px; }
+
+  /* Control row under header */
+  .ix-control-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+  .ix-control-row .btn { font-weight: 700; }
+
+  .ix-flex-spacer { flex: 1; }
+  .ix-gap-10 { gap: 10px; }
+  .ix-mt-4 { margin-top: 4px; }
+  .ix-field-w-90 { width: 90px; }
+  .ix-field-w-110 { width: 110px; }
+  .ix-field-w-130 { width: 130px; }
+  .ix-w-auto { width: auto; }
+  .ix-hidden { display: none; }
+
+  /* --- Sticky selection action bar ------------------------------ */
+  .ix-selbar {
+    position: sticky; top: 160px; z-index: 18;
+    background: #1479ff; color: #fff;
+    border-radius: 12px;
+    padding: 10px 14px;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 6px 16px rgba(20, 121, 255, 0.28);
+    margin-bottom: 12px;
+  }
+  .ix-selbar.is-visible { display: flex; }
+  .ix-selbar-count { font-weight: 800; font-size: 15px; white-space: nowrap; }
+  .ix-selbar .btn { color: #1479ff; background: #fff; border: 0; font-weight: 700; }
+  .ix-selbar .btn:hover { background: #f0f5ff; }
+  .ix-selbar .btn-danger { background: #fff; color: var(--ix-danger); }
+  .ix-selbar .btn-outline-light { color: #fff; border: 1px solid rgba(255,255,255,0.5); background: transparent; }
+  .ix-selbar .btn-outline-light:hover { background: rgba(255,255,255,0.12); }
+  .ix-selbar .ix-sep { opacity: 0.35; margin: 0 2px; }
+
+  /* --- Collapsible panels --------------------------------------- */
+  details.ix-panel {
+    background: var(--ix-soft);
+    border: 1px solid var(--ix-border);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    padding: 0;
+  }
+  details.ix-panel > summary {
+    list-style: none; cursor: pointer;
+    padding: 12px 16px;
+    font-weight: 700;
+    color: var(--ix-ink);
+    display: flex; align-items: center; gap: 10px;
+  }
+  details.ix-panel > summary::-webkit-details-marker { display: none; }
+  details.ix-panel > summary::before {
+    content: '▸'; font-size: 10px; color: var(--ix-mute); transition: transform .2s;
+  }
+  details.ix-panel[open] > summary::before { transform: rotate(90deg); }
+  details.ix-panel .ix-panel-body { padding: 0 16px 16px; }
+  details.ix-panel .ix-summary-note { font-weight: 500; color: var(--ix-mute); font-size: 12px; margin-left: auto; }
+
+  /* --- Filter bar ------------------------------------------------ */
+  .ix-filters {
+    display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+    padding: 10px 14px;
+    background: #fff;
+    border: 1px solid var(--ix-border);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    position: sticky;
+    top: 220px;
+    z-index: 16;
+  }
+  .ix-filter-group { display: flex; align-items: center; gap: 6px; }
+  .ix-filter-group > label { font-size: 11px; text-transform: uppercase; color: var(--ix-mute); font-weight: 700; letter-spacing: 0.03em; margin: 0; white-space: nowrap; }
+  .ix-chip {
+    border: 1px solid var(--ix-border-strong); border-radius: 8px;
+    background: #fff; color: #335;
+    padding: 5px 10px; font-weight: 600; font-size: 12px;
+    cursor: pointer; -webkit-user-select: none; user-select: none;
+    transition: all .12s ease;
+  }
+  .ix-chip:hover { background: #f4f8ff; }
+  .ix-chip.is-active { background: var(--ix-primary); color: #fff; border-color: var(--ix-primary); }
+  .ix-chip.is-active-accept { background: var(--ix-accept); color: #fff; border-color: var(--ix-accept); }
+  .ix-chip.is-active-reject { background: var(--ix-reject); color: #fff; border-color: var(--ix-reject); }
+  .ix-filter-slider { display: flex; flex-direction: column; gap: 2px; min-width: 130px; }
+  .ix-filter-slider .ix-slider-label { font-size: 11px; color: var(--ix-mute); display: flex; justify-content: space-between; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+  .ix-filter-slider input[type=range] { width: 100%; }
+  .ix-filter-spacer { flex: 1; }
+  .ix-filter-toggle {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; color: var(--ix-ink); cursor: pointer; -webkit-user-select: none; user-select: none;
+  }
+  .ix-visible-count {
+    font-size: 12px; color: var(--ix-mute); font-weight: 700;
+  }
+
+  /* --- Grid ------------------------------------------------------ */
+  .ix-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+  }
+  .ix-grid-card {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #fff;
+    border: 1px solid var(--ix-border);
+    aspect-ratio: 1 / 1;
+    cursor: pointer;
+    transition: border-color .1s, box-shadow .1s, transform .05s;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .ix-grid-card:hover { border-color: var(--ix-border-strong); }
+  .ix-grid-card.is-selected {
+    border-color: var(--ix-primary);
+    box-shadow: 0 0 0 2px var(--ix-primary), 0 4px 12px rgba(20, 121, 255, 0.25);
+  }
+  /* Flat-grid UX: no decision-based visual treatment. Every card
+     renders identically; the operator's selection is the only state
+     the grid expresses. */
+  .ix-grid-card img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+    background: #f0f4fa;
+  }
+  .ix-grid-card .ix-grid-file-fallback {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; height: 100%; color: var(--ix-mute);
+    font-size: 13px; background: #f5f9ff;
+  }
+  .ix-grid-meta {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 6px 8px;
+    background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.65) 100%);
+    color: #fff; font-size: 11px; font-weight: 600;
+    display: flex; justify-content: space-between; align-items: center; gap: 6px;
+    pointer-events: none;
+  }
+  .ix-grid-meta .ix-grid-size { opacity: 0.95; }
+  .ix-grid-meta .ix-grid-host { opacity: 0.78; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 110px; }
+  .ix-grid-card .ix-grid-badge {
+    position: absolute; top: 6px; left: 6px;
+    background: rgba(20, 121, 255, 0.92); color: #fff;
+    width: 22px; height: 22px; border-radius: 50%;
+    display: none; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 12px; pointer-events: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+  .ix-grid-card.is-selected .ix-grid-badge { display: flex; }
+  .ix-grid-card .ix-grid-open {
+    position: absolute; top: 6px; right: 6px;
+    background: rgba(255,255,255,0.92); color: #1f355b;
+    border-radius: 4px; padding: 2px 6px;
+    font-size: 10px; font-weight: 700;
+    text-decoration: none; opacity: 0; transition: opacity .12s;
+  }
+  .ix-grid-card:hover .ix-grid-open { opacity: 1; }
+
+  /* Published-filtered message */
+  .ix-grid-empty {
+    text-align: center; padding: 48px 16px;
+    border: 2px dashed var(--ix-border); border-radius: 12px;
+    color: var(--ix-mute); background: var(--ix-soft);
+  }
+
+  /* Marquee selection box */
+  .ix-marquee {
+    position: fixed; z-index: 1040; border: 2px dashed var(--ix-primary);
+    background: rgba(20, 121, 255, 0.12);
+    pointer-events: none;
+  }
+
+  /* Live report */
+  .js-seed-img {
+    max-width: 100%;
+    max-height: 140px;
+    object-fit: contain;
+    border: 1px solid #c5d7f0;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  .ix-report {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; line-height: 1.6;
+    background: #0f1624; color: #cfe2ff;
+    padding: 10px 12px; border-radius: 8px;
+    max-height: 140px; overflow: auto;
+    word-break: break-all;
+  }
+
+  .ix-report-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .ix-report-toolbar .ix-report-meta {
+    font-size: 11px;
+    color: var(--ix-mute);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .ix-diagnostics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .ix-diag-chip {
+    background: #f2f7ff;
+    border: 1px solid var(--ix-border);
+    border-radius: 8px;
+    padding: 6px 8px;
+  }
+  .ix-diag-chip .k {
+    display: block;
+    font-size: 10px;
+    color: var(--ix-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-weight: 700;
+  }
+  .ix-diag-chip .v {
+    display: block;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--ix-ink);
+    line-height: 1.2;
+  }
+  .ix-pin-status {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--ix-mute);
+  }
+
+  /* Responsive tightening */
+  @media (max-width: 900px) {
+    .ix-header { position: static; }
+    .ix-selbar, .ix-filters { position: static; top: auto; }
+    .ix-counts { gap: 14px; }
+    .ix-count .ix-count-val { font-size: 22px; }
+  }
+</style>
+
+<div class="content-wrapper">
+  <section class="content">
+    <div class="container-fluid ix-page">
+
+      {# Flash messages (unchanged) #}
+      {% if messages %}
+      <div class="ix-alert-wrap">
+        {% for message in messages %}
+          <div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% comment %} HEADER — title · live status · counters · progress {% endcomment %}
+      <header class="ix-header" data-batch-id="{{ batch.id }}"
+              data-status-url="{% url 'ingestion_batch_status' batch.id %}">
+        <div class="ix-header-top">
+          <h1>
+            {% if batch.destination_source_name %}
+              {{ batch.destination_source_name }}
+            {% else %}
+              Batch #{{ batch.id }}
+            {% endif %}
+          </h1>
+          <div class="ix-subtitle">
+            Batch #{{ batch.id }}{% if batch.title and batch.title|lower != batch.destination_source_name|lower %} · {{ batch.title }}{% endif %}
+            {% if destination_folder_linked %}
+              · <a href="{% url 'bucket_contents' batch.destination_source_name %}">open folder →</a>
+            {% endif %}
+          </div>
+          <div class="ix-spacer"></div>
+          <span id="ixStatusPill"
+                class="ix-pill {% if batch.campaign_enabled %}ix-pill-running{% else %}ix-pill-stopped{% endif %}">
+            <span class="ix-dot"></span>
+            <span id="ixStatusLabel">{% if batch.campaign_enabled %}Campaign running{% else %}Campaign stopped{% endif %}</span>
+          </span>
+        </div>
+
+        <div class="ix-counts">
+          <div class="ix-count">
+            <div class="ix-count-label">In folder</div>
+            <div class="ix-count-val" id="ixFolderCount">{{ destination_file_count }}</div>
+            <div class="ix-count-sub">target {{ campaign_target_count }}</div>
+          </div>
+          <div class="ix-count">
+            <div class="ix-count-label">Candidates</div>
+            <div class="ix-count-val" id="ixCandidateCount">{{ total_items }}</div>
+            <div class="ix-count-sub">in grid</div>
+          </div>
+          <div class="ix-progress">
+            <div class="ix-progress-label">
+              <span>Folder → target</span>
+              <span id="ixProgressPct">0%</span>
+            </div>
+            <div class="ix-progress-bar"><div class="ix-progress-fill" id="ixProgressFill"></div></div>
+            <div class="ix-count-sub ix-mt-4">
+              <span id="ixRunsCount">{{ batch.campaign_runs_count|default:"0" }}</span> runs
+              · last: <span id="ixLastStatus">{{ batch.campaign_last_status|default:"—" }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="ix-control-row">
+          <form method="POST" action="{% url 'ingestion_batch_detail' batch.id %}" class="m-0" id="ixRunCycleForm">
+            {% csrf_token %}
+            <input type="hidden" name="pinned_preview_variety_seed" class="js-pinned-preview-vs"
+                   value="{{ campaign_preview_variety_seed|default:'' }}">
+            <input type="hidden" name="action" value="campaign_run_now">
+            {% comment %}
+              pinned_seed_url is kept in lockstep with whatever the
+              seed-preview widget is currently showing, so that "▶ Run
+              cycle now" sends Yandex exactly the image the operator
+              sees. Starts with the server-rendered preview URL when
+              that URL is remotely reachable (http/https); folder-local
+              previews render empty and fall back to the usual seed
+              rotation.
+            {% endcomment %}
+            <input type="hidden" name="pinned_seed_url" id="ixPinnedSeedUrl"
+                   value="{{ next_seed_pinned_url|default:'' }}">
+            <button type="submit" class="btn btn-primary btn-sm" title="Run one acquisition cycle now, using the seed shown in the preview">▶ Run cycle now</button>
+          </form>
+          <form method="POST" action="{% url 'ingestion_batch_detail' batch.id %}" class="m-0">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="campaign_start">
+            <button type="submit" class="btn btn-outline-success btn-sm" {% if batch.campaign_enabled %}disabled{% endif %}>Start campaign</button>
+          </form>
+          <form method="POST" action="{% url 'ingestion_batch_detail' batch.id %}" class="m-0">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="campaign_stop">
+            <button type="submit" class="btn btn-outline-secondary btn-sm" {% if not batch.campaign_enabled %}disabled{% endif %}>Stop</button>
+          </form>
+          <span class="ix-flex-spacer"></span>
+          <button type="button" class="btn btn-outline-primary btn-sm" id="ixToggleCampaignPanel">⚙ Campaign settings</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="ixToggleAdvanced">More tools</button>
+        </div>
+      </header>
+
+      {% comment %} STICKY SELECTION ACTION BAR {% endcomment %}
+      <div class="ix-selbar" id="ixSelbar" role="toolbar" aria-label="Selection actions">
+        <span class="ix-selbar-count" id="ixSelbarCount">0 selected</span>
+        <span class="ix-sep">·</span>
+        <button type="button" class="btn btn-sm btn-danger" id="ixSelDelete">Delete</button>
+        <button type="button" class="btn btn-sm btn-primary" id="ixSelPublish">Publish selected</button>
+        <span class="ix-flex-spacer"></span>
+        <button type="button" class="btn btn-outline-light btn-sm" id="ixSelClear">Clear selection</button>
+      </div>
+
+      {% comment %} CAMPAIGN SETTINGS — collapsible panel {% endcomment %}
+      <details class="ix-panel" id="ixCampaignPanel" {% if not batch.campaign_runs_count %}open{% endif %}>
+        <summary>
+          Campaign settings
+          <span class="ix-summary-note">
+            what to search for · cadence · filters · AI QC
+          </span>
+        </summary>
+        <div class="ix-panel-body">
+          <p class="small text-muted mb-2">Autopilot pulls candidates into this batch for review; nothing is copied to the destination folder until you publish. What images you describe below steer both search queries and result filtering.</p>
+          <form method="POST" action="{% url 'ingestion_batch_detail' batch.id %}">
+            {% csrf_token %}
+            <input type="hidden" name="pinned_preview_variety_seed" class="js-pinned-preview-vs"
+                   value="{{ campaign_preview_variety_seed|default:'' }}">
+            <input type="hidden" name="action" value="campaign_save">
+            <div class="mb-3">
+              <label class="small font-weight-bold text-muted mb-1" for="conceptBriefCampaign">What images are you looking for?</label>
+              <textarea name="concept_brief" id="conceptBriefCampaign" class="form-control form-control-sm" rows="3" placeholder="e.g. volcanic wastelands, winged creatures, painterly lighting, no humans">{{ batch.concept_brief }}</textarea>
+              <small class="text-muted">Short phrases help: they combine with your folder name to build search queries.</small>
+            </div>
+            <div class="row mb-2">
+              <div class="col-md-2 mb-2">
+                <label class="small">Orientation</label>
+                <select name="search_orientation" class="form-control form-control-sm">
+                  <option value="any" {% if campaign_search_prefs.orientation == "any" %}selected{% endif %}>Any</option>
+                  <option value="landscape" {% if campaign_search_prefs.orientation == "landscape" %}selected{% endif %}>Landscape</option>
+                  <option value="portrait" {% if campaign_search_prefs.orientation == "portrait" %}selected{% endif %}>Portrait</option>
+                  <option value="square" {% if campaign_search_prefs.orientation == "square" %}selected{% endif %}>Square</option>
+                </select>
+              </div>
+              <div class="col-md-2 mb-2">
+                <label class="small">Image type</label>
+                <select name="search_media_type" class="form-control form-control-sm">
+                  <option value="any" {% if campaign_search_prefs.media_type == "any" %}selected{% endif %}>Any</option>
+                  <option value="photo" {% if campaign_search_prefs.media_type == "photo" %}selected{% endif %}>Photo</option>
+                  <option value="illustration" {% if campaign_search_prefs.media_type == "illustration" %}selected{% endif %}>Illustration</option>
+                  <option value="artwork" {% if campaign_search_prefs.media_type == "artwork" %}selected{% endif %}>Artwork</option>
+                  <option value="render" {% if campaign_search_prefs.media_type == "render" %}selected{% endif %}>3D / CGI</option>
+                </select>
+              </div>
+              <div class="col-md-2 mb-2">
+                <label class="small">Min width</label>
+                <input type="number" name="search_min_width" class="form-control form-control-sm" min="0" max="16000" value="{{ campaign_search_prefs.min_width }}">
+              </div>
+              <div class="col-md-2 mb-2">
+                <label class="small">Min height</label>
+                <input type="number" name="search_min_height" class="form-control form-control-sm" min="0" max="16000" value="{{ campaign_search_prefs.min_height }}">
+              </div>
+              <div class="col-md-2 mb-2">
+                <label class="small">Target images</label>
+                <input type="number" name="campaign_target_count" class="form-control form-control-sm" min="100" max="20000" value="{{ campaign_target_count }}">
+              </div>
+              <div class="col-md-2 mb-2">
+                <label class="small">Cadence (min)</label>
+                <input type="number" name="campaign_cadence_minutes" class="form-control form-control-sm" min="30" max="1440" value="{{ batch.campaign_cadence_minutes|default:'120' }}">
+              </div>
+              <div class="col-md-2 mb-2">
+                <label class="small">Max pages / run</label>
+                <input type="number" name="campaign_max_pages_per_run" class="form-control form-control-sm" min="1" max="20" value="{{ batch.campaign_max_pages_per_run|default:'4' }}">
+              </div>
+              <div class="col-md-2 mb-2">
+                <label class="small">Max imports / run</label>
+                <input type="number" name="campaign_max_imports_per_run" class="form-control form-control-sm" min="10" max="300" value="{{ batch.campaign_max_imports_per_run|default:'90' }}">
+              </div>
+              <div class="col-md-2 mb-2">
+                <label class="small">Max candidates / run</label>
+                <input type="number" name="campaign_max_candidates_per_run" class="form-control form-control-sm" min="20" max="600" value="{{ batch.campaign_max_candidates_per_run|default:'180' }}">
+              </div>
+              <div class="col-md-2 mb-2">
+                <label class="small" for="seedPinMode">Seed pin mode</label>
+                <select name="seed_pin_mode" id="seedPinMode" class="form-control form-control-sm" title="How long a refreshed seed stays pinned for scheduled runs">
+                  <option value="persistent" {% if campaign_seed_pin.mode == "persistent" %}selected{% endif %}>Persistent</option>
+                  <option value="next_run" {% if campaign_seed_pin.mode == "next_run" %}selected{% endif %}>Next run only</option>
+                </select>
+                <div class="ix-pin-status">
+                  {% if campaign_diag.has_pinned_seed %}
+                    Pinned seed active for scheduled runs.
+                  {% else %}
+                    No pinned seed saved yet.
+                  {% endif %}
+                </div>
+              </div>
+              <div class="col-md-4 mb-2 d-flex align-items-end">
+                <div class="d-flex flex-wrap ix-gap-10">
+                  <div class="custom-control custom-switch">
+                    <input type="checkbox" class="custom-control-input" id="visionQcEnabled" name="vision_qc_enabled" value="1" {% if campaign_vision_qc.enabled %}checked{% endif %}>
+                    <label class="custom-control-label small" for="visionQcEnabled">AI QC {% if not campaign_has_openai %}(needs OPENAI_API_KEY){% endif %}</label>
+                  </div>
+                  <div>
+                    <label class="small mb-0">Max QC / run</label>
+                    <input type="number" name="vision_qc_max_per_run" class="form-control form-control-sm ix-field-w-90" min="0" max="300" value="{{ campaign_vision_qc.max_per_run }}">
+                  </div>
+                  <div>
+                    <label class="small mb-0">QC strictness</label>
+                    <select name="vision_qc_strictness" class="form-control form-control-sm ix-field-w-110" title="How strictly the AI judges each candidate against your reference images">
+                      <option value="loose" {% if campaign_vision_qc.strictness == "loose" %}selected{% endif %}>Loose</option>
+                      <option value="normal" {% if campaign_vision_qc.strictness == "normal" %}selected{% endif %}>Normal</option>
+                      <option value="strict" {% if campaign_vision_qc.strictness == "strict" %}selected{% endif %}>Strict</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="small mb-0">Dedupe</label>
+                    <select name="dedupe_strictness" class="form-control form-control-sm ix-field-w-130" title="Loose (CLIP 0.98): only near-identical reposts are rejected — use for texture/uniform-subject batches. Normal (0.95): balanced. Strict (0.92): aggressive — use for subjects with lots of visual variety.">
+                      <option value="loose" {% if campaign_dedupe.strictness == "loose" %}selected{% endif %}>Loose (textures)</option>
+                      <option value="normal" {% if campaign_dedupe.strictness == "normal" %}selected{% endif %}>Normal</option>
+                      <option value="strict" {% if campaign_dedupe.strictness == "strict" %}selected{% endif %}>Strict (variety)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="row mb-2">
+              <div class="col-md-8 mb-2">
+                <label class="small font-weight-bold text-muted mb-1" for="archiveUrlsText">
+                  Archive mode — lock batch to source URL(s) <span class="text-muted">(optional)</span>
+                </label>
+                <textarea name="archive_urls_text" id="archiveUrlsText"
+                          class="form-control form-control-sm"
+                          rows="2"
+                          placeholder="https://www.instagram.com/asmr__slice/&#10;(one URL per line, http/https only)">{{ campaign_archive_urls_text }}</textarea>
+                <small class="text-muted">
+                  When set, the campaign stops doing search / reverse-image lookups and only pulls from the URLs above. Dedupe relaxes to sha-only and AI QC is skipped — it's a point-and-download watcher. Clear the box to go back to search mode.
+                </small>
+              </div>
+              <div class="col-md-4 mb-2">
+                <label class="small font-weight-bold text-muted mb-1" for="archiveMediaKind">
+                  Media kind filter
+                </label>
+                <select name="archive_media_kind" id="archiveMediaKind"
+                        class="form-control form-control-sm"
+                        title="Downloads that don't match the chosen kind are auto-rejected (still visible in the grid so you can see what was skipped).">
+                  <option value="any" {% if campaign_archive.media_kind_filter == "any" %}selected{% endif %}>Any (no filter)</option>
+                  <option value="image" {% if campaign_archive.media_kind_filter == "image" %}selected{% endif %}>Images only</option>
+                  <option value="video" {% if campaign_archive.media_kind_filter == "video" %}selected{% endif %}>Videos only</option>
+                </select>
+                <small class="text-muted d-block mt-1">Applies to campaign runs <em>and</em> manual scrapes on this batch.</small>
+              </div>
+            </div>
+            <div class="d-flex justify-content-end">
+              <button type="submit" class="btn btn-outline-primary btn-sm">Save settings</button>
+            </div>
+          </form>
+
+          <div class="row mt-3">
+            <div class="col-md-8 mb-2">
+              <div class="ix-report-toolbar">
+                <div class="ix-report-meta">
+                  Last run report · next scheduled {{ batch.campaign_next_run_at|date:"Y-m-d H:i"|default:"—" }}
+                </div>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="ixCopyRunReport">Copy report</button>
+              </div>
+              <div class="ix-report" id="ixReport">{{ batch.campaign_last_report|default:"(no runs yet)" }}</div>
+
+              <div class="ix-diagnostics-grid">
+                <div class="ix-diag-chip"><span class="k">Trigger</span><span class="v">{{ campaign_diag.last_trigger|default:"—" }}</span></div>
+                <div class="ix-diag-chip"><span class="k">CBIR seeds</span><span class="v">{{ campaign_diag.last_cbir_seed_count|default:"0" }}</span></div>
+                <div class="ix-diag-chip"><span class="k">Candidates</span><span class="v">{{ campaign_diag.last_candidates|default:"0" }}</span></div>
+                <div class="ix-diag-chip"><span class="k">Imported</span><span class="v">{{ campaign_diag.last_imported|default:"0" }}</span></div>
+                <div class="ix-diag-chip"><span class="k">Deduped</span><span class="v">{{ campaign_diag.last_deduped|default:"0" }}</span></div>
+                <div class="ix-diag-chip"><span class="k">Filtered</span><span class="v">{{ campaign_diag.last_filtered|default:"0" }}</span></div>
+                <div class="ix-diag-chip"><span class="k">Failed</span><span class="v">{{ campaign_diag.last_failed|default:"0" }}</span></div>
+                <div class="ix-diag-chip"><span class="k">Archive mode</span><span class="v">{% if campaign_diag.last_archive_mode %}On{% else %}Off{% endif %}</span></div>
+              </div>
+
+              {% if campaign_diag.last_seed_url %}
+              <div class="small text-muted mt-2">
+                Last seed: <a href="{{ campaign_diag.last_seed_url }}" target="_blank" rel="noopener">open</a>
+                {% if campaign_diag.last_seed_caption %}· {{ campaign_diag.last_seed_caption }}{% endif %}
+              </div>
+              {% endif %}
+              {% if campaign_diag.has_pinned_seed and campaign_diag.pinned_seed_url %}
+              <div class="small text-muted">
+                Saved pinned seed: <a href="{{ campaign_diag.pinned_seed_url }}" target="_blank" rel="noopener">open</a>
+                · mode={{ campaign_seed_pin.mode }}
+              </div>
+              {% endif %}
+              {% if campaign_diag.last_engines_used %}
+              <div class="small text-muted">
+                Engines:
+                {% for name, count in campaign_diag.last_engines_used.items %}
+                  <span class="badge badge-light">{{ name }}:{{ count }}</span>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+            <div class="col-md-4 mb-2">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <div class="small text-muted">Next-run seed preview</div>
+                <button type="button"
+                        class="btn btn-outline-secondary btn-sm js-seed-refresh"
+                        data-seed-endpoint="{% url 'ingestion_batch_seed_preview' batch.id %}">
+                  <span class="js-seed-refresh-label">Refresh</span>
+                </button>
+              </div>
+              <div class="js-seed-preview-wrap{% if not next_seed_preview.url %} ix-hidden{% endif %}">
+                <a class="js-seed-link" href="{{ next_seed_preview.url }}" target="_blank" rel="noopener">
+                  <img class="js-seed-img" src="{{ next_seed_preview.url }}" alt="Next seed preview"
+                       referrerpolicy="no-referrer" loading="lazy">
+                </a>
+                <div class="small text-muted mt-1 js-seed-caption">{{ next_seed_preview.caption }}</div>
+              </div>
+              <div class="small text-muted js-seed-empty{% if next_seed_preview.url %} ix-hidden{% endif %}">
+                {{ next_seed_preview.caption }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      {% comment %} ADVANCED — collapsible, holds everything power-user {% endcomment %}
+      <details class="ix-panel" id="ixAdvancedPanel">
+        <summary>
+          Advanced tools
+          <span class="ix-summary-note">
+            paste URL · AI pack · engine diag · presets · dedupe · publish target
+          </span>
+        </summary>
+        <div class="ix-panel-body">
+
+          {# Paste URL + scrape #}
+          <div class="mb-3">
+            <div class="small font-weight-bold text-muted mb-1">Paste a URL and scrape now</div>
+            <form method="POST" action="{% url 'ingestion_batch_detail' batch.id %}">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="scrape_url">
+              <div class="form-row">
+                <div class="col-md-6 mb-2">
+                  <input type="url" name="page_url" class="form-control form-control-sm" placeholder="Paste one search/profile/page URL" required>
+                </div>
+                <div class="col-md-1 mb-2">
+                  <input type="number" name="per_page_limit" value="80" min="10" max="300" class="form-control form-control-sm" title="Max URLs/page">
+                </div>
+                <div class="col-md-2 mb-2">
+                  <select name="scrape_engine" class="form-control form-control-sm">
+                    <option value="auto" selected>Auto</option>
+                    <option value="yandex_html">Yandex HTML</option>
+                    <option value="yandex_dynamic">Yandex dynamic</option>
+                    <option value="gallery_dl">gallery-dl</option>
+                    <option value="instaloader">instaloader</option>
+                    <option value="yt_dlp">yt-dlp</option>
+                    <option value="playwright">playwright/html</option>
+                  </select>
+                </div>
+                <div class="col-md-1 mb-2">
+                  <input type="number" name="scrape_min_width" value="350" min="0" max="10000" class="form-control form-control-sm" placeholder="Min W">
+                </div>
+                <div class="col-md-1 mb-2">
+                  <input type="number" name="scrape_min_height" value="350" min="0" max="10000" class="form-control form-control-sm" placeholder="Min H">
+                </div>
+                <div class="col-md-1 mb-2">
+                  <button type="submit" class="btn btn-primary btn-sm btn-block">Scrape</button>
+                </div>
+              </div>
+            </form>
+          </div>
+
+          {# AI acquisition planner #}
+          <div class="mb-3">
+            <div class="small font-weight-bold text-muted mb-1">AI acquisition pack</div>
+            <form method="POST" action="{% url 'ingestion_batch_detail' batch.id %}">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="ai_generate_pack">
+              <div class="form-row">
+                <div class="col-md-2 mb-2">
+                  <select name="mood_rating" class="form-control form-control-sm">
+                    <option value="chill" {% if batch.mood_rating == "chill" %}selected{% endif %}>Chill</option>
+                    <option value="mid" {% if batch.mood_rating|default:"mid" == "mid" %}selected{% endif %}>Mid</option>
+                    <option value="agro" {% if batch.mood_rating == "agro" %}selected{% endif %}>Agro</option>
+                  </select>
+                </div>
+                <div class="col-md-2 mb-2">
+                  <input type="number" name="target_asset_count" value="{{ batch.target_asset_count|default:'800' }}" min="100" max="20000" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-2 mb-2">
+                  <button type="submit" class="btn btn-primary btn-sm btn-block">Generate AI pack</button>
+                </div>
+                <div class="col-md-6 mb-2 small text-muted">
+                  Uses the <strong>concept brief</strong> from Campaign settings above.
+                </div>
+              </div>
+            </form>
+            {% if ai_query_pack_preview %}
+            <div class="mt-1 small">
+              <strong>{{ ai_query_pack_preview|length }} queries ready.</strong>
+              <span class="text-muted">First few:</span>
+              {% for q in ai_query_pack_preview|slice:":5" %}
+                <code class="mr-1">{{ q.query }}</code>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+
+          {# Engine diagnostics #}
+          <div class="mb-3">
+            <div class="small font-weight-bold text-muted mb-1">Engines installed</div>
+            <span class="badge {% if engine_diagnostics.gallery_dl %}badge-success{% else %}badge-secondary{% endif %}">gallery-dl</span>
+            <span class="badge {% if engine_diagnostics.instaloader %}badge-success{% else %}badge-secondary{% endif %}">instaloader</span>
+            <span class="badge {% if engine_diagnostics.yt_dlp %}badge-success{% else %}badge-secondary{% endif %}">yt-dlp</span>
+            <span class="badge badge-success">playwright</span>
+          </div>
+
+          {# Quick presets #}
+          <div class="mb-3">
+            <div class="small font-weight-bold text-muted mb-1">Quick presets (server-side filter + decide)</div>
+            <form method="POST" action="{% url 'ingestion_batch_detail' batch.id %}" class="d-inline">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="apply_preset">
+              <input type="hidden" name="preset" value="large_landscape">
+              <button type="submit" class="btn btn-outline-success btn-sm">Accept large landscapes</button>
+            </form>
+            <form method="POST" action="{% url 'ingestion_batch_detail' batch.id %}" class="d-inline ml-1">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="apply_preset">
+              <input type="hidden" name="preset" value="square_only">
+              <button type="submit" class="btn btn-outline-success btn-sm">Accept squares</button>
+            </form>
+            <form method="POST" action="{% url 'ingestion_batch_detail' batch.id %}" class="d-inline ml-1">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="apply_preset">
+              <input type="hidden" name="preset" value="reject_grayscale">
+              <button type="submit" class="btn btn-outline-danger btn-sm">Reject grayscale</button>
+            </form>
+          </div>
+
+          {# Visual dedupe #}
+          <div class="mb-3">
+            <div class="small font-weight-bold text-muted mb-1">Visual dedupe</div>
+            <form method="POST" action="{% url 'ingestion_batch_detail' batch.id %}" class="form-row">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="dedupe_visual_similar">
+              <div class="col-md-3 mb-2">
+                <select name="dedupe_scope" class="form-control form-control-sm">
+                  <option value="pending_and_accepted">Pending + accepted</option>
+                  <option value="accepted_only">Accepted only (2nd pass)</option>
+                </select>
+              </div>
+              <div class="col-md-2 mb-2">
+                <input type="number" name="max_hamming" class="form-control form-control-sm" min="4" max="28" value="14" title="Hamming max (4–28)">
+              </div>
+              <div class="col-md-3 mb-2 d-flex align-items-center">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="dedupeDeleteAfter" name="delete_rejected_after" value="on">
+                  <label class="form-check-label small" for="dedupeDeleteAfter">Delete rejects after</label>
+                </div>
+              </div>
+              <div class="col-md-4 mb-2">
+                <button type="submit" class="btn btn-outline-warning btn-sm btn-block">Reject similar / duplicate crops</button>
+              </div>
+            </form>
+          </div>
+
+          {# Publish target #}
+          <div>
+            <div class="small font-weight-bold text-muted mb-1">Publish target folder</div>
+            <p class="small text-muted mb-2">Images copy to <code>{{ source_root_path }}/&lt;folder&gt;</code>. Set this <strong>before</strong> publishing.</p>
+            <form method="POST" action="{% url 'ingestion_batch_detail' batch.id %}">
+              {% csrf_token %}
+              <div class="form-row align-items-end">
+                <div class="col-md-2 mb-2">
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="destination_mode" id="destModeNew" value="new" {% if batch.destination_mode != 'existing' %}checked{% endif %}>
+                    <label class="form-check-label small" for="destModeNew">New folder</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="destination_mode" id="destModeExisting" value="existing" {% if batch.destination_mode == 'existing' %}checked{% endif %}>
+                    <label class="form-check-label small" for="destModeExisting">Existing</label>
+                  </div>
+                </div>
+                <div class="col-md-3 mb-2">
+                  <label class="small mb-0">New folder slug</label>
+                  <input type="text" name="destination_source_name" class="form-control form-control-sm" value="{{ batch.destination_source_name }}" placeholder="e.g. volcano">
+                </div>
+                <div class="col-md-3 mb-2">
+                  <label class="small mb-0">Or pick existing</label>
+                  <select name="selected_existing_source" class="form-control form-control-sm">
+                    <option value="">— choose —</option>
+                    {% for name in existing_sources %}
+                    <option value="{{ name }}" {% if batch.destination_mode == 'existing' and batch.destination_source_name|lower == name|lower %}selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-md-2 mb-2">
+                  <button type="submit" name="action" value="save_destination" class="btn btn-outline-secondary btn-sm btn-block">Save target</button>
+                </div>
+              </div>
+            </form>
+          </div>
+
+        </div>
+      </details>
+
+      {% comment %} FILTER ROW — unified, client-side (fast) {% endcomment %}
+      <div class="ix-filters" id="ixFilters">
+        <div class="ix-filter-group">
+          <label>Type</label>
+          <button type="button" class="ix-chip is-active" data-ext-chip="jpg">JPG</button>
+          <button type="button" class="ix-chip is-active" data-ext-chip="png">PNG</button>
+          <button type="button" class="ix-chip is-active" data-ext-chip="gif">GIF</button>
+          <button type="button" class="ix-chip is-active" data-ext-chip="webp">WEBP</button>
+          <button type="button" class="ix-chip is-active" data-ext-chip="other">OTHER</button>
+        </div>
+        <div class="ix-filter-slider">
+          <div class="ix-slider-label"><span>Min W</span><span id="ixMinWValue">0</span></div>
+          <input type="range" id="ixMinW" min="0" max="4000" step="50" value="0" title="Minimum image width in pixels" aria-label="Minimum width">
+        </div>
+        <div class="ix-filter-slider">
+          <div class="ix-slider-label"><span>Min H</span><span id="ixMinHValue">0</span></div>
+          <input type="range" id="ixMinH" min="0" max="4000" step="50" value="0" title="Minimum image height in pixels" aria-label="Minimum height">
+        </div>
+        <div class="ix-filter-group">
+          <label for="ixSort">Sort</label>
+          <select id="ixSort" class="form-control form-control-sm ix-w-auto" title="Sort images in the grid">
+            <option value="newest">Newest</option>
+            <option value="largest" selected>Largest</option>
+            <option value="host">Host</option>
+          </select>
+        </div>
+        <label class="ix-filter-toggle" for="ixHidePublished">
+          <input type="checkbox" id="ixHidePublished" checked>
+          Hide published
+        </label>
+        <div class="ix-filter-spacer"></div>
+        <div class="ix-visible-count" id="ixVisibleCount">0 / 0</div>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="ixSelectAll">Select all visible</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="ixInvert">Invert</button>
+      </div>
+
+      {% comment %} GRID — main content {% endcomment %}
+      <div class="ix-grid" id="ixGrid">
+        {% for row in items %}
+        {% with item=row.obj %}
+        <div class="ix-grid-card"
+             data-item-card="1"
+             data-item-id="{{ item.id }}"
+             data-kind="{{ item.media_kind }}"
+             data-host="{{ row.host }}"
+             data-width="{{ item.width }}"
+             data-height="{{ item.height }}"
+             data-pixels="{{ row.pixels }}"
+             data-ext="{{ row.ext|default:'other' }}"
+             data-decision="{{ item.decision }}"
+             data-inactive="{% if batch.status == 'published' and item.decision == 'accepted' %}1{% else %}0{% endif %}">
+          {% if row.is_image %}
+            <img src="{{ row.preview_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+          {% else %}
+            <div class="ix-grid-file-fallback">{{ item.media_kind|default:"file" }} · {{ row.ext|default:"" }}</div>
+          {% endif %}
+          <div class="ix-grid-badge">✓</div>
+          <a href="{{ row.preview_url }}" target="_blank" rel="noopener" class="ix-grid-open" title="Open original">↗</a>
+          <div class="ix-grid-meta">
+            <span class="ix-grid-size">{{ item.width }}×{{ item.height }}</span>
+            <span class="ix-grid-host" title="{{ row.host }}">{{ row.host|default:"—" }}</span>
+          </div>
+        </div>
+        {% endwith %}
+        {% endfor %}
+      </div>
+
+      {% if not items %}
+      <div class="ix-grid-empty">
+        No items yet. Start a campaign or paste a URL under <strong>Advanced tools → Paste a URL and scrape now</strong>.
+      </div>
+      {% endif %}
+
+      {# Pagination #}
+      {% if page_obj.has_other_pages %}
+      <div class="mt-3 d-flex align-items-center gap-2">
+        {% if page_obj.has_previous %}
+          <a class="btn btn-outline-secondary btn-sm" href="?page={{ page_obj.previous_page_number }}&decision_filter={{ filters.decision_filter }}&orientation_filter={{ filters.orientation_filter }}&color_filter={{ filters.color_filter }}&min_width={{ filters.min_width }}&min_height={{ filters.min_height }}">← Prev</a>
+        {% endif %}
+        <span class="text-muted">Page {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+          <a class="btn btn-outline-secondary btn-sm" href="?page={{ page_obj.next_page_number }}&decision_filter={{ filters.decision_filter }}&orientation_filter={{ filters.orientation_filter }}&color_filter={{ filters.color_filter }}&min_width={{ filters.min_width }}&min_height={{ filters.min_height }}">Next →</a>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% comment %}
+        HIDDEN ACTION FORMS — target of the sticky action bar.
+        Kept at the end of <body> so they don't interact with layout.
+        ALL field names match what the backend already accepts.
+      {% endcomment %}
+      <form id="ixBulkDecisionForm" method="POST" action="{% url 'ingestion_batch_detail' batch.id %}" class="d-none">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="bulk_decision">
+        <input type="hidden" name="scope" value="selected">
+        <input type="hidden" name="selected_ids" id="ixBulkDecisionIds">
+        <input type="hidden" name="decision" id="ixBulkDecisionValue">
+        <input type="hidden" name="decision_filter" value="{{ filters.decision_filter }}">
+        <input type="hidden" name="orientation_filter" value="{{ filters.orientation_filter }}">
+        <input type="hidden" name="color_filter" value="{{ filters.color_filter }}">
+        <input type="hidden" name="min_width" value="{{ filters.min_width }}">
+        <input type="hidden" name="min_height" value="{{ filters.min_height }}">
+      </form>
+      <form id="ixBulkDeleteForm" method="POST" action="{% url 'ingestion_batch_detail' batch.id %}" class="d-none">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="bulk_delete">
+        <input type="hidden" name="scope" value="selected">
+        <input type="hidden" name="selected_ids" id="ixBulkDeleteIds">
+        <input type="hidden" name="decision_filter" value="{{ filters.decision_filter }}">
+        <input type="hidden" name="orientation_filter" value="{{ filters.orientation_filter }}">
+        <input type="hidden" name="color_filter" value="{{ filters.color_filter }}">
+        <input type="hidden" name="min_width" value="{{ filters.min_width }}">
+        <input type="hidden" name="min_height" value="{{ filters.min_height }}">
+      </form>
+      <form id="ixPublishForm" method="POST" action="{% url 'ingestion_batch_detail' batch.id %}" class="d-none">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="publish_selected">
+        <input type="hidden" name="selected_ids" id="ixPublishIds">
+      </form>
+
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------------- State ----------------
+  const selection = new Set();
+  // Flat-grid UX: no decision filter. The grid shows every staged item
+  // (filtered only by type / size / published). The user curates by
+  // selecting → Delete or selecting → Publish selected.
+  const activeExts = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'other']);
+  let minW = 0, minH = 0;
+  let sortMode = 'largest';
+  let hidePublished = true;
+
+  // ---------------- Helpers --------------
+  const $ = (id) => document.getElementById(id);
+  const cards = () => Array.from(document.querySelectorAll('[data-item-card="1"]'));
+
+  document.querySelectorAll('[data-ext-chip]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const ext = chip.getAttribute('data-ext-chip');
+      const keys = ext === 'jpg' ? ['jpg', 'jpeg'] : [ext];
+      const hasAll = keys.every((k) => activeExts.has(k));
+      if (hasAll) keys.forEach((k) => activeExts.delete(k));
+      else keys.forEach((k) => activeExts.add(k));
+      chip.classList.toggle('is-active', !hasAll);
+      applyFilters();
+    });
+  });
+
+  const syncRange = (input, label) => {
+    input.addEventListener('input', () => {
+      label.textContent = String(input.value || '0');
+      if (input === $('ixMinW')) minW = Number(input.value || 0) || 0;
+      if (input === $('ixMinH')) minH = Number(input.value || 0) || 0;
+      applyFilters();
+    });
+  };
+  syncRange($('ixMinW'), $('ixMinWValue'));
+  syncRange($('ixMinH'), $('ixMinHValue'));
+
+  $('ixSort').addEventListener('change', (e) => {
+    sortMode = e.target.value;
+    applySort();
+  });
+
+  $('ixHidePublished').addEventListener('change', (e) => {
+    hidePublished = !!e.target.checked;
+    applyFilters();
+  });
+
+  // ---------------- Filtering ------------
+  function applyFilters() {
+    let visible = 0;
+    const total = cards().length;
+    cards().forEach((card) => {
+      const extRaw = (card.getAttribute('data-ext') || 'other').toLowerCase();
+      const ext = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'].includes(extRaw) ? extRaw : 'other';
+      const w = Number(card.getAttribute('data-width') || 0);
+      const h = Number(card.getAttribute('data-height') || 0);
+      const inactive = Number(card.getAttribute('data-inactive') || 0) === 1;
+
+      let ok = true;
+      if (hidePublished && inactive) ok = false;
+      if (ok) {
+        const passExt = ext === 'jpg' || ext === 'jpeg'
+          ? (activeExts.has('jpg') || activeExts.has('jpeg'))
+          : activeExts.has(ext);
+        if (!passExt) ok = false;
+      }
+      if (ok && (w < minW || h < minH)) ok = false;
+
+      card.style.display = ok ? '' : 'none';
+      // Selection state follows visibility: hidden cards drop out of
+      // selection so the sticky bar never tries to act on invisible rows.
+      if (!ok) {
+        const id = card.getAttribute('data-item-id');
+        selection.delete(id);
+      }
+      if (ok) visible += 1;
+    });
+    $('ixVisibleCount').textContent = `${visible} / ${total}`;
+    refreshSelectionUI();
+  }
+
+  function applySort() {
+    const grid = $('ixGrid');
+    const list = cards();
+    list.sort((a, b) => {
+      if (sortMode === 'largest') return Number(b.getAttribute('data-pixels') || 0) - Number(a.getAttribute('data-pixels') || 0);
+      if (sortMode === 'host') return String(a.getAttribute('data-host') || '').localeCompare(String(b.getAttribute('data-host') || ''));
+      return Number(b.getAttribute('data-item-id') || 0) - Number(a.getAttribute('data-item-id') || 0);
+    });
+    list.forEach((c) => grid.appendChild(c));
+  }
+
+  // ---------------- Selection ------------
+  function refreshSelectionUI() {
+    cards().forEach((card) => {
+      const id = card.getAttribute('data-item-id');
+      card.classList.toggle('is-selected', selection.has(id));
+    });
+    const n = selection.size;
+    $('ixSelbarCount').textContent = `${n} selected`;
+    $('ixSelbar').classList.toggle('is-visible', n > 0);
+  }
+
+  cards().forEach((card) => {
+    card.addEventListener('click', (e) => {
+      if (suppressClick) return;
+      if (e.target.closest('.ix-grid-open')) return;
+      const id = card.getAttribute('data-item-id');
+      if (selection.has(id)) selection.delete(id);
+      else selection.add(id);
+      refreshSelectionUI();
+    });
+  });
+
+  $('ixSelectAll').addEventListener('click', () => {
+    cards().forEach((card) => {
+      if (card.style.display !== 'none') {
+        selection.add(card.getAttribute('data-item-id'));
+      }
+    });
+    refreshSelectionUI();
+  });
+  $('ixInvert').addEventListener('click', () => {
+    cards().forEach((card) => {
+      if (card.style.display === 'none') return;
+      const id = card.getAttribute('data-item-id');
+      if (selection.has(id)) selection.delete(id);
+      else selection.add(id);
+    });
+    refreshSelectionUI();
+  });
+  $('ixSelClear').addEventListener('click', () => {
+    selection.clear();
+    refreshSelectionUI();
+  });
+
+  // ---------------- Marquee --------------
+  let marqueeBox = null, marqueeStart = null, suppressClick = false;
+  const gridRoot = $('ixGrid');
+  const rectHit = (a, b) => !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
+  function endMarquee(e) {
+    if (!marqueeStart || !marqueeBox) return;
+    const r = marqueeBox.getBoundingClientRect();
+    if (r.width > 4 && r.height > 4) {
+      suppressClick = true;
+      cards().forEach((card) => {
+        if (card.style.display === 'none') return;
+        if (rectHit(r, card.getBoundingClientRect())) {
+          selection.add(card.getAttribute('data-item-id'));
+        }
+      });
+      refreshSelectionUI();
+      setTimeout(() => { suppressClick = false; }, 0);
+    }
+    if (marqueeBox.parentNode) marqueeBox.parentNode.removeChild(marqueeBox);
+    marqueeBox = null; marqueeStart = null;
+    document.body.style.userSelect = '';
+  }
+  document.addEventListener('pointerdown', (e) => {
+    if (!e.altKey || e.button !== 0 || !gridRoot.contains(e.target)) return;
+    marqueeStart = { x: e.clientX, y: e.clientY };
+    marqueeBox = document.createElement('div');
+    marqueeBox.className = 'ix-marquee';
+    Object.assign(marqueeBox.style, { left: e.clientX + 'px', top: e.clientY + 'px', width: '0px', height: '0px' });
+    document.body.appendChild(marqueeBox);
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  document.addEventListener('pointermove', (e) => {
+    if (!marqueeStart || !marqueeBox) return;
+    const x1 = Math.min(marqueeStart.x, e.clientX), y1 = Math.min(marqueeStart.y, e.clientY);
+    const w = Math.abs(e.clientX - marqueeStart.x), h = Math.abs(e.clientY - marqueeStart.y);
+    Object.assign(marqueeBox.style, { left: x1 + 'px', top: y1 + 'px', width: w + 'px', height: h + 'px' });
+  });
+  document.addEventListener('pointerup', endMarquee);
+  document.addEventListener('pointercancel', endMarquee);
+
+  // ---------------- Action bar wiring ----
+  // Bulk accept/reject/delete now go through the JSON endpoint
+  // /ingestion/<id>/bulk-ajax/ so they don't trigger a full page
+  // rebuild of up to 180 cards after every click. The classic
+  // form-POST path is still wired (hidden forms below) as a fallback
+  // for clients with JS disabled.
+  const AJAX_ENDPOINT = "{% url 'ingestion_batch_bulk_ajax' batch.id %}";
+  function csrfToken() {
+    const el = document.querySelector('[name=csrfmiddlewaretoken]');
+    return el ? el.value : '';
+  }
+  function setBtnBusy(btn, busy) {
+    if (!btn) return;
+    btn.disabled = !!busy;
+    btn.style.opacity = busy ? '0.6' : '';
+  }
+  async function bulkAction(action, ids) {
+    const fd = new FormData();
+    fd.append('action', action);
+    fd.append('ids', ids.join(','));
+    fd.append('csrfmiddlewaretoken', csrfToken());
+    const res = await fetch(AJAX_ENDPOINT, {
+      method: 'POST',
+      body: fd,
+      credentials: 'same-origin',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }
+  function cardFor(id) {
+    return document.querySelector('.ix-grid-card[data-item-id="' + id + '"]');
+  }
+  function removeCard(id) {
+    const card = cardFor(id);
+    if (card) card.remove();
+  }
+  async function runBulk(action, opts) {
+    const btn = opts && opts.btn ? opts.btn : null;
+    const ids = Array.from(selection);
+    if (!ids.length) { alert('Select something first.'); return; }
+    // Flat-grid UX only calls this with action === 'delete'. The
+    // accept/reject branches are gone because the grid no longer
+    // expresses decision state visually.
+    if (action === 'delete' && !confirm(`Delete ${ids.length} item(s)? Staged files are removed and these images will not return on future campaign runs.`)) return;
+    setBtnBusy(btn, true);
+    try {
+      const data = await bulkAction(action, ids);
+      if (!data.ok) throw new Error(data.error || 'server error');
+      if (action === 'delete') {
+        ids.forEach(removeCard);
+      }
+      selection.clear();
+      refreshSelectionUI();
+      applyFilters();
+      // Kick the status watcher so counts refresh immediately instead of
+      // waiting for the next poll tick.
+      if (typeof pollStatus === 'function') pollStatus();
+    } catch (err) {
+      console.error('[ix] bulk action failed', err);
+      alert('Bulk ' + action + ' failed: ' + (err && err.message || err));
+    } finally {
+      setBtnBusy(btn, false);
+    }
+  }
+  $('ixSelDelete').addEventListener('click', (e) => runBulk('delete', { btn: e.currentTarget }));
+  $('ixSelPublish').addEventListener('click', () => {
+    // "nothing selected" → do nothing. No confirmation, no page reload.
+    const ids = Array.from(selection);
+    if (!ids.length) return;
+    if (!confirm('Publish ' + ids.length + ' image(s) to the destination folder?')) return;
+    $('ixPublishIds').value = ids.join(',');
+    $('ixPublishForm').submit();
+  });
+
+  // ---------------- Panel toggles --------
+  $('ixToggleCampaignPanel').addEventListener('click', () => {
+    $('ixCampaignPanel').open = !$('ixCampaignPanel').open;
+  });
+  $('ixToggleAdvanced').addEventListener('click', () => {
+    $('ixAdvancedPanel').open = !$('ixAdvancedPanel').open;
+  });
+
+  const copyBtn = $('ixCopyRunReport');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      const report = $('ixReport');
+      const txt = report ? (report.textContent || '').trim() : '';
+      if (!txt) return;
+      try {
+        await navigator.clipboard.writeText(txt);
+        const prev = copyBtn.textContent;
+        copyBtn.textContent = 'Copied';
+        setTimeout(() => { copyBtn.textContent = prev || 'Copy report'; }, 1000);
+      } catch (_) {
+        alert('Clipboard copy failed.');
+      }
+    });
+  }
+
+  // ---------------- Seed refresh ---------
+  (function wireSeedRefresh() {
+    const btn = document.querySelector('.js-seed-refresh');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      const endpoint = btn.getAttribute('data-seed-endpoint');
+      if (!endpoint) return;
+      btn.disabled = true;
+      const label = btn.querySelector('.js-seed-refresh-label');
+      const orig = label ? label.textContent : '';
+      if (label) label.textContent = '...';
+      try {
+        const vs = Math.floor(Math.random() * 2147483647);
+        const res = await fetch(endpoint + '?vs=' + vs, {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          credentials: 'same-origin',
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const wrap = document.querySelector('.js-seed-preview-wrap');
+        const empty = document.querySelector('.js-seed-empty');
+        const img = document.querySelector('.js-seed-img');
+        const link = document.querySelector('.js-seed-link');
+        const caption = document.querySelector('.js-seed-caption');
+        if (data.url) {
+          if (img) img.src = data.url;
+          if (link) link.href = data.url;
+          if (caption) caption.textContent = data.caption || '';
+          if (wrap) wrap.style.display = '';
+          if (empty) empty.style.display = 'none';
+        } else {
+          if (wrap) wrap.style.display = 'none';
+          if (empty) { empty.textContent = data.caption || 'No seed.'; empty.style.display = ''; }
+        }
+        // Keep the "▶ Run cycle now" form pinned to the seed the
+        // operator is currently looking at. Only http/https URLs can
+        // actually be used as a Yandex CBIR seed — folder-local
+        // previews (kind === 'folder_local_only') are stripped so we
+        // don't POST a URL Yandex cannot fetch.
+        const pinInput = document.getElementById('ixPinnedSeedUrl');
+        if (pinInput) {
+          pinInput.value = (typeof data.pin_url === 'string') ? data.pin_url : '';
+        }
+        document.querySelectorAll('.js-pinned-preview-vs').forEach((el) => {
+          el.value = String(vs);
+        });
+      } catch (err) {
+        console.error('seed refresh failed', err);
+      } finally {
+        btn.disabled = false;
+        if (label) label.textContent = orig || 'Refresh';
+      }
+    });
+  })();
+
+  // ---------------- Live campaign watcher ----
+  const statusUrl = document.querySelector('.ix-header').getAttribute('data-status-url');
+  async function pollStatus() {
+    try {
+      const res = await fetch(statusUrl, { credentials: 'same-origin' });
+      if (!res.ok) return;
+      const data = await res.json();
+      const pill = $('ixStatusPill');
+      const label = $('ixStatusLabel');
+      pill.classList.toggle('ix-pill-running', data.running);
+      pill.classList.toggle('ix-pill-stopped', !data.running);
+      label.textContent = data.running ? 'Campaign running' : 'Campaign stopped';
+      $('ixFolderCount').textContent = data.destination_file_count;
+      // Candidate count = non-rejected staged rows. The backend already
+      // exposes this as counts.queue; we surface it as the only live
+      // counter because the flat UI has no per-decision breakdown.
+      const candEl = $('ixCandidateCount');
+      if (candEl && data.counts && data.counts.queue != null) {
+        candEl.textContent = String(data.counts.queue);
+      }
+      $('ixProgressFill').style.width = data.progress_pct + '%';
+      $('ixProgressPct').textContent = data.progress_pct + '%';
+      $('ixRunsCount').textContent = data.runs_count;
+      if (data.last_status) $('ixLastStatus').textContent = data.last_status;
+      if (data.last_report) $('ixReport').textContent = data.last_report;
+    } catch (_) { /* swallow — next tick will retry */ }
+  }
+  // Immediate populate so the first counts don't show "—".
+  pollStatus();
+  // Poll every 4s when running, every 15s when idle. Keeps DB pressure
+  // low on dormant batches while still refreshing an active campaign
+  // fast enough to feel live.
+  setInterval(() => {
+    const running = $('ixStatusPill').classList.contains('ix-pill-running');
+    if (running) pollStatus();
+  }, 4000);
+  setInterval(pollStatus, 15000);
+
+  // ---------------- Initial render -------
+  applyFilters();
+  applySort();
+  refreshSelectionUI();
+})();
+</script>
+{% endblock %}

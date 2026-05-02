@@ -1,0 +1,1094 @@
+import os
+import boto3
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.auth.models import User
+from django.contrib.auth import login, authenticate,logout
+from django.core.paginator import Paginator
+from django.core.files.base import ContentFile
+from django.conf import settings
+from django.core.files.storage import default_storage
+from .models import Composition, Profile, S3Bucket, Bucket,VideoComposition, BackgroundImage, ForegroundImage
+from .video_processing import create_final_video, create_final_videoNew,combine_video_with_audio,merge_images_tunnel,create_video_ffmpegNew
+import ffmpeg
+from django.core.files import File
+from django.core.files.temp import NamedTemporaryFile
+from PIL import Image, UnidentifiedImageError
+from ajax_datatable.views import AjaxDatatableView
+from .forms import BucketForm,CompositionForm
+from botocore.exceptions import ClientError,BotoCoreError,NoCredentialsError
+import uuid
+import re
+import json
+from django.views.decorators.csrf import csrf_exempt
+from django.db import transaction
+from moviepy.editor import ImageSequenceClip ,VideoFileClip, ImageClip, CompositeVideoClip,AudioFileClip, concatenate_videoclips
+import moviepy.editor as mp
+import random
+import string
+from datetime import datetime
+import subprocess
+from celery_app import classic_task
+
+
+try:
+    from PIL import ImageResampling  # For newer Pillow versi ons
+    RESAMPLING_METHOD = ImageResampling.LANCZOS
+except ImportError:
+    RESAMPLING_METHOD = Image.LANCZOS  # Fallback for older versions
+
+# Initialize S3 Client
+s3 = boto3.client('s3')
+BUCKET_NAME = "composition-final"  # Replace with your actual bucket name
+#S3_FOLDER = "classic-musical/"  # Default S3 folder for uploads
+
+# Ensure media directories exist
+UPLOAD_DIR = "media/uploads/"
+VIDEO_DIR = "media/videos/"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(VIDEO_DIR, exist_ok=True)
+
+def create_video(request):
+    if request.method == "POST" and request.FILES:
+        background_images = request.FILES.getlist("background")
+        foreground_images = request.FILES.getlist("foreground")
+        audio_file = request.FILES.get("audio")
+
+        # Create a VideoComposition object
+        video_comp = VideoComposition(audio=audio_file)
+        video_comp.save()
+
+        # Save background images
+        bg_paths = []
+        for bg in background_images:
+            bg_obj = BackgroundImage(video=video_comp, image=bg)
+            bg_obj.save()
+            bg_paths.append(bg_obj.image.path)
+
+        # Save foreground images
+        fg_paths = []
+        for fg in foreground_images:
+            fg_obj = ForegroundImage(video=video_comp, image=fg)
+            fg_obj.save()
+            fg_paths.append(fg_obj.image.path)
+
+        # Define video duration per image
+        duration = 0.5  # Set duration per image
+        bg_clips = [ImageClip(bg).set_duration(duration).resize((1280, 720)) for bg in bg_paths]
+        fg_clips = [ImageClip(fg).set_duration(duration).resize((400, 300)).set_position(("center", "center")) for fg in fg_paths]
+
+        # Concatenate clips
+        final_bg_clip = concatenate_videoclips(bg_clips, method="compose")
+        final_fg_clip = concatenate_videoclips(fg_clips, method="compose")
+
+        # Merge background and foreground
+        final_clip = CompositeVideoClip([final_bg_clip, final_fg_clip])
+
+        # Add audio if available
+        if audio_file:
+            audio_path = video_comp.audio.path
+            audio = AudioFileClip(audio_path).set_duration(final_clip.duration)
+            final_clip = final_clip.set_audio(audio)
+
+        # Export final video
+        output_video_path = os.path.join(VIDEO_DIR, f"output_{video_comp.id}.mp4")
+        final_clip.write_videofile(output_video_path, fps=24)
+
+        # Save the output video path
+        video_comp.output_video.name = f"videos/output_{video_comp.id}.mp4"
+        video_comp.save()
+
+        return render(request, "admin/upload_file.html", {"video_path": video_comp.output_video.url})
+
+    return render(request, "admin/upload_file.html")
+
+# Initialize S3 Client
+aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+aws_region = os.getenv("AWS_S3_REGION_NAME", "us-east-1")
+
+if not aws_access_key or not aws_secret_key:
+    raise ValueError("AWS credentials not found!")
+
+s3 = boto3.client(
+    "s3",
+    aws_access_key_id=aws_access_key,
+    aws_secret_access_key=aws_secret_key,
+    region_name=aws_region,
+)
+
+def is_valid_bucket_name(bucket_name):
+    """Check if the S3 bucket name follows AWS naming rules"""
+    return bool(re.match(r'^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$', bucket_name))
+
+@staff_member_required
+def create_bucket(request):
+    """Create a new S3 bucket, save metadata locally, and upload metadata to S3"""
+    if request.method == "POST":
+        form = BucketForm(request.POST)
+        if form.is_valid():
+            bucket = form.save()  # Save locally
+            
+            # ✅ Format bucket name (must be unique, lowercase, no spaces)
+            new_bucket_name = bucket.name.lower().replace(" ", "-")
+
+            # ✅ Create the new S3 bucket (Check if region is us-east-1)
+            try:
+                if settings.AWS_S3_REGION_NAME == "us-east-1":
+                    s3.create_bucket(Bucket=new_bucket_name)
+                else:
+                    s3.create_bucket(
+                        Bucket=new_bucket_name,
+                        CreateBucketConfiguration={"LocationConstraint": settings.AWS_S3_REGION_NAME}
+                    )
+                
+                messages.success(request, f"S3 Bucket '{new_bucket_name}' created successfully!")
+            except ClientError as e:
+                error_code = e.response["Error"]["Code"]
+                if error_code == "BucketAlreadyOwnedByYou":
+                    messages.warning(request, f"Bucket '{new_bucket_name}' already exists.")
+                elif error_code == "BucketAlreadyExists":
+                    messages.error(request, f"Bucket name '{new_bucket_name}' is already taken by another user. Try a different name.")
+                else:
+                    messages.error(request, f"Error creating S3 bucket: {e}")
+                # ✅ Step 1: Disable "Block Public Access" for the bucket
+            try:
+                s3.put_public_access_block(
+                    Bucket=new_bucket_name,
+                    PublicAccessBlockConfiguration={
+                        "BlockPublicAcls": False,
+                        "IgnorePublicAcls": False,
+                        "BlockPublicPolicy": False,
+                        "RestrictPublicBuckets": False
+                    }
+                )
+                messages.success(request, f"Disabled 'Block Public Access' for '{new_bucket_name}'!")
+            except ClientError as e:
+                messages.error(request, f"Error disabling Block Public Access: {e}")
+                return redirect("list_buckets")
+
+            # ✅ Step 2: Apply Public Read Bucket Policy
+            bucket_policy = {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "PublicReadGetObject",
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3:GetObject",
+                        "Resource": f"arn:aws:s3:::{new_bucket_name}/*"
+                    }
+                ]
+            }
+
+            try:
+                s3.put_bucket_policy(
+                    Bucket=new_bucket_name,
+                    Policy=json.dumps(bucket_policy)  # ✅ Correct JSON format
+                )
+                messages.success(request, f"Public access enabled for '{new_bucket_name}'!")
+            except ClientError as e:
+                messages.error(request, f"Error setting bucket policy: {e}")
+                return redirect("list_buckets")
+
+            return redirect("list_buckets")    
+                #return redirect("list_buckets")
+
+            
+
+            # ✅ Upload metadata to the new S3 bucket
+            bucket_data = f"""
+            Name: {bucket.name}
+            Type: {bucket.type}
+            Source ID: {bucket.source_id}
+            Last Scraped: {bucket.last_scraped}
+            Query No: {bucket.query_no}
+            Initial: {bucket.initial}
+            Max Num: {bucket.max_num}
+            """
+            
+           # return redirect("list_buckets")
+    else:
+        form = BucketForm()
+
+    return render(request, "admin/new-source.html", {"form": form})
+
+### S3 Bucket Management
+
+def list_buckets(request):
+    """ List all S3 buckets """
+    buckets = s3.list_buckets()["Buckets"]
+    return render(request, 'admin/s3_buckets.html', {'buckets': buckets})
+
+def bucket_contents(request, bucket_name):
+    """ Get contents of a selected bucket """
+    objects = s3.list_objects_v2(Bucket=bucket_name).get("Contents", [])
+    return render(request, 'admin/bucket_contents.html', {'objects': objects, 'bucket_name': bucket_name})
+
+@csrf_exempt
+def upload_file(request, bucket_name):
+    """ Upload file to a selected S3 bucket """
+    if request.method == "POST":
+        print("POST request received")  # ✅ Debugging
+        print("FILES:", request.FILES)  # ✅ Debugging
+
+        if not request.FILES.get("file"):
+            print("⚠ No file found in request.FILES!")  # ✅ Debugging
+            messages.error(request, "No file selected!")
+            return redirect("bucket_contents", bucket_name=bucket_name)
+
+        file = request.FILES["file"]
+        print(f"✅ Uploading {file.name} to S3 bucket: {bucket_name}")  # ✅ Debugging
+
+        try:
+            file_data = file.read()
+            s3.put_object(
+                Bucket=bucket_name,
+                Key=file.name,
+                Body=file_data,
+                ContentType=file.content_type,  # ✅ Ensure correct MIME type
+            )
+            messages.success(request, f"File '{file.name}' uploaded to bucket '{bucket_name}' successfully!")
+            print(f"✅ File '{file.name}' uploaded successfully!")  # ✅ Debugging
+        except ClientError as e:
+            print(f"❌ Error uploading file: {e}")  # ✅ Debugging
+            messages.error(request, f"Error uploading file: {e}")
+            return redirect("bucket_contents", bucket_name=bucket_name)
+
+        return redirect("bucket_contents", bucket_name=bucket_name)
+
+    return render(request, "admin/upload.html", {"bucket_name": bucket_name})
+
+
+
+class S3BucketAjaxView(AjaxDatatableView):
+    model = S3Bucket
+    initial_order = [["created_at", "desc"]]
+
+    column_defs = [
+        {"name": "id", "title": "ID"},
+        {"name": "name", "title": "Bucket Name"},
+        {"name": "created_at", "title": "Created At"},
+    ]
+
+### **User Registration & Authentication**
+
+def register(request):
+    if request.method == "POST":
+        email = request.POST["email"]
+        username = request.POST["username"]
+        password = request.POST["password"]
+        confirm_password = request.POST["confirm_password"]
+
+        if password != confirm_password:
+            messages.error(request, "Passwords do not match!")
+            return redirect("register")
+
+        if User.objects.filter(username=username).exists():
+            messages.error(request, "Username already taken!")
+            return redirect("register")
+
+        if User.objects.filter(email=email).exists():
+            messages.error(request, "Email already registered!")
+            return redirect("register")
+
+        user = User.objects.create_user(username=username, email=email, password=password)
+        Profile.objects.get_or_create(user=user)
+        messages.success(request, "Account created successfully! You can now log in.")
+        return redirect("login")
+
+    return render(request, "register.html")
+
+### **Admin & Composition Management**
+
+def home(request):
+    return render(request, 'home.html')
+
+def service(request):
+    return render(request, 'service-detail.html')
+
+def portfolio(request):
+    return render(request, 'profile-detail.html')
+
+def admin_login(request):
+    if request.method == "POST":
+        username = request.POST["username"]
+        password = request.POST["password"]
+        user = authenticate(request, username=username, password=password)
+
+        if user is not None and user.is_staff:
+            login(request, user)
+            Profile.objects.get_or_create(user=user)
+            return redirect("admin-dashboard")
+        else:
+            messages.error(request, "Invalid admin credentials!")
+            return redirect("admin-login")
+
+    return render(request, "admin/admin_login.html")
+
+@staff_member_required
+def admin_dashboard(request):
+    return render(request, "admin/dashboard.html")
+
+def convert_media_to_video(media_files, output_path, fps=24, duration_per_frame=2):
+    """
+    Converts a mix of images, GIFs, and videos into a video sequence.
+    Each image is displayed for 1 second, and each frame of a video is displayed for 0.5 seconds.
+    """
+    clips = []
+
+    for file in media_files:
+        if file.lower().endswith((".mp4", ".mov", ".avi", ".mkv", ".gif")):
+            video_clip = VideoFileClip(file)
+            video_clip = video_clip.set_fps(2)  # 0.5 seconds per frame (2 FPS)
+            clips.append(video_clip)
+        else:
+            img_clip = ImageSequenceClip([file], durations=[1])  # 1 second per image
+            clips.append(img_clip)
+
+    if not clips:
+        return None
+
+    final_clip = concatenate_videoclips(clips, method="compose")
+    final_clip.write_videofile(output_path, fps=fps)
+    
+    return output_path
+
+def ensure_even_dimensions(img):
+    """Ensure image dimensions are even for FFmpeg compatibility."""
+    width, height = img.size
+    new_width = width if width % 2 == 0 else width + 1
+    new_height = height if height % 2 == 0 else height + 1
+    
+    if (width, height) != (new_width, new_height):
+        img = img.resize((new_width, new_height), RESAMPLING_METHOD)
+    
+    return img
+
+def is_valid_image(file_path):
+    """Check if the file is a valid image format."""
+    try:
+        with Image.open(file_path) as img:
+            img.verify()  # Verify if it's an actual image
+        return True
+    except (IOError, UnidentifiedImageError):
+        return False  # Not a valid image
+
+def merge_images(left_files, right_files, output_folder):
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    
+    left_files = [f for f in left_files if is_valid_image(f)]
+    right_files = [f for f in right_files if is_valid_image(f)]
+    
+    merged_image_paths = []
+    for i, (left_path, right_path) in enumerate(zip(left_files, right_files)):
+        left_img = Image.open(left_path).convert("RGB")
+        right_img = Image.open(right_path).convert("RGB")
+        
+        left_crop = left_img.crop((left_img.width // 2, 0, left_img.width, left_img.height))
+        right_crop = right_img.crop((0, 0, right_img.width // 2, right_img.height))
+        
+        merged_img = Image.new('RGB', (left_crop.width + right_crop.width, left_img.height))
+        merged_img.paste(left_crop, (0, 0))
+        merged_img.paste(right_crop, (left_crop.width, 0))
+        
+        merged_img = ensure_even_dimensions(merged_img)
+        merged_img_path = os.path.join(output_folder, f"merged_{i:03d}.png")  
+        merged_img.save(merged_img_path)
+        merged_image_paths.append(merged_img_path)
+    
+    return merged_image_paths
+
+def create_video_ffmpeg(image_folder, output_video, fps=1):
+    files = sorted([f for f in os.listdir(image_folder) if f.endswith('.png')])
+    
+    if not files:
+        print("❌ No images found in merged folder. Exiting.")
+        return None  # Return None if no images exist
+    
+    command = [
+        "ffmpeg", "-y", "-framerate", str(fps), "-i", os.path.join(image_folder, "merged_%03d.png"),
+        "-vf", "format=yuv420p", "-c:v", "libx264", "-r", "30", "-movflags", "+faststart", output_video
+    ]
+    
+    result = subprocess.run(command, capture_output=True, text=True)
+    
+    if result.returncode == 0:
+        print(f"✅ Video created successfully: {output_video}")
+        return output_video
+    else:
+        print("❌ Error creating video. FFmpeg output:")
+        print(result.stderr)
+        return None  # Return None if video creation fails
+   
+@staff_member_required
+def add_composition(request):
+    # Define paths for downloaded images & videos 
+    TEMP_BG_FOLDER = "media/temp_s3_back_files"
+    TEMP_FG_FOLDER = "media/temp_s3_fore_files"
+    VIDEO_DIR = "media/videos"
+    TEMP_IMAGE_FOLDER = "media/temp_images"
+    THUMBNAIL_DIR = "static/composition_thumbnails"
+    AUDIO_DIR = "media/audio"
+    MERGED_IMAGE_DIR = "media/merged_images"
+
+    # Ensure necessary directories exist
+    os.makedirs(TEMP_BG_FOLDER, exist_ok=True)
+    os.makedirs(TEMP_FG_FOLDER, exist_ok=True)
+    os.makedirs(VIDEO_DIR, exist_ok=True)
+    os.makedirs(THUMBNAIL_DIR, exist_ok=True)
+    os.makedirs(AUDIO_DIR, exist_ok=True)
+    os.makedirs(MERGED_IMAGE_DIR, exist_ok=True)
+    os.makedirs(TEMP_IMAGE_FOLDER, exist_ok=True)
+
+    # Fetch all bucket names from the database
+    local_buckets = Bucket.objects.values_list('name', flat=True)
+
+    # Fetch all existing S3 buckets from AWS
+    try:
+        s3_buckets = s3.list_buckets()["Buckets"]
+        s3_bucket_names = [bucket["Name"] for bucket in s3_buckets]
+    except ClientError as e:
+        messages.error(request, f"Error fetching S3 buckets: {e}")
+        s3_bucket_names = []
+
+    # Filter only matching buckets
+    matching_buckets = list(set(local_buckets) & set(s3_bucket_names))
+    print("✅ S3 Buckets:", matching_buckets)
+   
+    if request.method == "POST":
+        if request.POST.get("type") == "classic":
+            # Retrieve form data
+            if request.POST.get("source_type") == "s3":
+                selected_type = request.POST.get("type")  # classic, tunnel, right-to-left, left-to-right
+                selected_background_bucket = request.POST.get("background_sources1")
+                selected_foreground_bucket = request.POST.get("foreground_sources1")
+                audio_file = request.FILES.get("audio_file")
+                
+                 # ✅ Save Audio File
+                if audio_file:
+                    audio_path = os.path.join(AUDIO_DIR, audio_file.name)
+                    with open(audio_path, "wb") as f:
+                        for chunk in audio_file.chunks():
+                            f.write(chunk)  # ✅ Save audio file
+                            
+                            
+                classic_task.delay(selected_background_bucket, selected_foreground_bucket, audio_file);
+
+                messages.success(request, "Composition added successfully!")
+                return redirect("composition-view")
+            
+            #Uploads
+            else:
+               selected_type = request.POST.get("upload")
+
+
+            # Retrieve files from request
+            stype = request.POST.get("type")
+            background_video = request.FILES.get("background_video")
+            foreground_video = request.FILES.get("foreground_video")
+            audio_file = request.FILES.get("audio_file")
+
+            # Debugging print
+            print(f"Background Video: {background_video}, Foreground Video: {foreground_video}, Audio : {audio_file}")
+
+            # Validate required files
+            if not background_video or not foreground_video:
+                messages.error(request, "Error: Missing background or foreground video.")
+                return redirect("composition-add")
+
+            if not audio_file:
+                messages.error(request, "Error: No audio file uploaded.")
+                return redirect("composition-add")
+
+            # Generate unique filename
+            def generate_auto_name():
+                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+                return f"composition_{timestamp}_{random_str}"
+
+            auto_name = generate_auto_name()
+
+            # Save files to disk
+            background_path = os.path.join(VIDEO_DIR, background_video.name)
+            print("Video Bc" , background_path)
+            foreground_path = os.path.join(VIDEO_DIR, foreground_video.name)
+            print("Video Fc" , foreground_path)
+            audio_path = os.path.join(AUDIO_DIR, audio_file.name)
+
+            
+
+            with open(background_path, "wb") as f:
+                f.write(background_video.read())
+
+            with open(foreground_path, "wb") as f:
+                f.write(foreground_video.read())
+
+            with open(audio_path, "wb") as f:
+                f.write(audio_file.read())
+
+            # Define Output Path
+            output_path = f"{VIDEO_DIR}/{auto_name}.mp4"
+            video_filename = f"{auto_name}.mp4"
+
+            # ✅ Pass file paths (strings) instead of TemporaryUploadedFile objects
+            combine_video_with_audio(background_path, foreground_path, audio_path, output_path)
+
+            # Generate Thumbnail
+            thumbnail_path = os.path.join(THUMBNAIL_DIR, f"thumbnail_{auto_name}.jpg")
+            generate_video_thumbnail(output_path, thumbnail_path)
+
+            if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+                    messages.error(request, f"Error: Final video not found or empty at {output_path}")
+                    return redirect("composition-add")
+
+            s3_key = f"{os.path.basename(output_path)}"
+
+            try:
+                    with open(output_path, "rb") as video_file:
+                        s3.upload_fileobj(video_file, BUCKET_NAME, s3_key)
+
+                    # ✅ Construct Public S3 URL
+                    s3_video_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{s3_key}"
+                    print(f"✅ S3 Upload Successful: {s3_video_url}")
+
+            except (BotoCoreError, ClientError) as e:
+                    print(f"❌ S3 Upload Failed: {e}")
+                    messages.error(request, f"Error uploading video to S3: {e}")
+                    return redirect("composition-add")
+
+            # Save Composition in Database
+            Composition.objects.create(
+                name=auto_name,
+                type=stype,
+                background_video=background_path,
+                foreground_video=foreground_path,
+                audio_file=audio_path,
+                final_video=video_filename,
+                img=thumbnail_path,
+                status="processing"
+            )
+
+            messages.success(request, "Composition added successfully!")
+            return redirect("composition-view")
+
+                
+            
+            # LEFT  TO RIGHT
+        elif request.POST.get("type") == "left-to-right":
+            
+            selected_background_bucket = request.POST.get("background_sources1")
+            selected_foreground_bucket = request.POST.get("foreground_sources1")
+            
+
+            if not selected_background_bucket or not selected_foreground_bucket:
+                messages.error(request, "❌ Please select background and foreground sources.")
+                return redirect("composition-add")
+
+            downloaded_bg_files = []
+            downloaded_fg_files = []
+
+            for bucket in matching_buckets:
+                try:
+                    response = s3.list_objects_v2(Bucket=bucket)
+                    if "Contents" not in response:
+                        print(f"⚠️ No files found in bucket: {bucket}")
+                        continue  # Skip empty buckets
+
+                    for obj in response["Contents"]:
+                        file_key = obj["Key"]
+                        print(f"🔍 Found file: {file_key} in bucket: {bucket}")
+
+                        # Assume first half of images are backgrounds, second half are foregrounds
+                        if len(downloaded_bg_files) <= len(downloaded_fg_files):
+                            file_path = os.path.join(TEMP_BG_FOLDER, os.path.basename(file_key))
+                            s3.download_file(bucket, file_key, file_path)
+                            downloaded_bg_files.append(file_path)
+                        else:
+                            file_path = os.path.join(TEMP_FG_FOLDER, os.path.basename(file_key))
+                            s3.download_file(bucket, file_key, file_path)
+                            downloaded_fg_files.append(file_path)
+
+                except ClientError as e:
+                    print(f"❌ Error fetching files from bucket {bucket}: {e}")
+                    continue  # Skip this bucket if there's an error
+            
+            if not downloaded_bg_files or not downloaded_fg_files:
+                messages.error(request, "❌ No valid background or foreground images found.")
+                return redirect("composition-add")
+
+            # ✅ Merge Images Left-to-Right
+            merged_images = merge_images(downloaded_bg_files, downloaded_fg_files, MERGED_IMAGE_DIR)
+
+            if not merged_images:
+                messages.error(request, "❌ Failed to merge images.")
+                return redirect("composition-add")
+
+            def generate_auto_name():
+                    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")  # Get current timestamp
+                    random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=6))  # Random 6-character string
+                    return f"composition_{timestamp}_{random_str}"
+
+            auto_name = generate_auto_name()
+
+            # ✅ Create Video from Merged Images
+            output_path = os.path.join(VIDEO_DIR, f"{auto_name}.mp4")
+            video_filename = f"{auto_name}.mp4"
+            output_video = create_video_ffmpeg(MERGED_IMAGE_DIR, output_path, fps=1)
+
+            if not output_video or not os.path.exists(output_video) or os.path.getsize(output_video) == 0:
+                messages.error(request, "❌ Final video not found or empty.")
+                return redirect("composition-add")
+
+            # ✅ Generate Thumbnail
+            thumbnail_path = os.path.join(THUMBNAIL_DIR, f"thumbnail_{auto_name}.jpg")
+            generate_video_thumbnail(output_video, thumbnail_path)
+
+           
+
+            s3_key = f"{os.path.basename(output_path)}"
+
+            try:
+                with open(output_path, "rb") as video_file:
+                    s3.upload_fileobj(video_file, BUCKET_NAME, s3_key)
+
+                # ✅ Construct the public S3 URL
+                s3_video_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{s3_key}"
+                print(f"✅ S3 Upload Successful: {s3_video_url}")
+
+            except (BotoCoreError, ClientError) as e:
+                print(f"❌ S3 Upload Failed: {e}")
+                messages.error(request, f"Error uploading video to S3: {e}")
+                return redirect("composition-add")
+
+            # ✅ Save Composition in Database
+            Composition.objects.create(
+                name=auto_name,
+                type="left-to-right",
+                background_video=output_video,
+                foreground_video=output_video,
+                final_video=video_filename,
+                img=thumbnail_path,
+                status="processing"
+            )
+
+            messages.success(request, "🎉 Composition added successfully!")
+            return redirect("composition-view")
+            
+             #Tunnel  Buckets
+        elif request.POST.get("type") == "tunnel":
+            print("🚀 Processing Tunnel Composition...")
+
+            selected_background_buckets = request.POST.getlist("background_sources1")
+            if not selected_background_buckets:
+                print("❌ No S3 bucket selected.")
+                return
+
+            downloaded_images = []
+
+            for bucket in selected_background_buckets:
+                try:
+                    response = s3.list_objects_v2(Bucket=bucket)
+                    if "Contents" not in response:
+                        print(f"⚠️ No files found in bucket: {bucket}")
+                        continue
+
+                    for obj in response["Contents"]:
+                        file_key = obj["Key"]
+                        file_path = os.path.join(TEMP_IMAGE_FOLDER, os.path.basename(file_key))
+                        s3.download_file(bucket, file_key, file_path)
+                        downloaded_images.append(file_path)
+
+                except ClientError as e:
+                    print(f"❌ Error fetching files from bucket {bucket}: {e}")
+
+            if not downloaded_images:
+                print("❌ No valid images found.")
+                return
+
+            # ✅ Merge images in a tunnel effect
+            tunnel_frames = merge_images_tunnel(downloaded_images, MERGED_IMAGE_DIR)
+            if not tunnel_frames:
+                print("❌ Failed to merge images.")
+                return
+
+            # ✅ Generate unique name for video
+            def generate_auto_name():
+                    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")  # Get current timestamp
+                    random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=6))  # Random 6-character string
+                    return f"composition_{timestamp}_{random_str}"
+
+            auto_name = generate_auto_name()
+            
+            
+           # ✅ Create Video from Merged Images
+            output_path = os.path.join(VIDEO_DIR, f"{auto_name}.mp4")
+            video_filename = f"{auto_name}.mp4"
+            output_video = create_video_ffmpegNew(MERGED_IMAGE_DIR, output_path, fps=1)
+
+            if not output_video or not os.path.exists(output_video) or os.path.getsize(output_video) == 0:
+                messages.error(request, "❌ Final video not found or empty.")
+                return redirect("composition-add")
+
+            # ✅ Generate Thumbnail
+            thumbnail_path = os.path.join(THUMBNAIL_DIR, f"thumbnail_{auto_name}.jpg")
+            generate_video_thumbnail(output_video, thumbnail_path)
+
+            s3_key = f"{os.path.basename(output_path)}"
+
+            try:
+                with open(output_path, "rb") as video_file:
+                    s3.upload_fileobj(video_file, BUCKET_NAME, s3_key)
+
+                # ✅ Construct the public S3 URL
+                s3_video_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{s3_key}"
+                print(f"✅ S3 Upload Successful: {s3_video_url}")
+
+            except (BotoCoreError, ClientError) as e:
+                print(f"❌ S3 Upload Failed: {e}")
+                messages.error(request, f"Error uploading video to S3: {e}")
+                return redirect("composition-add")
+
+            # ✅ Save Composition in Database
+            Composition.objects.create(
+                name=auto_name,
+                type="tunnel",
+                background_video=output_video,
+                foreground_video=output_video,
+                final_video=os.path.basename(output_path),
+                img=thumbnail_path,
+                status="processing"
+            )
+
+            print("🎉 Tunnel composition added successfully!")
+            return redirect("composition-view")
+        
+           #RIGHT TO LEFT 
+        elif request.POST.get("type") == "right-to-left":  
+          
+            selected_background_bucket = request.POST.get("background_sources1")
+            selected_foreground_bucket = request.POST.get("foreground_sources1")
+
+            if not selected_background_bucket or not selected_foreground_bucket:
+                messages.error(request, "❌ Please select background and foreground sources.")
+                return redirect("composition-add")
+
+            downloaded_bg_files = []
+            downloaded_fg_files = []
+
+            for bucket in matching_buckets:
+                try:
+                    response = s3.list_objects_v2(Bucket=bucket)
+                    if "Contents" not in response:
+                        print(f"⚠️ No files found in bucket: {bucket}")
+                        continue  # Skip empty buckets
+
+                    for obj in response["Contents"]:
+                        file_key = obj["Key"]
+                        print(f"🔍 Found file: {file_key} in bucket: {bucket}")
+
+                        # Reverse process: First half of images are foregrounds, second half are backgrounds
+                        if len(downloaded_fg_files) <= len(downloaded_bg_files):
+                            file_path = os.path.join(TEMP_FG_FOLDER, os.path.basename(file_key))
+                            s3.download_file(bucket, file_key, file_path)
+                            downloaded_fg_files.append(file_path)
+                        else:
+                            file_path = os.path.join(TEMP_BG_FOLDER, os.path.basename(file_key))
+                            s3.download_file(bucket, file_key, file_path)
+                            downloaded_bg_files.append(file_path)
+
+                except ClientError as e:
+                    print(f"❌ Error fetching files from bucket {bucket}: {e}")
+                    continue  # Skip this bucket if there's an error
+
+            if not downloaded_bg_files or not downloaded_fg_files:
+                messages.error(request, "❌ No valid background or foreground images found.")
+                return redirect("composition-add")
+
+            # ✅ Merge Images Right-to-Left
+            merged_images = merge_images(downloaded_fg_files, downloaded_bg_files, MERGED_IMAGE_DIR)  # Order Reversed
+
+            if not merged_images:
+                messages.error(request, "❌ Failed to merge images.")
+                return redirect("composition-add")
+
+            def generate_auto_name():
+                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")  # Get current timestamp
+                random_str = ''.join(random.choices(string.ascii_letters + string.digits, k=6))  # Random 6-character string
+                return f"composition_{timestamp}_{random_str}"
+
+            auto_name = generate_auto_name()
+
+            # ✅ Create Video from Merged Images
+            output_path = os.path.join(VIDEO_DIR, f"{auto_name}.mp4")
+            video_filename = f"{auto_name}.mp4"
+            output_video = create_video_ffmpeg(MERGED_IMAGE_DIR, output_path, fps=1)
+
+            if not output_video or not os.path.exists(output_video) or os.path.getsize(output_video) == 0:
+                messages.error(request, "❌ Final video not found or empty.")
+                return redirect("composition-add")
+
+            # ✅ Generate Thumbnail
+            thumbnail_path = os.path.join(THUMBNAIL_DIR, f"thumbnail_{auto_name}.jpg")
+            generate_video_thumbnail(output_video, thumbnail_path)
+
+            s3_key = f"{os.path.basename(output_path)}"
+
+            try:
+                with open(output_path, "rb") as video_file:
+                    s3.upload_fileobj(video_file, BUCKET_NAME, s3_key)
+
+                # ✅ Construct the public S3 URL
+                s3_video_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{s3_key}"
+                print(f"✅ S3 Upload Successful: {s3_video_url}")
+
+            except (BotoCoreError, ClientError) as e:
+                print(f"❌ S3 Upload Failed: {e}")
+                messages.error(request, f"Error uploading video to S3: {e}")
+                return redirect("composition-add")
+
+            # ✅ Save Composition in Database
+            Composition.objects.create(
+                name=auto_name,
+                type="right-to-left",
+                background_video=output_video,
+                foreground_video=output_video,
+                final_video=video_filename,
+                img=thumbnail_path,
+                status="processing"
+            )
+
+            messages.success(request, "🎉 Composition added successfully!")
+            return redirect("composition-view")
+           
+        else:
+            print("test")
+            #return False
+            
+
+        
+
+    return render(request, "admin/composition.html", {
+        "buckets": matching_buckets
+    })
+
+def download_s3_files(bucket_name, download_folder):
+    
+    downloaded_files = []
+    try:
+        response = s3.list_objects_v2(Bucket=bucket_name)
+        if "Contents" in response:
+            for obj in response["Contents"]:
+                file_key = obj["Key"]
+                file_path = os.path.join(download_folder, os.path.basename(file_key))
+                s3.download_file(bucket_name, file_key, file_path)
+                downloaded_files.append(file_path)
+    except ClientError as e:
+        messages.error(f"Error fetching files from S3 bucket '{bucket_name}': {e}")
+
+    return downloaded_files 
+
+
+def convert_images_to_video(images, output_path, duration_per_image=2, target_size=(1280, 720)):
+    """Convert a list of images into a video, ensuring all images are the same size."""
+    if not images:
+        return None  # No images, return None
+
+    resized_images = []
+
+    for img_path in images:
+        img = Image.open(img_path)
+        img = img.resize(target_size, Image.LANCZOS)  # ✅ Resize image
+        temp_path = img_path.replace(".jpg", "_resized.jpg").replace(".png", "_resized.png")
+        img.save(temp_path)
+        resized_images.append(temp_path)
+
+    if len(resized_images) == 1:
+        # ✅ If only one image, use ImageClip instead of ImageSequenceClip
+        video = mp.ImageClip(resized_images[0], duration=duration_per_image)
+    else:
+        # ✅ Use ImageSequenceClip for multiple images
+        video = mp.ImageSequenceClip(resized_images, fps=1 / duration_per_image)
+
+    # ✅ Write video file with correct format
+    video.write_videofile(output_path, fps=24, codec="libx264")
+
+    return output_path
+
+
+def validate_images(image_list):
+    """Check if images exist and are valid."""
+    valid_images = []
+    for img in image_list:
+        if not os.path.exists(img):
+            print(f"❌ Error: File {img} not found")
+        else:
+            try:
+                with Image.open(img) as img_obj:
+                    img_obj.verify()  # Verify the image
+                    valid_images.append(img)  # Add to valid list
+                    print(f"✅ Valid image: {img}")
+            except Exception as e:
+                print(f"❌ Invalid image: {img}, Error: {e}")
+
+    return valid_images  # ✅ Return only valid images
+
+
+
+def delete_temp_files(folder_path):
+    """Delete all files in a given folder."""
+    for file in os.listdir(folder_path):
+        file_path = os.path.join(folder_path, file)
+        try:
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+        except Exception as e:
+            print(f"Error deleting file {file_path}: {e}")
+
+
+
+def generate_video_thumbnail(video_path, thumbnail_path, time="00:00:01"):
+    try:
+        (
+            ffmpeg
+            .input(video_path, ss=time)
+            .output(thumbnail_path, vframes=1)
+            .run(capture_stdout=True, capture_stderr=True)
+        )
+        print(f"✅ Thumbnail created at: {thumbnail_path}")
+    except ffmpeg.Error as e:
+        print(f"❌ Error generating thumbnail: {e.stderr.decode()}")
+
+
+
+def upload_to_s3(file_path, s3_key, bucket_name="your-s3-bucket-name"):
+    """Uploads a file to S3 under the specified key."""
+    try:
+        if not os.path.exists(file_path):
+            print(f"❌ Error: File not found - {file_path}")
+            return False
+
+        print(f"✅ Uploading {file_path} to S3: s3://{bucket_name}/{s3_key}")
+
+        s3.upload_file(file_path, bucket_name, s3_key)
+
+        # ✅ Generate public URL
+        file_url = f"https://{bucket_name}.s3.amazonaws.com/{s3_key}"
+        print(f"✅ File uploaded successfully: {file_url}")
+        return file_url
+
+    except NoCredentialsError:
+        print("❌ AWS credentials not found!")
+        return None
+    except Exception as e:
+        print(f"❌ Error uploading to S3: {e}")
+        return None
+
+
+
+
+@staff_member_required
+def composition_view(request):
+    compositions_list = Composition.objects.all().order_by("-id")
+    paginator = Paginator(compositions_list, 10)
+    page_number = request.GET.get("page")
+    compositions = paginator.get_page(page_number)
+    
+    
+    buckets = s3.list_buckets()["Buckets"]
+   
+    return render(request, "admin/composition-view.html", {"compositions": compositions})
+
+@staff_member_required
+def new_source(request):
+    return render(request, "admin/new-source.html")
+
+@staff_member_required
+def source_library(request):
+    return render(request, "admin/source-library.html")
+
+
+
+def user_logout(request):
+    logout(request)
+    messages.success(request, "You have been logged out successfully.")
+    return redirect('admin-login')  # Replace 'login' with the name of your login page URL
+
+
+# ✅ Initialize S3 client
+s3_client = boto3.client('s3')
+BUCKET_NAME = 'composition-final'  # Replace with your actual bucket name
+
+def delete_compositions(request):
+    """Ensures AWS S3 videos are deleted first before removing records from the Composition table."""
+
+    if request.method == 'POST':
+        try:
+            # ✅ Get selected composition IDs from request
+            ids_to_delete = json.loads(request.POST.get('compositions_to_delete', '[]'))
+            print(f"🗑️ Selected IDs for deletion: {ids_to_delete}")  # Debugging log
+            
+            if not ids_to_delete:
+                messages.error(request, "No compositions selected for deletion.")
+                return redirect('composition-view')
+
+            # ✅ Retrieve compositions from the database
+            compositions = Composition.objects.filter(id__in=ids_to_delete)
+            print(f"✅ Found {compositions.count()} compositions in the database.")  # Debugging log
+
+            if not compositions.exists():
+                messages.error(request, "No matching compositions found.")
+                return redirect('composition-view')
+
+            # ✅ Step 1: Delete videos from S3 FIRST
+            successfully_deleted_s3_keys = []  # Track successfully deleted files
+            failed_s3_keys = []  # Track failed deletions
+
+            for comp in compositions:
+                if comp.final_video:  # Check if the field is not empty
+                    s3_key = str(comp.final_video.name).strip().lstrip("/")  # Convert FieldFile to string
+
+                    try:
+                        # ✅ Ensure the file exists in S3 before deleting
+                        response = s3_client.head_object(Bucket=BUCKET_NAME, Key=s3_key)
+                        if response['ResponseMetadata']['HTTPStatusCode'] == 200:
+                            print(f"✅ File found in S3: {s3_key}, proceeding to delete...")
+
+                            # ✅ Delete the file from S3
+                            delete_response = s3_client.delete_object(Bucket=BUCKET_NAME, Key=s3_key)
+
+                            # ✅ Confirm deletion
+                            if delete_response.get("ResponseMetadata", {}).get("HTTPStatusCode") in [204, 200]:
+                                successfully_deleted_s3_keys.append(s3_key)
+                                print(f"✅ Successfully deleted from S3: {s3_key}")
+                            else:
+                                failed_s3_keys.append(s3_key)
+                                print(f"⚠️ Warning: S3 did not confirm deletion: {s3_key}")
+
+                    except s3_client.exceptions.ClientError as e:
+                        error_code = e.response['Error']['Code']
+                        if error_code == "404":
+                            print(f"⚠️ File not found in S3: {s3_key}, skipping S3 deletion.")
+                            successfully_deleted_s3_keys.append(s3_key)  # Allow deletion if file is already missing
+                        else:
+                            print(f"❌ S3 Error: {e}")
+                            messages.error(request, f"S3 deletion failed: {e}")
+                            return redirect('composition-view')  # **Stop execution if S3 deletion fails unexpectedly**
+
+            # ✅ Step 2: If all S3 deletions were successful, delete from DB
+            if set(successfully_deleted_s3_keys) == set([str(comp.final_video.name).strip().lstrip("/") for comp in compositions if comp.final_video]):
+                with transaction.atomic():
+                    deleted_count = compositions.delete()[0]  # Returns the number of deleted records
+                    print(f"✅ Deleted {deleted_count} compositions from DB")
+
+                messages.success(request, f"✅ {deleted_count} seletcted compositions deleted successfully!")
+            else:
+                messages.warning(request, f"⚠️ Some videos could not be deleted from S3: {failed_s3_keys}")
+
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            messages.error(request, f"An error occurred: {e}")
+
+    return redirect('composition-view')

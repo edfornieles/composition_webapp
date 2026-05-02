@@ -1,0 +1,164 @@
+{% extends "layouts/admin.html" %}
+{% block content %}
+<div class="content-wrapper">
+  <section class="content pt-3">
+    <div class="container-fluid">
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Gallery Wall Operator</h3>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-lg-4">
+              <div class="form-group">
+                <label for="wallPreset">Characters / Scenarios</label>
+                <select id="wallPreset" class="form-control form-control-sm" multiple size="8">
+                  {% for p in persona_presets %}
+                    <option value="persona:{{ p.id }}">Persona: {{ p.title }}</option>
+                  {% endfor %}
+                  {% for s in scenario_presets %}
+                    <option value="scenario:{{ s.id }}">Scenario: {{ s.title }}</option>
+                  {% endfor %}
+                </select>
+                <small class="text-muted">Choose one or more drivers for the 9-screen mapper.</small>
+              </div>
+              <div class="form-group">
+                <label for="wallThought">Thought seed</label>
+                <textarea id="wallThought" class="form-control form-control-sm" rows="3" placeholder="Optional thought seed"></textarea>
+              </div>
+              <div class="form-group">
+                <label for="wallState">State</label>
+                <select id="wallState" class="form-control form-control-sm">
+                  <option value="neutral">Neutral</option>
+                  <option value="calm">Calm</option>
+                  <option value="intense">Intense</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
+              <div class="d-flex mb-2">
+                <button id="wallStart" class="btn btn-primary btn-sm mr-2">Start</button>
+                <button id="wallNext" class="btn btn-outline-primary btn-sm mr-2">Next Tick</button>
+                <button id="wallStop" class="btn btn-outline-danger btn-sm">Stop</button>
+              </div>
+              <div class="small text-muted" id="wallMeta"></div>
+            </div>
+            <div class="col-lg-8">
+              <div id="wallGrid" class="row"></div>
+              <div class="mt-2">
+                <div class="small font-weight-bold mb-1">Heartbeat</div>
+                <div id="wallHeartbeat" class="small text-muted">No heartbeat yet.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  const grid = document.getElementById("wallGrid");
+  const hb = document.getElementById("wallHeartbeat");
+  const meta = document.getElementById("wallMeta");
+
+  function selectedPresets() {
+    return Array.from(document.getElementById("wallPreset").selectedOptions).map((o) => o.value);
+  }
+
+  async function callControl(payload) {
+    const res = await fetch("/api/wall/control", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(payload || {}),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  }
+
+  function screenCard(a) {
+    const tile = Number(a.tile_index || 0) + 1;
+    const name = (a.composition_name || "(none)").replace(/</g, "&lt;");
+    const url = a.composition_url || "";
+    const driftBadge = "<span class='badge badge-light'>strict live</span>";
+    return `<div class="col-md-4 mb-2">
+      <div class="border rounded p-2 h-100 bg-white">
+        <div class="d-flex justify-content-between align-items-start">
+          <div class="font-weight-bold small">Screen ${tile}</div>
+          ${driftBadge}
+        </div>
+        <div class="small mt-1">${name}</div>
+        <div class="small text-muted text-truncate">${url || "No URL"}</div>
+        <div class="mt-2">
+          <a class="btn btn-xs btn-outline-secondary" href="/wall/player/${tile}/" target="_blank" rel="noopener">Open player</a>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function renderHeartbeat(rows) {
+    if (!rows.length) {
+      hb.textContent = "No heartbeat yet.";
+      return;
+    }
+    hb.innerHTML = rows
+      .map((r) => {
+        const drift = Math.abs(Number(r.drift_ms || 0));
+        const status = drift > 700 ? "critical" : (drift > 300 ? "warning" : "ok");
+        return `screen ${r.screen_id}: drift=${r.drift_ms}ms · tick=${r.last_applied_tick} · ${status}`;
+      })
+      .join("<br>");
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch("/api/wall/state?screen_id=1", { credentials: "same-origin" });
+      const data = await res.json();
+      const assignments = data.assignments || [];
+      grid.innerHTML = assignments.map(screenCard).join("");
+      meta.textContent = `running=${data.running ? "yes" : "no"} · tick=${data.tick_id || 0} · start_at=${data.start_at_unix_ms || 0} · duration=${data.duration_ms || 0}ms`;
+      renderHeartbeat(data.heartbeats || []);
+    } catch (err) {
+      meta.textContent = `error: ${err.message}`;
+    }
+  }
+
+  document.getElementById("wallStart").addEventListener("click", async () => {
+    try {
+      await callControl({
+        action: "start",
+        character_keys: selectedPresets(),
+        thought_text: document.getElementById("wallThought").value || "",
+        scenario_state: document.getElementById("wallState").value || "neutral",
+      });
+      refresh();
+    } catch (err) {
+      meta.textContent = `error: ${err.message}`;
+    }
+  });
+
+  document.getElementById("wallStop").addEventListener("click", async () => {
+    try {
+      await callControl({ action: "stop" });
+      refresh();
+    } catch (err) {
+      meta.textContent = `error: ${err.message}`;
+    }
+  });
+
+  document.getElementById("wallNext").addEventListener("click", async () => {
+    try {
+      await callControl({ action: "next" });
+      refresh();
+    } catch (err) {
+      meta.textContent = `error: ${err.message}`;
+    }
+  });
+
+  setInterval(refresh, 2000);
+  refresh();
+})();
+</script>
+{% endblock %}

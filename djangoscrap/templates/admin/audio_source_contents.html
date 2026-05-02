@@ -1,0 +1,91 @@
+{% extends "layouts/admin.html" %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+<div class="content-wrapper">
+  <section class="content">
+    <div class="container-fluid">
+      <div class="card shadow-lg">
+        <div class="card-header">
+          <h3 class="card-title">Audio Source: {{ source_name }}</h3>
+        </div>
+        <div class="card-body">
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <form method="POST" action="{% url 'rename_audio_source' source_name %}" class="d-flex gap-2">
+                {% csrf_token %}
+                <input type="text" name="new_name" class="form-control" placeholder="Rename audio source" title="Rename audio source" required>
+                <button type="submit" class="btn btn-outline-primary">Rename</button>
+              </form>
+            </div>
+            <div class="col-md-6">
+              <form method="POST" action="{% url 'upload_audio_to_source' source_name %}" enctype="multipart/form-data" class="d-flex gap-2">
+                {% csrf_token %}
+                <input type="file" name="files" class="form-control" accept="audio/*" title="Upload one or many audio files" multiple required>
+                <button type="submit" class="btn btn-primary">Upload Audio</button>
+              </form>
+            </div>
+          </div>
+
+          <form method="POST" id="audioFileSelectionForm">
+            {% csrf_token %}
+            <div class="mb-3 d-flex gap-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="selectAllBtn">Select all</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="clearSelectionBtn">Clear</button>
+              <button type="submit" formaction="{% url 'download_audio_source_files' source_name %}" class="btn btn-sm btn-success">Download selected</button>
+              <button type="submit" formaction="{% url 'delete_audio_source_files' source_name %}" class="btn btn-sm btn-danger" id="deleteSelectedBtn">Delete selected</button>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-striped table-bordered">
+                <thead class="table-primary">
+                  <tr>
+                    <th>Select</th>
+                    <th>Preview</th>
+                    <th>File Name</th>
+                    <th>Size (Bytes)</th>
+                    <th>Last Modified</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for obj in objects %}
+                  <tr>
+                    <td><input type="checkbox" class="file-select" name="selected_files" value="{{ obj.Key }}" title="Select {{ obj.Key }}"></td>
+                    <td><audio controls preload="none" src="{{ obj.preview_url }}" style="width: 220px;"></audio></td>
+                    <td>{{ obj.Key }}</td>
+                    <td>{{ obj.Size }}</td>
+                    <td>{{ obj.LastModified }}</td>
+                  </tr>
+                  {% empty %}
+                  <tr><td colspan="5" class="text-center">No files in this audio source.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+<script>
+  (function () {
+    const checkboxes = () => Array.from(document.querySelectorAll('.file-select'));
+    const selectedValues = () => checkboxes().filter(cb => cb.checked).map(cb => cb.value);
+    document.getElementById('selectAllBtn').addEventListener('click', () => checkboxes().forEach(cb => { cb.checked = true; }));
+    document.getElementById('clearSelectionBtn').addEventListener('click', () => checkboxes().forEach(cb => { cb.checked = false; }));
+    const form = document.getElementById('audioFileSelectionForm');
+    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+    form.addEventListener('submit', function (event) {
+      const selected = selectedValues();
+      if (!selected.length) {
+        event.preventDefault();
+        alert('Please select at least one file.');
+        return;
+      }
+      if (event.submitter === deleteSelectedBtn && !confirm(`Delete ${selected.length} selected audio file(s)?`)) {
+        event.preventDefault();
+      }
+    });
+  })();
+</script>
+{% endblock %}

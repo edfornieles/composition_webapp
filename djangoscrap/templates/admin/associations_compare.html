@@ -1,0 +1,522 @@
+{% extends "layouts/admin.html" %}
+
+{% block content %}
+<style>
+  .compare-col-index {
+    width: 64px;
+  }
+  .compare-col-seq {
+    width: 50%;
+  }
+  .compare-thumb {
+    object-fit: cover;
+    border-radius: 4px;
+  }
+  .candidate-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+    gap: 8px;
+  }
+  .candidate-card {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 6px;
+    background: #fff;
+  }
+  .candidate-card img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    border-radius: 4px;
+    display: block;
+  }
+  .candidate-meta {
+    font-size: 11px;
+    color: #444;
+    margin-top: 4px;
+    line-height: 1.25;
+  }
+  .generated-cell {
+    min-height: 96px;
+  }
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .status-card {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 8px;
+    background: #fafafa;
+  }
+  .status-label {
+    font-size: 11px;
+    color: #666;
+  }
+  .status-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: #222;
+  }
+  .top-panel {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 12px;
+    background: #fcfcfd;
+    margin-bottom: 14px;
+  }
+  .top-panel .form-label {
+    font-size: 12px;
+    margin-bottom: 4px;
+    color: #4b5563;
+  }
+  .top-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .summary-pill {
+    border: 1px solid #d1d5db;
+    background: #fff;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: #374151;
+  }
+  .top-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .logic-box {
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    padding: 8px 10px;
+    margin-top: 10px;
+    font-size: 12px;
+    color: #334155;
+  }
+  .logic-line {
+    margin: 2px 0;
+    word-break: break-word;
+  }
+  .candidate-grid .candidate-card .candidate-meta.leap-note {
+    color: #7c2d12;
+    font-weight: 600;
+  }
+  .field-help {
+    margin-top: 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: #f8fafc;
+    font-size: 12px;
+    color: #334155;
+    line-height: 1.35;
+  }
+  .field-help b {
+    color: #0f172a;
+  }
+  .slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .slider-wrap input[type="range"] {
+    flex: 1;
+  }
+  .slider-value {
+    min-width: 20px;
+    text-align: right;
+    font-weight: 700;
+    color: #111827;
+  }
+</style>
+<div class="content-wrapper">
+  <section class="content">
+    <div class="container-fluid">
+      <div class="row">
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title mb-0">Associations Compare</h3>
+            </div>
+            <div class="card-body">
+              <div class="top-panel">
+                <div class="top-summary">
+                  <span class="summary-pill"><strong>Seed:</strong> {{ seed_name }}</span>
+                  {% if source_slug %}
+                  <span class="summary-pill"><strong>Slug:</strong> {{ source_slug }}</span>
+                  {% endif %}
+                  <span class="summary-pill"><strong>Steps:</strong> {{ chain_length }}</span>
+                  <span class="summary-pill"><strong>Note:</strong> {{ feel_note }}</span>
+                </div>
+                <form method="POST" enctype="multipart/form-data" class="mb-2">
+                  {% csrf_token %}
+                  <div class="row g-2 align-items-end">
+                    <div class="col-lg-2 col-md-4">
+                      <label for="slug" class="form-label">Composition slug</label>
+                      <input id="slug" name="slug" type="text" class="form-control" value="{{ source_slug }}" placeholder="test">
+                    </div>
+                    <div class="col-lg-4 col-md-8">
+                      <label for="seed" class="form-label">Seed image URL</label>
+                      <input id="seed" name="seed" type="text" class="form-control" value="{{ seed_start_url }}" placeholder="leave blank for random seed, or paste https://...">
+                    </div>
+                    <div class="col-lg-2 col-md-4">
+                      <label for="seed_upload" class="form-label">Upload seed image</label>
+                      <input id="seed_upload" name="seed_upload" type="file" accept="image/*" class="form-control">
+                    </div>
+                    <div class="col-lg-2 col-md-4">
+                      <label for="chain_length" class="form-label">Chain length</label>
+                      <input id="chain_length" name="chain_length" type="number" min="1" max="{{ chain_max|default:60 }}" value="{{ chain_length }}" class="form-control">
+                    </div>
+                    <div class="col-lg-2 col-md-4">
+                      <label for="inventivenessSlider" class="form-label">Association jump (0-10)</label>
+                      <div class="slider-wrap">
+                        <input id="inventivenessSlider" type="range" min="0" max="10" step="1" value="{{ inventiveness }}" class="form-range" title="0 = stay close to seed, 10 = bolder jumps">
+                        <span id="inventivenessValue" class="slider-value">{{ inventiveness }}</span>
+                      </div>
+                      <input id="inventiveness" name="inventiveness" type="hidden" value="{{ inventiveness|floatformat:1 }}">
+                    </div>
+                    <div class="col-lg-2 col-md-4">
+                      <label for="personalInfluenceSlider" class="form-label">Preference weight (0-10)</label>
+                      <div class="slider-wrap">
+                        <input id="personalInfluenceSlider" type="range" min="0" max="10" step="1" value="{{ personal_influence }}" class="form-range" title="How strongly previous picks steer ranking">
+                        <span id="personalInfluenceValue" class="slider-value">{{ personal_influence }}</span>
+                      </div>
+                      <input id="personal_influence" name="personal_influence" type="hidden" value="{{ personal_influence|floatformat:1 }}">
+                    </div>
+                    <div class="col-lg-2 col-md-4">
+                      <label for="retrieval_mode" class="form-label">Retrieval mode</label>
+                      <select id="retrieval_mode" name="retrieval_mode" class="form-control">
+                        <option value="balanced" {% if retrieval_mode == "balanced" %}selected{% endif %}>Internet balanced</option>
+                        <option value="strict" {% if retrieval_mode == "strict" %}selected{% endif %}>Internet strict</option>
+                        <option value="hybrid" {% if retrieval_mode == "hybrid" %}selected{% endif %}>Hybrid (search + generate)</option>
+                        <option value="generated" {% if retrieval_mode == "generated" %}selected{% endif %}>Generated only (AI images)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="top-actions mt-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="bootstrapTrainingBtn">Bootstrap preference model</button>
+                    <button type="submit" name="generate" value="1" class="btn btn-primary">Generate</button>
+                  </div>
+                </form>
+                <div class="field-help">
+                  <div><b>Composition slug</b>: optional; leave blank to compare from training set only.</div>
+                  <div><b>Seed image URL</b>: starting image for the generated chain. Leave blank to auto-pick a random web seed.</div>
+                  <div><b>Upload seed image</b>: upload a local image to start chain from your own file.</div>
+                  <div><b>Chain length</b>: number of generated steps to produce.</div>
+                  <div><b>Association jump</b>: 0 stays near the seed; 10 allows larger conceptual leaps.</div>
+                  <div><b>Preference weight</b>: 0 is neutral; 10 strongly uses your accumulated picks/feedback.</div>
+                  <div><b>Retrieval mode</b>: <b>balanced</b> keeps flow moving, <b>strict</b> is tighter, <b>hybrid</b> mixes search + generation, <b>generated only</b> synthesizes new associated images.</div>
+                </div>
+                <div>
+                  <span id="bootstrapTrainingStatus" class="text-muted small"></span>
+                </div>
+                <div class="status-grid" id="feedbackStatusGrid">
+                  <div class="status-card">
+                    <div class="status-label">Total pairwise labels</div>
+                    <div class="status-value" id="statusTotal">-</div>
+                  </div>
+                  <div class="status-card">
+                    <div class="status-label">Model active</div>
+                    <div class="status-value" id="statusActive">-</div>
+                  </div>
+                  <div class="status-card">
+                    <div class="status-label">Recent acceptance</div>
+                    <div class="status-value" id="statusRecent">-</div>
+                  </div>
+                  <div class="status-card">
+                    <div class="status-label">Positive / Negative</div>
+                    <div class="status-value" id="statusPolarity">-</div>
+                  </div>
+                </div>
+                <div class="logic-box" id="proposalLogicBox">
+                  <div class="logic-line"><strong>Retrieval query:</strong> <span id="logicQuery">-</span></div>
+                  <div class="logic-line"><strong>Anchor terms:</strong> <span id="logicAnchors">-</span></div>
+                  <div class="logic-line"><strong>Concept hints:</strong> <span id="logicConcepts">-</span></div>
+                </div>
+              </div>
+
+              {% if not generate_requested %}
+              <div class="alert alert-warning">
+                Press <strong>Generate</strong> to build the AI chain on the right.
+              </div>
+              {% endif %}
+
+              <div class="table-responsive">
+                <table class="table table-bordered table-sm align-middle">
+                  <thead>
+                    <tr>
+                      <th class="compare-col-index">#</th>
+                      <th class="compare-col-seq">AI Generated Chain</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in combined_rows %}
+                    <tr>
+                      <td><strong>{{ row.idx }}</strong></td>
+                      <td class="generated-cell" data-row-idx="{{ forloop.counter0 }}">
+                        <div class="generated-cell-content text-muted">-</div>
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+<div
+  id="compareConfig"
+  data-generate="{{ generate_requested|yesno:'1,0' }}"
+  data-seed-start-url="{{ seed_start_url }}"
+  data-seed-name="{{ seed_name }}"
+  data-start-idx="{{ generated_start_idx }}"
+  data-chain-length="{{ chain_length }}"
+  data-inventiveness="{{ inventiveness }}"
+  data-personal-influence="{{ personal_influence }}"
+  data-retrieval-mode="{{ retrieval_mode }}"
+  data-slug="{{ source_slug }}"
+></div>
+<script>
+  (function() {
+    const cfg = document.getElementById("compareConfig");
+    if (!cfg) return;
+    const statusTotal = document.getElementById("statusTotal");
+    const statusActive = document.getElementById("statusActive");
+    const statusRecent = document.getElementById("statusRecent");
+    const statusPolarity = document.getElementById("statusPolarity");
+    const logicQuery = document.getElementById("logicQuery");
+    const logicAnchors = document.getElementById("logicAnchors");
+    const logicConcepts = document.getElementById("logicConcepts");
+    const refreshStatus = async () => {
+      try {
+        const resp = await fetch("/api/associations/feedback-stats/");
+        if (!resp.ok) throw new Error("status fetch failed");
+        const data = await resp.json();
+        if (!data || data.ok !== true) throw new Error("bad status");
+        if (statusTotal) statusTotal.textContent = String(data.total_feedback ?? "-");
+        if (statusActive) statusActive.textContent = data.model_active ? "yes" : "no";
+        if (statusRecent) statusRecent.textContent = `${Math.round(Number(data.recent_acceptance || 0) * 100)}%`;
+        if (statusPolarity) statusPolarity.textContent = `${data.positive_feedback ?? 0} / ${data.negative_feedback ?? 0}`;
+      } catch (e) {
+        if (statusTotal) statusTotal.textContent = "-";
+        if (statusActive) statusActive.textContent = "-";
+        if (statusRecent) statusRecent.textContent = "-";
+        if (statusPolarity) statusPolarity.textContent = "-";
+      }
+    };
+    refreshStatus();
+
+    const bootstrapBtn = document.getElementById("bootstrapTrainingBtn");
+    const bootstrapStatus = document.getElementById("bootstrapTrainingStatus");
+    if (bootstrapBtn) {
+      bootstrapBtn.addEventListener("click", async () => {
+        bootstrapBtn.disabled = true;
+        if (bootstrapStatus) bootstrapStatus.textContent = "Bootstrapping...";
+        try {
+          const resp = await fetch("/api/associations/bootstrap-training/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ negatives_per_step: 3, max_pairs: 2400 }),
+          });
+          const data = await resp.json();
+          if (!resp.ok || !data || data.ok !== true) throw new Error("bootstrap failed");
+          if (bootstrapStatus) bootstrapStatus.textContent = `Done. pairs=${data.appended_pairs}, feedback=${data.feedback_count}`;
+          refreshStatus();
+        } catch (e) {
+          if (bootstrapStatus) bootstrapStatus.textContent = "Bootstrap failed";
+        } finally {
+          bootstrapBtn.disabled = false;
+        }
+      });
+    }
+    if (cfg.getAttribute("data-generate") !== "1") return;
+    const seedStartUrl = String(cfg.getAttribute("data-seed-start-url") || "").trim();
+    const seedName = String(cfg.getAttribute("data-seed-name") || "").trim() || "seed";
+    const startIdx = Number(cfg.getAttribute("data-start-idx") || "0");
+    const chainLength = Math.max(1, Number(cfg.getAttribute("data-chain-length") || "8"));
+    const inventivenessSlider = document.getElementById("inventivenessSlider");
+    const inventivenessValue = document.getElementById("inventivenessValue");
+    const inventivenessHidden = document.getElementById("inventiveness");
+    const personalSlider = document.getElementById("personalInfluenceSlider");
+    const personalValue = document.getElementById("personalInfluenceValue");
+    const personalHidden = document.getElementById("personal_influence");
+    const normalizeSlider = (value) => Math.max(0, Math.min(10, Number(value || 5))) / 10;
+    const syncSliders = () => {
+      const invRaw = Math.max(0, Math.min(10, Number((inventivenessSlider && inventivenessSlider.value) || "5")));
+      const perRaw = Math.max(0, Math.min(10, Number((personalSlider && personalSlider.value) || "5")));
+      if (inventivenessValue) inventivenessValue.textContent = String(invRaw);
+      if (personalValue) personalValue.textContent = String(perRaw);
+      if (inventivenessHidden) inventivenessHidden.value = normalizeSlider(invRaw).toFixed(3);
+      if (personalHidden) personalHidden.value = normalizeSlider(perRaw).toFixed(3);
+      return {
+        inventiveness: normalizeSlider(invRaw),
+        personalInfluence: normalizeSlider(perRaw),
+      };
+    };
+    if (inventivenessSlider) inventivenessSlider.addEventListener("input", syncSliders);
+    if (personalSlider) personalSlider.addEventListener("input", syncSliders);
+    syncSliders();
+    const retrievalMode = String(cfg.getAttribute("data-retrieval-mode") || "balanced").trim() || "balanced";
+    const slug = String(cfg.getAttribute("data-slug") || "").trim();
+    const rows = Array.from(document.querySelectorAll("td.generated-cell"));
+    const cellAt = (idx) => rows.find((td) => Number(td.getAttribute("data-row-idx")) === idx);
+    const setCellHtml = (idx, html) => {
+      const td = cellAt(idx);
+      if (!td) return;
+      const box = td.querySelector(".generated-cell-content");
+      if (!box) return;
+      box.innerHTML = html;
+    };
+    const esc = (s) => String(s || "").replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+    const proxied = (url) => `/api/associations/image-proxy/?url=${encodeURIComponent(url || "")}`;
+    const thumbTag = (url, alt) => {
+      const raw = String(url || "").trim();
+      const isRemote = /^https?:\/\//i.test(raw);
+      if (isRemote) {
+        // Use same-origin proxy first to avoid hotlink/CORS/referrer failures.
+        const p = proxied(raw);
+        return `<img src="${esc(p)}" alt="${esc(alt)}" class="compare-thumb" width="84" height="84" referrerpolicy="no-referrer" loading="lazy" onerror="if(!this.dataset.fallback){this.dataset.fallback='1';this.src='${esc(raw)}';}">`;
+      }
+      return `<img src="${esc(raw)}" alt="${esc(alt)}" class="compare-thumb" width="84" height="84" loading="lazy">`;
+    };
+
+    let currentUrl = seedStartUrl;
+    const history = [];
+    const maxEnd = Math.min(rows.length - 1, startIdx + chainLength - 1);
+    setCellHtml(startIdx, `<div class="d-flex align-items-center">${thumbTag(seedStartUrl, seedName)}<div class="ms-2"><strong>${esc(seedName)}</strong><br><span class="text-muted small">start</span></div></div>`);
+
+    const chooseWinner = async (chosen, rejected) => {
+      const resp = await fetch("/api/associations/select-winner/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug,
+          current_url: currentUrl,
+          chosen_url: chosen.url,
+          rejected_urls: rejected.map((x) => x.url),
+          source: "compare_ui",
+          reason: "winner_selected",
+        }),
+      });
+      if (!resp.ok) throw new Error("Could not save winner selection");
+      return resp.json();
+    };
+
+    const fetchCandidates = async () => {
+      const knobs = syncSliders();
+      const params = new URLSearchParams({
+        slug,
+        current_url: currentUrl,
+        seed_url: seedStartUrl,
+        inventiveness: knobs.inventiveness.toFixed(3),
+        personal_influence: knobs.personalInfluence.toFixed(3),
+        count: "3",
+        retrieval_mode: retrievalMode,
+        history: JSON.stringify(history.slice(-20)),
+      });
+      const resp = await fetch(`/api/associations/candidates/?${params.toString()}`);
+      if (!resp.ok) {
+        let reason = "No candidates";
+        try {
+          const payload = await resp.json();
+          reason = String(payload.reason || payload.error || reason);
+        } catch (e) {}
+        throw new Error(reason);
+      }
+      const data = await resp.json();
+      if (!data || !Array.isArray(data.candidates) || !data.candidates.length) throw new Error("No candidates");
+      if (logicQuery) logicQuery.textContent = String(data.query || "-");
+      if (logicAnchors) logicAnchors.textContent = Array.isArray(data.anchors) && data.anchors.length ? data.anchors.join(", ") : "-";
+      if (logicConcepts) {
+        const concepts = Array.isArray(data.concepts) ? data.concepts : [];
+        const patterns = Array.isArray(data.patterns) ? data.patterns.slice(0, 6).map((x) => `pattern:${x}`) : [];
+        const subjects = Array.isArray(data.seed_subject_terms) ? data.seed_subject_terms.slice(0, 5).map((x) => `seed:${x}`) : [];
+        const directions = Array.isArray(data.directions)
+          ? data.directions.slice(0, 3).map((d) => `dir:${String((d || {}).label || "").trim() || "direction"}`)
+          : [];
+        const merged = [...subjects, ...directions, ...concepts, ...patterns];
+        logicConcepts.textContent = merged.length ? merged.join(", ") : "-";
+      }
+      return data.candidates.slice(0, 3);
+    };
+
+    const renderChoices = (rowIdx, candidates, onPick) => {
+      const cards = candidates
+        .map((c, idx) => {
+          const role = String(c.selection_role || "");
+          const roleLabel = role === "anchor" ? "anchor option" : (role === "leap" ? "associative leap" : "wildcard option");
+          const roleHint = role === "anchor" ? "stays grounded in the seed context" : (role === "leap" ? "related jump, not a visual copy" : "extra option for diversity");
+          const directionLabel = String(c.direction_label || "").trim();
+          return `
+            <div class="candidate-card">
+              ${thumbTag(c.url, c.title || "candidate")}
+              <div class="candidate-meta"><strong>${esc(c.title || "candidate")}</strong></div>
+              <div class="candidate-meta">score: ${Number(c.score || 0).toFixed(3)}</div>
+              ${directionLabel ? `<div class="candidate-meta"><strong>${esc(directionLabel)}</strong></div>` : ""}
+              <div class="candidate-meta"><strong>${esc(roleLabel)}</strong></div>
+              <div class="candidate-meta">${esc(c.reason || "")}</div>
+              <div class="candidate-meta">anchor match: ${Number((c.breakdown || {}).anchor_match || 0).toFixed(3)}</div>
+              <div class="candidate-meta">seed subject: ${Number((c.breakdown || {}).seed_subject_overlap || 0).toFixed(3)}</div>
+              <div class="candidate-meta">direction match: ${Number((c.breakdown || {}).direction_match || 0).toFixed(3)}</div>
+              <div class="candidate-meta">concept bridge: ${Number((c.breakdown || {}).concept_bridge || 0).toFixed(3)}</div>
+              <div class="candidate-meta leap-note">${esc(roleHint)}</div>
+              <button class="btn btn-sm btn-primary w-100 mt-2" data-pick="${idx}">Choose</button>
+            </div>
+          `;
+        })
+        .join("");
+      setCellHtml(rowIdx, `<div class="candidate-grid">${cards}</div>`);
+      const td = cellAt(rowIdx);
+      if (!td) return;
+      td.querySelectorAll("button[data-pick]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const idx = Number(btn.getAttribute("data-pick") || "0");
+          if (!Number.isFinite(idx) || idx < 0 || idx >= candidates.length) return;
+          onPick(candidates[idx], candidates.filter((_, j) => j !== idx));
+        });
+      });
+    };
+
+    const run = async () => {
+      for (let rowIdx = startIdx + 1; rowIdx <= maxEnd; rowIdx += 1) {
+        setCellHtml(rowIdx, `<span class="text-muted">Loading candidates...</span>`);
+        let candidates = [];
+        try {
+          candidates = await fetchCandidates();
+        } catch (e) {
+          setCellHtml(rowIdx, `<span class="text-danger">${esc(e && e.message ? e.message : "No candidates")}</span>`);
+          break;
+        }
+        await new Promise((resolve) => {
+          renderChoices(rowIdx, candidates, async (chosen, rejected) => {
+            try {
+              await chooseWinner(chosen, rejected);
+              refreshStatus();
+            } catch (e) {
+              setCellHtml(rowIdx, `<span class="text-danger">Could not save winner</span>`);
+              resolve();
+              return;
+            }
+            setCellHtml(rowIdx, `<div class="d-flex align-items-center">${thumbTag(chosen.url, chosen.title || "chosen")}<div class="ms-2"><strong>${esc(chosen.title || "chosen")}</strong><br><span class="text-muted small">${esc(chosen.reason || "")}</span></div></div>`);
+            history.push(currentUrl);
+            currentUrl = String(chosen.url || currentUrl);
+            resolve();
+          });
+        });
+      }
+    };
+    run();
+  })();
+</script>
+{% endblock %}

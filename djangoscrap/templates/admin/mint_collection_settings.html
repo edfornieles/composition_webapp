@@ -1,0 +1,109 @@
+{% extends "layouts/admin.html" %}
+
+{% block content %}
+<style>
+  .mint-settings-preview-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid #dee2e6;
+  }
+
+  .mint-settings-preview-fallback {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #111;
+    color: #fff;
+    font-weight: 800;
+  }
+</style>
+<div class="content-wrapper">
+  <div class="content-header">
+    <div class="container-fluid">
+      <div class="row mb-2">
+        <div class="col-sm-6">
+          <h1 class="m-0">Mint Collection Settings</h1>
+        </div>
+        <div class="col-sm-6">
+          <ol class="breadcrumb float-sm-right">
+            <li class="breadcrumb-item"><a href="{% url 'admin-dashboard' %}">Home</a></li>
+            <li class="breadcrumb-item active">Mint Collection Settings</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="content">
+    <div class="container-fluid">
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+
+      <div class="row">
+        <div class="col-lg-7">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Collection Identity</h3>
+            </div>
+            <form method="post" enctype="multipart/form-data">
+              {% csrf_token %}
+              <div class="card-body">
+                <div class="form-group">
+                  <label for="{{ form.collection_title.id_for_label }}">Collection title</label>
+                  {{ form.collection_title }}
+                  {% for error in form.collection_title.errors %}
+                    <div class="text-danger small">{{ error }}</div>
+                  {% endfor %}
+                </div>
+                <div class="form-group">
+                  <label for="{{ form.collection_icon.id_for_label }}">Collection icon</label>
+                  {{ form.collection_icon }}
+                  <small class="form-text text-muted">
+                    Use a square image. This appears on the mint collection header and each mint card.
+                  </small>
+                  {% for error in form.collection_icon.errors %}
+                    <div class="text-danger small">{{ error }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+              <div class="card-footer">
+                <button type="submit" class="btn btn-primary">Save collection settings</button>
+                <a href="{% url 'mint_site' %}" class="btn btn-outline-secondary" target="_blank" rel="noopener">View mint page</a>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="col-lg-5">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Current Preview</h3>
+            </div>
+            <div class="card-body">
+              <div class="d-flex align-items-center">
+                {% if collection_settings.icon_url %}
+                  <img class="mint-settings-preview-icon" src="{{ collection_settings.icon_url }}" alt="{{ collection_settings.collection_title }} icon">
+                {% else %}
+                  <div class="mint-settings-preview-fallback">EF</div>
+                {% endif %}
+                <div class="ml-3">
+                  <div class="font-weight-bold">{{ collection_settings.collection_title }}</div>
+                  <div class="text-muted small">Used by the public mint collection page.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

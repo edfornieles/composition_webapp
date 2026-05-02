@@ -1,0 +1,60 @@
+{% extends "layouts/admin.html" %}
+
+{% block content %}
+<div class="content-wrapper">
+  <section class="content">
+    <div class="container-fluid">
+      <div class="row justify-content-center">
+        <div class="col-lg-10">
+          <div class="card card-primary">
+            <div class="card-header"><h3 class="card-title">{% if is_new %}New{% else %}Edit{% endif %} advanced thought scenario</h3></div>
+            <form method="post" action="{% if is_new %}{% url 'advanced_thoughts_add' %}{% else %}{% url 'advanced_thoughts_edit' scenario.id %}{% endif %}">
+              {% csrf_token %}
+              <div class="card-body">
+                <div class="row">
+                  <div class="col-md-8 mb-3">
+                    <label>Title</label>
+                    <input class="form-control" name="title" value="{{ scenario.title|default:'' }}" required>
+                  </div>
+                  <div class="col-md-4 mb-3">
+                    <label>Slug (optional)</label>
+                    <input class="form-control" name="slug" value="{{ scenario.slug|default:'' }}">
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="col-md-6 mb-3"><label>Character name</label><input class="form-control" name="character_name" value="{{ scenario.character_name|default:'' }}"></div>
+                  <div class="col-md-6 mb-3"><label>Archetype</label><input class="form-control" name="archetype" value="{{ scenario.archetype|default:'' }}"></div>
+                </div>
+                <div class="mb-3"><label>Character brief</label><textarea class="form-control" rows="4" name="character_brief">{{ scenario.character_brief|default:'' }}</textarea></div>
+                <div class="mb-3"><label>World context</label><textarea class="form-control" rows="4" name="world_context">{{ scenario.world_context|default:'' }}</textarea></div>
+                <div class="mb-3"><label>Tone hint</label><textarea class="form-control" rows="3" name="tone_hint">{{ scenario.tone_hint|default:'' }}</textarea></div>
+                <div class="row">
+                  <div class="col-md-6 mb-3"><label>Seed desires (one per line)</label><textarea class="form-control" rows="4" name="seed_desires">{% if scenario.seed_desires %}{{ scenario.seed_desires|join:'
+' }}{% endif %}</textarea></div>
+                  <div class="col-md-6 mb-3"><label>Seed subconscious signals (one per line)</label><textarea class="form-control" rows="4" name="seed_subconscious">{% if scenario.seed_subconscious %}{{ scenario.seed_subconscious|join:'
+' }}{% endif %}</textarea></div>
+                </div>
+                <div class="row">
+                  <div class="col-md-6 mb-3"><label>Starting location</label><input class="form-control" name="current_location" value="{{ scenario.current_location|default:'bedroom' }}"></div>
+                  <div class="col-md-6 mb-3"><label>Starting time (minutes after midnight)</label><input class="form-control" type="number" min="0" max="1439" name="sim_minutes" value="{{ scenario.sim_minutes|default:480 }}"></div>
+                </div>
+                <div class="row">
+                  <div class="col-md-4 mb-3"><label>Tick interval (seconds)</label><input class="form-control" type="number" min="3" max="60" name="tick_interval_seconds" value="{{ scenario.tick_interval_seconds|default:7 }}"></div>
+                  <div class="col-md-8 d-flex align-items-center pt-4"><div class="form-check"><input class="form-check-input" type="checkbox" name="is_published" id="published" {% if scenario.is_published %}checked{% endif %}><label class="form-check-label" for="published">Published (publicly accessible)</label></div></div>
+                </div>
+              </div>
+              <div class="card-footer">
+                <button class="btn btn-primary" type="submit">Save scenario</button>
+                <a href="{% url 'advanced_thoughts' %}" class="btn btn-default border">Back</a>
+                {% if scenario and scenario.is_published %}
+                <a href="{% url 'advanced_thoughts_public' scenario.slug %}" target="_blank" class="btn btn-outline-info float-right">Open live screen</a>
+                {% endif %}
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

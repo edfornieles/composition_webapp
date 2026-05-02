@@ -1,0 +1,150 @@
+{% extends "layouts/admin.html" %}
+
+{% block content %}
+<div class="content-wrapper">
+  <section class="content">
+    <div class="container-fluid">
+      <div class="row justify-content-center">
+        <div class="col-lg-10 col-xl-9">
+          <div class="card shadow-lg">
+            <div class="card-header">
+              <h3 class="card-title mb-0">Associations Studio</h3>
+            </div>
+            <div class="card-body">
+              {% if messages %}
+                {% for message in messages %}
+                  <div class="alert alert-{{ message.tags|default:'info' }}">{{ message }}</div>
+                {% endfor %}
+              {% endif %}
+              <p class="text-muted mb-3">
+                Build a standalone Associations composition: choose a URL name, provide a seed (upload or random),
+                and press Go. The chain stores square images into its own source folder for replay.
+              </p>
+
+              <form method="POST" action="{% url 'associations_studio' %}" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <label for="url_slug" class="form-label">URL name</label>
+                    <input id="url_slug" name="url_slug" type="text" class="form-control" placeholder="associations-001" required>
+                    <small class="text-muted">Used for page URL: {{ default_base_url }}/&lt;url-name&gt;</small>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="name" class="form-label">Work title (optional)</label>
+                    <input id="name" name="name" type="text" class="form-control" placeholder="Associations #1">
+                  </div>
+                </div>
+
+                <div class="row g-3 mt-1">
+                  <div class="col-md-6">
+                    <label class="form-label d-block">Seed input mode</label>
+                    <div class="form-check">
+                      <input class="form-check-input" type="radio" name="seed_mode" id="seed_mode_upload" value="upload" checked>
+                      <label class="form-check-label" for="seed_mode_upload">Upload one seed image</label>
+                    </div>
+                    <div class="form-check mt-1">
+                      <input class="form-check-input" type="radio" name="seed_mode" id="seed_mode_random" value="random">
+                      <label class="form-check-label" for="seed_mode_random">Select a random seed image</label>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="base_url" class="form-label">Base URL</label>
+                    <input id="base_url" name="base_url" type="text" class="form-control" value="{{ default_base_url }}">
+                  </div>
+                </div>
+
+                <div id="seed_upload_row" class="row g-3 mt-1">
+                  <div class="col-md-6">
+                    <label for="seed_upload" class="form-label">Seed image upload</label>
+                    <input id="seed_upload" name="seed_upload" type="file" accept="image/*" class="form-control">
+                  </div>
+                </div>
+
+                <div id="seed_random_row" class="row g-3 mt-1 d-none">
+                  <div class="col-md-6">
+                    <label for="random_seed_source" class="form-label">Random source folder (optional)</label>
+                    <select id="random_seed_source" name="random_seed_source" class="form-control">
+                      <option value="">Any source folder</option>
+                      {% for bucket in buckets %}
+                      <option value="{{ bucket }}">{{ bucket }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+
+                <div class="row g-3 mt-1">
+                  <div class="col-md-6">
+                    <label for="tempo_sec" class="form-label">Tempo: <span id="tempo_value">6</span>s</label>
+                    <input id="tempo_sec" name="tempo_sec" type="range" min="1" max="30" step="1" value="6" class="form-control-range">
+                  </div>
+                  <div class="col-md-6">
+                    <label for="inventiveness" class="form-label">Inventiveness: <span id="inventiveness_value">55</span>%</label>
+                    <input id="inventiveness" name="inventiveness" type="range" min="0" max="100" step="1" value="55" class="form-control-range">
+                  </div>
+                </div>
+
+                <div class="row g-3 mt-1">
+                  <div class="col-md-6">
+                    <label for="personal_influence" class="form-label">Personal influence: <span id="personal_influence_value">30</span>% (<span id="personal_influence_level">medium</span>)</label>
+                    <input id="personal_influence" name="personal_influence" type="range" min="0" max="100" step="1" value="30" class="form-control-range">
+                    <small class="text-muted">Low = source/context-led chain. High = stronger personal-taste steering.</small>
+                  </div>
+                </div>
+
+                <div class="form-check mt-3">
+                  <input id="use_web" name="use_web" class="form-check-input" type="checkbox" checked>
+                  <label class="form-check-label" for="use_web">Use web associations (LLM + web image expansion)</label>
+                </div>
+
+                <div class="mt-4 d-flex justify-content-end">
+                  <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-play"></i> Go
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  (function() {
+    const uploadRadio = document.getElementById("seed_mode_upload");
+    const randomRadio = document.getElementById("seed_mode_random");
+    const uploadRow = document.getElementById("seed_upload_row");
+    const randomRow = document.getElementById("seed_random_row");
+    const tempoInput = document.getElementById("tempo_sec");
+    const tempoValue = document.getElementById("tempo_value");
+    const invInput = document.getElementById("inventiveness");
+    const invValue = document.getElementById("inventiveness_value");
+    const personalInput = document.getElementById("personal_influence");
+    const personalValue = document.getElementById("personal_influence_value");
+    const personalLevel = document.getElementById("personal_influence_level");
+    const updateSeedUi = () => {
+      const randomMode = randomRadio && randomRadio.checked;
+      if (uploadRow) uploadRow.classList.toggle("d-none", randomMode);
+      if (randomRow) randomRow.classList.toggle("d-none", !randomMode);
+    };
+    if (uploadRadio) uploadRadio.addEventListener("change", updateSeedUi);
+    if (randomRadio) randomRadio.addEventListener("change", updateSeedUi);
+    updateSeedUi();
+    if (tempoInput && tempoValue) tempoInput.addEventListener("input", () => { tempoValue.textContent = String(tempoInput.value); });
+    if (invInput && invValue) invInput.addEventListener("input", () => { invValue.textContent = String(invInput.value); });
+    const updatePersonalInfluenceUi = () => {
+      if (!personalInput) return;
+      const v = Number(personalInput.value || 0);
+      if (personalValue) personalValue.textContent = String(Math.round(v));
+      if (personalLevel) {
+        if (v <= 20) personalLevel.textContent = "low";
+        else if (v <= 45) personalLevel.textContent = "medium";
+        else personalLevel.textContent = "high";
+      }
+    };
+    if (personalInput) personalInput.addEventListener("input", updatePersonalInfluenceUi);
+    updatePersonalInfluenceUi();
+  })();
+</script>
+{% endblock %}

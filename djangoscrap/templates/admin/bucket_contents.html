@@ -1,0 +1,574 @@
+{% extends "layouts/admin.html" %}
+
+{% block content %}
+<!-- DataTables CSS -->
+<link rel="stylesheet" href="/static/admin/plugins/datatables-bs4/css/dataTables.bootstrap4.min.css">
+<style>
+    .size-threshold-input {
+        max-width: 140px;
+    }
+    .size-threshold-unit {
+        max-width: 90px;
+    }
+    .source-file-checkbox {
+        width: 1.2rem;
+        height: 1.2rem;
+        cursor: pointer;
+        display: block;
+        margin: 0 auto;
+    }
+    #bucketContentsTable tr.source-file-selected > td {
+        background-color: #d7ecff;
+    }
+    #bucketContentsTable th.select-column,
+    #bucketContentsTable td.select-column {
+        text-align: center;
+        vertical-align: middle;
+        width: 72px;
+    }
+    .source-preview-thumb {
+        width: 96px;
+        height: 72px;
+        object-fit: cover;
+        border-radius: 3px;
+    }
+    .video-preview-frame {
+        position: relative;
+        display: inline-block;
+        width: 96px;
+        height: 72px;
+        line-height: 0;
+    }
+    .video-preview-icon {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        color: #fff;
+        font-size: 22px;
+        line-height: 1;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+        pointer-events: none;
+    }
+    .source-action-row,
+    .source-size-row {
+        gap: 0.75rem;
+    }
+    .source-action-row > *,
+    .source-size-row > * {
+        margin-bottom: 0.35rem;
+    }
+    .video-preview-player {
+        width: 100%;
+        max-height: 70vh;
+        background: #000;
+    }
+</style>
+
+<div class="content-wrapper">
+    <section class="content">
+        <div class="container-fluid">
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="card shadow-lg">
+                        <div class="card-header text-white">
+                            <h3 class="card-title mb-1">Source: {{ bucket_name }}</h3>
+                            <p class="mb-0 small font-weight-normal">
+                                <span class="font-weight-bold">{{ media_file_count }}</span> media file{% if media_file_count != 1 %}s{% endif %}
+                                {% if folder_updated_at %}
+                                · Folder last updated: <span class="font-weight-bold">{{ folder_updated_at|date:"Y-m-d H:i" }}</span>
+                                {% else %}
+                                · Folder updated time unavailable
+                                {% endif %}
+                            </p>
+                        </div>
+
+                        <div class="card-body">
+                            {% if stray_count %}
+                            <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                                <span>This folder contains {{ stray_count }} file(s) that are not allowed source media (e.g. .txt, .json, .zip).</span>
+                                <form method="POST" action="{% url 'remove_stray_source_files' bucket_name %}" class="m-0">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Remove non-media files</button>
+                                </form>
+                            </div>
+                            {% endif %}
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <form method="POST" action="{% url 'rename_source' bucket_name %}" class="d-flex gap-2">
+                                        {% csrf_token %}
+                                        <input type="text" name="new_name" class="form-control" placeholder="Rename source folder" title="Rename source folder" required>
+                                        <button type="submit" class="btn btn-outline-primary">Rename</button>
+                                    </form>
+                                </div>
+                                <div class="col-md-6">
+                                    <form method="POST" action="{% url 'upload_file' bucket_name %}" enctype="multipart/form-data" class="d-flex gap-2">
+                                        {% csrf_token %}
+                                        <input type="file" name="files" class="form-control" accept=".jpg,.jpeg,.png,.webp,.gif,.avif,.bmp,.tif,.tiff,.mp4,.mov,.webm" title="Images or short video clips only" multiple required>
+                                        <button type="submit" class="btn btn-primary">Upload media</button>
+                                    </form>
+                                </div>
+                            </div>
+                            <form method="POST" id="fileSelectionForm">
+                                {% csrf_token %}
+                                <div class="mb-3 d-flex gap-2 flex-wrap align-items-center source-action-row">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="selectAllBtn">Select all</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="clearSelectionBtn">Clear</button>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" id="selectStockBtn">Select stock candidates</button>
+                                    <button type="submit" formaction="{% url 'download_source_files' bucket_name %}" class="btn btn-sm btn-success">Download selected</button>
+                                    <button type="submit" formaction="{% url 'delete_source_files' bucket_name %}" class="btn btn-sm btn-danger" id="deleteSelectedBtn">Delete selected</button>
+                                    <button type="submit" formaction="{% url 'delete_duplicate_source_images' bucket_name %}" class="btn btn-sm btn-warning" id="deleteDuplicatesBtn">Delete duplicate images</button>
+                                    <button type="submit" formaction="{% url 'trim_source_borders' bucket_name %}" class="btn btn-sm btn-outline-dark" id="trimBordersBtn">Auto-trim black/white borders</button>
+                                    <div class="ms-auto d-flex align-items-center gap-2">
+                                        <label for="sizeSortSelect" class="mb-0 small text-muted">Organize by size</label>
+                                        <select id="sizeSortSelect" class="form-control form-control-sm" title="Organize files by size">
+                                            <option value="none">Default order</option>
+                                            <option value="largest">Largest first</option>
+                                            <option value="smallest">Smallest first</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="mb-3 d-flex gap-2 flex-wrap align-items-center border rounded p-2 bg-light source-size-row">
+                                    <span class="small text-muted">Select images by size:</span>
+                                    <input type="number" min="0" step="0.1" id="sizeThresholdValue" class="form-control form-control-sm size-threshold-input" placeholder="Size">
+                                    <select id="sizeThresholdUnit" class="form-control form-control-sm size-threshold-unit" title="Size unit">
+                                        <option value="B">B</option>
+                                        <option value="KB" selected>KB</option>
+                                        <option value="MB">MB</option>
+                                    </select>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" id="selectImageBelowBtn">Select images &le; size</button>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" id="selectImageAboveBtn">Select images &ge; size</button>
+                                    <span class="small text-muted" id="selectionStatus" aria-live="polite">No files selected</span>
+                                </div>
+                                <div class="table-responsive">
+                                    <table id="bucketContentsTable" class="table table-striped table-bordered">
+                                    <thead class="table-primary">
+                                        <tr>
+                                            <th class="select-column">Select</th>
+                                            <th>Preview</th>
+                                            <th>File Name</th>
+                                            <th>Size (Bytes)</th>
+                                            <th>Last Modified</th>
+                                            <th>Download</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for obj in objects %}
+                                        <tr{% if obj.is_stray %} class="table-warning"{% endif %}>
+                                            <td class="select-column">
+                                                <input type="checkbox"
+                                                       class="file-select source-file-checkbox"
+                                                       name="selected_files"
+                                                       value="{{ obj.Key }}"
+                                                       data-size="{{ obj.Size }}"
+                                                       data-kind="{% if obj.is_image %}image{% elif obj.is_video %}video{% else %}other{% endif %}"
+                                                       data-stock-candidate="{% if obj.is_stock_candidate %}1{% else %}0{% endif %}"
+                                                       title="Select {{ obj.Key }}">
+                                            </td>
+                                            <td>
+                                                {% if obj.is_stray %}
+                                                <span class="text-danger small">Not allowed</span>
+                                                {% elif obj.is_video %}
+                                                <div class="video-preview-cell" data-video-src="{{ obj.preview_url }}">
+                                                    <button type="button" class="btn btn-link p-0 video-preview-btn" title="Play {{ obj.Key }}">
+                                                        <span class="video-preview-frame">
+                                                            <img src="{{ obj.thumbnail_url }}" alt="{{ obj.Key }}" loading="lazy"
+                                                                 class="source-preview-thumb" />
+                                                            <span class="video-preview-icon">&#9658;</span>
+                                                        </span>
+                                                    </button>
+                                                </div>
+                                                {% elif obj.thumbnail_url %}
+                                                <img src="{{ obj.thumbnail_url }}" alt="{{ obj.Key }}" loading="lazy"
+                                                     class="source-preview-thumb" />
+                                                {% else %}
+                                                <span class="text-muted">No preview</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {{ obj.Key }}
+                                                {% if obj.is_stock_candidate %}
+                                                <span class="badge badge-warning ms-1" title="Likely stock source fingerprint in filename">stock?</span>
+                                                {% endif %}
+                                            </td>
+                                            <td data-order="{{ obj.Size }}">{{ obj.Size }}</td>
+                                            <td>{{ obj.LastModified }}</td>
+                                            <td>
+                                                <a href="{% url 'bucket_contents' bucket_name %}?download={{ obj.Key|urlencode }}" 
+                                                   class="btn btn-sm btn-success" target="_blank">Download</a>
+                                            </td>
+                                        </tr>
+                                        {% empty %}
+                                        <tr>
+                                            <td colspan="6" class="text-center">No files in this source.</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                    </table>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div class="card-footer text-center d-flex justify-content-center align-items-center gap-2 flex-wrap">
+                            <a href="{% url 'upload_file' bucket_name %}" class="btn btn-primary">Upload File</a>
+                            <a href="{% url 'list_buckets' %}" class="btn btn-outline-secondary">Back to sources</a>
+                            <button type="submit"
+                                    form="fileSelectionForm"
+                                    formaction="{% url 'delete_source_files' bucket_name %}"
+                                    formmethod="post"
+                                    class="btn btn-danger"
+                                    id="deleteSelectedBottomBtn"
+                                    title="Delete the files you've selected from this source">
+                                Delete selected
+                            </button>
+                            <span class="small text-muted" id="deleteSelectedBottomStatus" aria-live="polite"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- Video preview modal -->
+<div class="modal fade" id="videoPreviewModal" tabindex="-1" aria-labelledby="videoPreviewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content bg-dark text-light">
+      <div class="modal-header border-0 py-2">
+        <h6 class="modal-title" id="videoPreviewModalLabel">Video preview</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0">
+        <video id="videoPreviewPlayer" class="video-preview-player" controls autoplay></video>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Activate DataTables -->
+<script>
+    (function () {
+    const loadScript = (src) => new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error(`Failed to load ${src}`));
+        document.body.appendChild(script);
+    });
+
+    const ensureDataTables = async () => {
+        if (!window.jQuery) {
+            throw new Error('jQuery is required for the source table.');
+        }
+        if (!window.jQuery.fn.DataTable) {
+            await loadScript('/static/admin/plugins/datatables/jquery.dataTables.min.js');
+            await loadScript('/static/admin/plugins/datatables-bs4/js/dataTables.bootstrap4.min.js');
+        }
+    };
+
+    window.addEventListener('load', async function () {
+        try {
+            await ensureDataTables();
+        } catch (error) {
+            console.error(error);
+            return;
+        }
+        const $ = window.jQuery;
+        let activeSizeFilter = null;
+        $.fn.dataTable.ext.search.push((settings, _data, dataIndex) => {
+            if (settings.nTable.id !== 'bucketContentsTable' || !activeSizeFilter) {
+                return true;
+            }
+            const row = settings.aoData[dataIndex] && settings.aoData[dataIndex].nTr;
+            const cb = row && row.querySelector('.file-select');
+            if (!cb || (cb.dataset.kind || '') !== 'image') {
+                return false;
+            }
+            const size = Number(cb.dataset.size || '0');
+            return activeSizeFilter.mode === 'below'
+                ? size <= activeSizeFilter.threshold
+                : size >= activeSizeFilter.threshold;
+        });
+        const bucketName = "{{ bucket_name|escapejs }}";
+        const pageStorageKey = `bucketContents:page:${bucketName}`;
+        const lengthStorageKey = `bucketContents:length:${bucketName}`;
+        let storedPageLen = parseInt(localStorage.getItem(lengthStorageKey) || '', 10);
+        if (![25, 50, 100, 250].includes(storedPageLen)) storedPageLen = 100;
+        const table = $('#bucketContentsTable').DataTable({
+            "paging": true,
+            "searching": true,
+            "ordering": true,
+            "info": true,
+            "pageLength": storedPageLen,
+            "lengthMenu": [25, 50, 100, 250],
+            "columnDefs": [
+                { "targets": [0, 1, 5], "orderable": false },
+                { "targets": 3, "type": "num" }
+            ],
+            "language": {
+                "search": "Search Files:",
+                "lengthMenu": "Show _MENU_ entries",
+                "paginate": {
+                    "next": "Next",
+                    "previous": "Previous"
+                }
+            }
+        });
+        try {
+            const storedPage = parseInt(localStorage.getItem(pageStorageKey) || '', 10);
+            if (Number.isFinite(storedPage) && storedPage > 0) {
+                const totalPages = table.page.info().pages || 1;
+                table.page(Math.min(storedPage, totalPages - 1)).draw('page');
+            }
+        } catch (e) { /* ignore */ }
+        table.on('page.dt length.dt', () => {
+            try {
+                localStorage.setItem(pageStorageKey, String(table.page.info().page));
+                localStorage.setItem(lengthStorageKey, String(table.page.len()));
+            } catch (e) { /* ignore */ }
+        });
+        const persistTablePage = () => {
+            try {
+                localStorage.setItem(pageStorageKey, String(table.page.info().page));
+                localStorage.setItem(lengthStorageKey, String(table.page.len()));
+            } catch (e) { /* ignore */ }
+        };
+        const fileSelectionFormEl = document.getElementById('fileSelectionForm');
+        if (fileSelectionFormEl) {
+            fileSelectionFormEl.addEventListener('submit', persistTablePage);
+        }
+        document.querySelectorAll('button[form="fileSelectionForm"]').forEach((btn) => {
+            btn.addEventListener('click', persistTablePage);
+        });
+        const sizeSortSelect = document.getElementById('sizeSortSelect');
+        if (sizeSortSelect) {
+            sizeSortSelect.addEventListener('change', () => {
+                const choice = sizeSortSelect.value;
+                if (choice === 'largest') {
+                    table.order([3, 'desc']).draw();
+                } else if (choice === 'smallest') {
+                    table.order([3, 'asc']).draw();
+                } else {
+                    table.order([]).draw();
+                }
+            });
+        }
+
+        const tableRows = () => table.rows().nodes().toArray();
+        const checkboxes = () => tableRows()
+            .map(row => row.querySelector('.file-select'))
+            .filter(Boolean);
+        const selectedFiles = new Set(checkboxes().filter(cb => cb.checked).map(cb => cb.value));
+        const selectedValues = () => Array.from(selectedFiles);
+        const updateSelectedRows = () => {
+            table.rows().nodes().toArray().forEach((row) => {
+                const cb = row.querySelector('.file-select');
+                if (!cb) return;
+                cb.checked = selectedFiles.has(cb.value);
+                row.classList.toggle('source-file-selected', cb.checked);
+            });
+        };
+        const sizeThresholdValue = document.getElementById('sizeThresholdValue');
+        const sizeThresholdUnit = document.getElementById('sizeThresholdUnit');
+        const selectImageBelowBtn = document.getElementById('selectImageBelowBtn');
+        const selectImageAboveBtn = document.getElementById('selectImageAboveBtn');
+        const selectionStatus = document.getElementById('selectionStatus');
+        const formatBytes = (bytes) => {
+            if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+            if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+            return `${bytes} B`;
+        };
+        const bottomStatus = document.getElementById('deleteSelectedBottomStatus');
+        const updateSelectionStatus = (message) => {
+            const selected = selectedValues().length;
+            const text = message || (selected ? `${selected} file${selected === 1 ? '' : 's'} selected` : 'No files selected');
+            if (selectionStatus) selectionStatus.textContent = text;
+            if (bottomStatus) bottomStatus.textContent = selected ? `${selected} file${selected === 1 ? '' : 's'} selected` : '';
+        };
+
+        const parseThresholdBytes = () => {
+            const raw = Number(sizeThresholdValue && sizeThresholdValue.value ? sizeThresholdValue.value : 0);
+            if (!raw || raw < 0) {
+                return 0;
+            }
+            const unit = sizeThresholdUnit ? sizeThresholdUnit.value : 'KB';
+            if (unit === 'MB') return Math.round(raw * 1024 * 1024);
+            if (unit === 'KB') return Math.round(raw * 1024);
+            return Math.round(raw);
+        };
+
+        const selectImagesBySize = (mode) => {
+            const threshold = parseThresholdBytes();
+            if (!threshold) {
+                alert('Enter a size threshold greater than 0.');
+                return;
+            }
+            let selectedCount = 0;
+            selectedFiles.clear();
+            activeSizeFilter = { mode, threshold };
+            checkboxes().forEach((cb) => {
+                if ((cb.dataset.kind || '') !== 'image') return;
+                const size = Number(cb.dataset.size || '0');
+                const matched = mode === 'below' ? size <= threshold : size >= threshold;
+                if (matched) {
+                    selectedFiles.add(cb.value);
+                    selectedCount += 1;
+                }
+            });
+            updateSelectedRows();
+            if (mode === 'below') {
+                table.order([3, 'asc']).draw(false);
+                if (sizeSortSelect) sizeSortSelect.value = 'smallest';
+            } else {
+                table.order([3, 'desc']).draw(false);
+                if (sizeSortSelect) sizeSortSelect.value = 'largest';
+            }
+            updateSelectedRows();
+            updateSelectionStatus(`${selectedCount} image${selectedCount === 1 ? '' : 's'} selected ${mode === 'below' ? '<=' : '>='} ${formatBytes(threshold)}`);
+            if (!selectedCount) {
+                alert('No images matched that size rule.');
+            }
+        };
+
+        if (selectImageBelowBtn) {
+            selectImageBelowBtn.addEventListener('click', () => selectImagesBySize('below'));
+        }
+        if (selectImageAboveBtn) {
+            selectImageAboveBtn.addEventListener('click', () => selectImagesBySize('above'));
+        }
+        const selectStockBtn = document.getElementById('selectStockBtn');
+        const selectStockCandidates = () => {
+            let count = 0;
+            activeSizeFilter = null;
+            selectedFiles.clear();
+            checkboxes().forEach((cb) => {
+                const isCandidate = (cb.dataset.stockCandidate || '0') === '1';
+                if (isCandidate) {
+                    selectedFiles.add(cb.value);
+                    count += 1;
+                }
+            });
+            table.draw(false);
+            updateSelectedRows();
+            updateSelectionStatus(
+                count
+                    ? `${count} likely stock image${count === 1 ? '' : 's'} selected`
+                    : 'No stock candidates detected by filename'
+            );
+            return count;
+        };
+        if (selectStockBtn) {
+            selectStockBtn.addEventListener('click', selectStockCandidates);
+        }
+        // Auto-select likely stock images once on page load for quick cleanup.
+        selectStockCandidates();
+
+        document.getElementById('selectAllBtn').addEventListener('click', () => {
+            activeSizeFilter = null;
+            checkboxes().forEach(cb => { selectedFiles.add(cb.value); });
+            table.draw(false);
+            updateSelectedRows();
+            updateSelectionStatus();
+        });
+        document.getElementById('clearSelectionBtn').addEventListener('click', () => {
+            activeSizeFilter = null;
+            selectedFiles.clear();
+            table.draw(false);
+            updateSelectedRows();
+            updateSelectionStatus();
+        });
+
+        document.addEventListener('change', (e) => {
+            if (e.target.matches('.file-select')) {
+                if (e.target.checked) {
+                    selectedFiles.add(e.target.value);
+                } else {
+                    selectedFiles.delete(e.target.value);
+                }
+                updateSelectedRows();
+                updateSelectionStatus();
+            }
+        });
+        table.on('draw', updateSelectedRows);
+
+        const form = document.getElementById('fileSelectionForm');
+        const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+        const deleteSelectedBottomBtn = document.getElementById('deleteSelectedBottomBtn');
+        const deleteDuplicatesBtn = document.getElementById('deleteDuplicatesBtn');
+        const trimBordersBtn = document.getElementById('trimBordersBtn');
+        const syncDetachedSelections = () => {
+            form.querySelectorAll('input[data-selected-file-shadow="true"]').forEach(input => input.remove());
+            const visibleSelected = new Set(
+                checkboxes()
+                    .filter(cb => form.contains(cb) && selectedFiles.has(cb.value))
+                    .map(cb => cb.value)
+            );
+            selectedFiles.forEach((value) => {
+                    if (visibleSelected.has(value)) return;
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'selected_files';
+                    input.value = value;
+                    input.setAttribute('data-selected-file-shadow', 'true');
+                    form.appendChild(input);
+                });
+        };
+        form.addEventListener('submit', function (event) {
+            const submitter = event.submitter;
+            if (!submitter) return;
+
+            if (submitter === deleteDuplicatesBtn) {
+                if (!confirm('Delete exact duplicate images in this source?')) {
+                    event.preventDefault();
+                }
+                return;
+            }
+            if (submitter === trimBordersBtn) {
+                if (!confirm('Auto-trim black/white borders in this folder? This overwrites original media files in place.')) {
+                    event.preventDefault();
+                }
+                return;
+            }
+
+            const selected = selectedValues();
+            if (!selected.length) {
+                event.preventDefault();
+                alert('Please select at least one file.');
+                return;
+            }
+            syncDetachedSelections();
+            if ((submitter === deleteSelectedBtn || submitter === deleteSelectedBottomBtn) && !confirm(`Delete ${selected.length} selected file(s)?`)) {
+                event.preventDefault();
+            }
+        });
+
+        // Inline video playback via Bootstrap modal.
+        const videoModalEl = document.getElementById('videoPreviewModal');
+        const videoPlayer = document.getElementById('videoPreviewPlayer');
+        const videoLabel = document.getElementById('videoPreviewModalLabel');
+        if (videoModalEl && videoPlayer && window.jQuery) {
+            document.addEventListener('click', (e) => {
+                const btn = e.target.closest('.video-preview-btn');
+                if (!btn) return;
+                const cell = btn.closest('.video-preview-cell');
+                const src = cell && cell.getAttribute('data-video-src');
+                if (!src) return;
+                e.preventDefault();
+                const row = btn.closest('tr');
+                const nameCell = row && row.querySelectorAll('td')[2];
+                if (videoLabel) videoLabel.textContent = nameCell ? nameCell.textContent.trim() : 'Video preview';
+                videoPlayer.src = src;
+                videoPlayer.currentTime = 0;
+                window.jQuery(videoModalEl).modal('show');
+            });
+            videoModalEl.addEventListener('hidden.bs.modal', () => {
+                try { videoPlayer.pause(); } catch (_) { /* ignore */ }
+                videoPlayer.removeAttribute('src');
+                videoPlayer.load();
+            });
+        }
+    });
+    })();
+</script>
+
+{% endblock %}

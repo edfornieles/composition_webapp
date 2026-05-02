@@ -1,0 +1,101 @@
+ul.navbar-nav {
+    width: 75% !important;
+}
+
+span.membertitle {
+   /*  font-family: cursive; */
+    font-size: 23px;
+}
+
+img.sitelogo {
+    max-width: 300px;
+    max-height: 90px;
+}
+
+.logo-white-background {
+  background-color: white;
+  padding: 10px;
+  border-radius: 5px; /* Optional for rounded corners */
+  margin-left:70px;
+  width: 60px !important;
+}
+[class*=sidebar-dark-] {
+    background-color: #d44a7b!important;
+}
+
+.card-primary:not(.card-outline)>.card-header {
+    background-color: #d44a7b!important;
+}
+
+[class*=sidebar-dark-] .sidebar a {
+    color: #fff!important;
+}
+.dataTables_wrapper .dataTables_filter {
+        text-align: left!important;
+    }
+
+    /* Custom switch style */
+    .switch {
+        position: relative;
+        display: inline-block;
+        width: 34px;
+        height: 20px;
+    }
+    .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+    .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #df1b1b;;
+        transition: .4s;
+    }
+    .slider:before {
+        position: absolute;
+        content: "";
+        height: 14px;
+        width: 14px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: .4s;
+    }
+    input:checked + .slider {
+        background-color: #28a745;
+    }
+    input:checked + .slider:before {
+        transform: translateX(14px);
+    }
+    .slider.round {
+        border-radius: 20px;
+    }
+    .slider.round:before {
+        border-radius: 50%;
+    }
+	nav#navmenu ul li a {
+  position: relative;
+  text-decoration: none;
+  color: #333;
+  padding: 10px 15px;
+  font-weight: bold;
+}
+
+nav#navmenu ul li a.active::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 2px;
+  background-color: #007bff; /* Underline color */
+  bottom: -5px;
+  left: 0;
+}
+
+nav#navmenu ul li a:hover {
+  color: #007bff; /* Optional: Hover color */
+}

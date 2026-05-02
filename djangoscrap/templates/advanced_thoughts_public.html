@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ scenario.title }}</title>
+  <style>
+    :root { --fg:#f2efe9; --muted:#b7b2ac; --panel:rgba(10,10,14,.48); }
+    *{box-sizing:border-box} body,html{margin:0;min-height:100vh;background:#060608;color:var(--fg);font-family:Georgia,serif}
+    .load-track{position:fixed;top:0;left:0;right:0;height:4px;z-index:6;background:rgba(255,255,255,.12);opacity:0;transition:opacity .2s ease}
+    .load-track.active{opacity:1}
+    .load-bar{height:100%;width:0%;background:linear-gradient(90deg,rgba(255,255,255,.25),rgba(255,255,255,.95));box-shadow:0 0 12px rgba(255,255,255,.45);transition:width .12s linear}
+    .bg{position:fixed;inset:0;background:#111;overflow:hidden}
+    .bg img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(.78) saturate(1.08)}
+    .overlay{position:fixed;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,.2),rgba(0,0,0,.42));}
+    .frame{position:relative;z-index:2;min-height:100vh;padding:1.1rem}
+    .side{position:fixed;top:50%;transform:translateY(-50%);width:min(22rem,28vw);background:var(--panel);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.12);padding:1rem;border-radius:8px;max-height:78vh;overflow:auto}
+    .side-left{left:1rem}
+    .side-right{right:1rem}
+    .center{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(48rem,52vw);display:flex;align-items:center;justify-content:center}
+    .thought{font-size:clamp(1.2rem,2.1vw,2rem);line-height:1.35;text-align:center;background:var(--panel);padding:1.6rem;border-radius:12px;border:1px solid rgba(255,255,255,.14);max-width:100%;width:100%}
+    .k{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 .6rem}
+    ul{margin:.2rem 0 1rem 1rem;padding:0} li{margin:.2rem 0}
+    .meta{font-size:.7rem;color:var(--muted);margin-top:.8rem}
+    .visual-prompt-text{font-size:.86rem;line-height:1.45;color:#ddd}
+    @media (max-width:1100px){
+      .side,.center{position:static;transform:none;width:auto;max-height:none}
+      .frame{display:grid;grid-template-columns:1fr;gap:1rem}
+      .side-left{order:2}.center{order:1}.side-right{order:3}
+    }
+  </style>
+</head>
+<body>
+  <div id="loadTrack" class="load-track"><div id="loadBar" class="load-bar"></div></div>
+  <div id="bg" class="bg"><img id="bgImg" alt="" /></div>
+  <div class="overlay"></div>
+  <div class="frame">
+    <aside class="side side-left">
+      <p class="k">Subconscious awareness</p>
+      <ul id="subconscious"></ul>
+      <p class="k">Active desires</p>
+      <ul id="desires"></ul>
+      <p class="k">What shaped this thought</p>
+      <ul id="cognitive"></ul>
+      <p class="k">Scene continuity anchors</p>
+      <ul id="anchors"></ul>
+      <p class="k">Relationship state</p>
+      <ul id="relationships"></ul>
+      <p class="meta">{{ scenario.character_name|default:scenario.title }} · {{ scenario.archetype }}</p>
+    </aside>
+    <main class="center">
+      <div id="thought" class="thought">...</div>
+    </main>
+    <aside class="side side-right">
+      <p class="k">What they see (image prompt)</p>
+      <div id="visualPrompt" class="visual-prompt-text"></div>
+      <p class="meta" id="status">starting...</p><p class="meta" id="simTime"></p><p class="meta" id="location"></p><p class="meta" id="continuity"></p>
+    </aside>
+  </div>
+  <script>
+  (function(){
+    var TICK_URL="{{ tick_url|escapejs }}";
+    var thought=document.getElementById('thought');
+    var subconscious=document.getElementById('subconscious');
+    var desires=document.getElementById('desires');
+    var cognitive=document.getElementById('cognitive');
+    var visualPrompt=document.getElementById('visualPrompt');
+    var anchorsEl=document.getElementById('anchors');
+    var relationshipsEl=document.getElementById('relationships');
+    var bgImg=document.getElementById('bgImg');
+    function setBackgroundImage(url, backupUrl){
+      var primary = String(url || '').trim();
+      var backup = String(backupUrl || '').trim();
+      if(!primary && !backup) return Promise.resolve(false);
+      function withBust(u){
+        return u + (u.indexOf('?') === -1 ? '?' : '&') + '_ts=' + Date.now();
+      }
+      function tryLoad(target){
+        return new Promise(function(resolve){
+          if(!target){ resolve(false); return; }
+          var safe = withBust(target);
+          var probe=new Image();
+          probe.onload=function(){ bgImg.src=safe; resolve(true); };
+          probe.onerror=function(){ resolve(false); };
+          probe.src=safe;
+        });
+      }
+      return tryLoad(primary).then(function(ok){
+        if(ok){ return true; }
+        return tryLoad(backup);
+      });
+    }
+
+    var bg=document.getElementById('bg');
+    var status=document.getElementById('status');
+    var loadTrack=document.getElementById('loadTrack');
+    var loadBar=document.getElementById('loadBar');
+    var simTime=document.getElementById('simTime');
+    var locationEl=document.getElementById('location');
+    var continuityEl=document.getElementById('continuity');
+    var interval={{ scenario.tick_interval_seconds|default:7 }} * 1000;
+    var progressTimer=null;
+
+    function fmtClock(minutes){
+      var m=((minutes%1440)+1440)%1440;
+      var h=Math.floor(m/60);
+      var mm=String(m%60).padStart(2,'0');
+      return String(h).padStart(2,'0')+':'+mm;
+    }
+
+    function setList(el, items){
+      el.innerHTML='';
+      (items||[]).forEach(function(x){
+        var li=document.createElement('li'); li.textContent=x; el.appendChild(li);
+      });
+    }
+
+    function beginLoadBar(){
+      if(progressTimer){ clearInterval(progressTimer); progressTimer=null; }
+      loadTrack.classList.add('active');
+      var pct=6;
+      loadBar.style.width=pct+'%';
+      progressTimer=setInterval(function(){
+        pct=Math.min(90, pct + Math.max(0.8, (90-pct)*0.08));
+        loadBar.style.width=pct.toFixed(2)+'%';
+      },90);
+    }
+
+    function endLoadBar(){
+      if(progressTimer){ clearInterval(progressTimer); progressTimer=null; }
+      loadBar.style.width='100%';
+      setTimeout(function(){
+        loadTrack.classList.remove('active');
+        loadBar.style.width='0%';
+      },180);
+    }
+
+    async function tick(){
+      try{
+        status.textContent='capturing next frame...';
+        beginLoadBar();
+        var res=await fetch(TICK_URL,{method:'POST'});
+        var data=await res.json();
+        if(data.thought){ thought.textContent=data.thought; }
+        setList(subconscious,data.subconscious||[]);
+        setList(desires,data.desires||[]);
+        setList(cognitive,data.cognitive_trace||[]);
+        setList(anchorsEl,data.scene_anchors||[]);
+        setList(relationshipsEl,data.relationship_state||[]);
+        if(data.visual_prompt){ visualPrompt.textContent=data.visual_prompt; }
+        if(data.image_url || data.backup_image_url){
+          await setBackgroundImage(data.image_url, data.backup_image_url);
+        }
+        endLoadBar();
+        if(typeof data.sim_minutes === 'number'){ simTime.textContent='sim time: '+fmtClock(data.sim_minutes); }
+        if(data.location){ locationEl.textContent='location: '+data.location; }
+        if(data.continuity_note){ continuityEl.textContent='continuity: '+data.continuity_note; }
+        status.textContent=data.warning ? ('running with warning: '+data.warning) : (data.image_generated===false ? 'holding state' : 'live');
+        interval = Number(data.next_tick_ms) || interval;
+      }catch(e){
+        endLoadBar();
+        status.textContent='tick error: '+String(e);
+      }
+      setTimeout(tick, interval);
+    }
+    tick();
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+{
+  "_comment": [
+    "Optional overlay for djangoscrap/ingestion_url_rewriter.py. Copy this",
+    "file to ingestion_site_rules.json (same directory) or point the env var",
+    "INGESTION_SITE_RULES at any path. The file is read at process startup",
+    "and can be re-read at runtime by calling",
+    "djangoscrap.ingestion_url_rewriter.reload_rules().",
+    "",
+    "Top-level keys:",
+    "  ignore: list of host-suffixes that should be dropped entirely, like",
+    "          stock sites that only serve watermarked previews.",
+    "  upgrade: list of thumbnail → full-res rewrite rules. Each rule has:",
+    "    name         - short tag shown in campaign_last_report stats",
+    "    host_suffix  - matched against URL host (suffix match, no protocol)",
+    "    pattern      - Python regex applied to the URL path",
+    "    replacement  - regex replacement; may use backreferences like \\1",
+    "    apply_to_query (optional) - if true, regex runs on the whole URL",
+    "                                 (scheme://host/path?query) not just path",
+    "",
+    "JSON rules are evaluated BEFORE the built-in registry, so you can override",
+    "a built-in site's behavior by declaring a rule with the same host_suffix.",
+    "Invalid rules are logged and skipped; bad JSON never blocks ingestion."
+  ],
+  "ignore": [
+    "example-watermark-site.com"
+  ],
+  "upgrade": [
+    {
+      "name": "example-cdn",
+      "host_suffix": "cdn.example.com",
+      "pattern": "/thumb/(\\d+x\\d+)/",
+      "replacement": "/original/"
+    }
+  ]
+}

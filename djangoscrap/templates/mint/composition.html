@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mint {{ composition.name }}</title>
+  <style>
+    :root {
+      --bg: #050505;
+      --panel: #050505;
+      --panel-soft: #0d0d0d;
+      --fg: #f4f4f4;
+      --muted: #8c8c8c;
+      --line: #151515;
+      --line-strong: #2d2d2d;
+      --accent: #f4f4f4;
+      --accent-2: #ff1010;
+      --warning: #ff1010;
+      --shadow: none;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      -webkit-backdrop-filter: blur(18px);
+      backdrop-filter: blur(18px);
+      background: rgba(0, 0, 0, 0.82);
+      border-bottom: 1px solid var(--line);
+    }
+    .topbar-inner {
+      width: min(1380px, calc(100% - 32px));
+      margin: 0 auto;
+      height: 72px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      justify-content: flex-end;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 850;
+      letter-spacing: 0.04em;
+      color: var(--fg);
+      text-decoration: none;
+      min-width: 210px;
+      text-transform: uppercase;
+    }
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: #fff;
+      color: #000;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.82rem;
+      letter-spacing: -0.04em;
+      overflow: hidden;
+      flex: 0 0 auto;
+    }
+    .brand-mark img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .top-pill {
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--muted);
+      border-radius: 0;
+      padding: 8px 13px;
+      font-size: 0.86rem;
+      white-space: nowrap;
+    }
+    .header-actions {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      margin-left: auto;
+    }
+    .wallet-menu {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+      overflow: hidden;
+    }
+    .profile-button,
+    .connect-wallet {
+      height: 42px;
+      border: 0;
+      background: transparent;
+      color: var(--fg);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .profile-button {
+      width: 46px;
+      border-right: 1px solid var(--line);
+    }
+    .profile-button svg {
+      width: 21px;
+      height: 21px;
+      display: block;
+    }
+    .connect-wallet {
+      padding: 0 16px;
+      font-size: 0.9rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .profile-button:hover,
+    .connect-wallet:hover {
+      background: rgba(255,255,255,0.08);
+    }
+    .wrap { width: min(1380px, calc(100% - 32px)); margin: 0 auto; padding: 36px 0 64px; }
+    .hero { display: grid; grid-template-columns: minmax(0, 1.02fr) minmax(340px, 0.88fr); gap: 20px; align-items: stretch; }
+    .live {
+      border: 1px solid var(--line);
+      border-radius: 0;
+      background: var(--panel);
+      padding: 22px;
+      box-shadow: var(--shadow);
+    }
+    .live-frame {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border: 1px solid var(--line);
+      border-radius: 0;
+      overflow: hidden;
+      background: #000;
+      box-shadow: none;
+      position: relative;
+    }
+    .live iframe { width: 100%; height: 100%; border: 0; display: block; background: #000; }
+    .panel { display: flex; min-height: 0; }
+    .card {
+      width: 100%;
+      max-height: 100%;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 0;
+      padding: 24px;
+      background: #000;
+      box-shadow: var(--shadow);
+    }
+    .back { color: var(--muted); text-decoration: none; font-size: 0.9rem; font-weight: 700; }
+    .back:hover { color: var(--fg); }
+    .top-nav { display: flex; gap: 14px; align-items: center; justify-content: space-between; }
+    .nav-links {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      margin-left: auto;
+      border: 1px solid var(--line);
+      border-radius: 0;
+      background: var(--panel);
+      overflow: hidden;
+      flex: 0 0 auto;
+    }
+    .nav-links a {
+      color: var(--fg);
+      text-decoration: none;
+      border-right: 1px solid var(--line);
+      padding: 8px 11px;
+      font-size: 0.78rem;
+      font-weight: 750;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .nav-links a:hover { background: var(--panel-soft); }
+    .wallet-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 0;
+      background: transparent;
+      color: var(--fg);
+      padding: 6px 8px 6px 11px;
+      font-size: 0.78rem;
+      font-weight: 800;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .wallet-button:hover { background: var(--panel-soft); }
+    .wallet-divider {
+      width: 1px;
+      height: 18px;
+      background: var(--line);
+    }
+    .wallet-icon {
+      width: 20px;
+      height: 20px;
+      border: 1.5px solid var(--fg);
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+    }
+    .wallet-icon svg {
+      width: 13px;
+      height: 13px;
+      display: block;
+    }
+    h1 { margin: 28px 0 12px; font-size: clamp(3rem, 7vw, 8rem); line-height: 0.86; letter-spacing: -0.08em; text-transform: lowercase; }
+    p { color: var(--muted); line-height: 1.55; margin: 0; }
+    .pills, .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+    .pill { display: inline-flex; border: 1px solid var(--line); border-radius: 0; padding: 8px 12px; color: var(--muted); background: transparent; font-size: 0.84rem; }
+    button, .button {
+      border: 0;
+      border-bottom: 1px solid var(--fg);
+      border-radius: 0;
+      padding: 0 0 4px;
+      font-weight: 800;
+      background: transparent;
+      color: var(--fg);
+      cursor: pointer;
+      text-decoration: none;
+      font-size: 0.9rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    button:hover, .button:hover { background: transparent; border-color: var(--muted); color: var(--muted); }
+    button.secondary, .button.secondary { background: transparent; color: var(--fg); border-color: var(--fg); }
+    button.secondary:hover, .button.secondary:hover { background: transparent; border-color: var(--muted); color: var(--muted); }
+    button:disabled { opacity: 0.48; cursor: not-allowed; }
+    .output { margin-top: 20px; padding: 16px; border-radius: 0; border: 1px solid var(--line); background: #050505; word-break: break-word; color: var(--muted); }
+    .output a { color: var(--accent); }
+    .owner-download { margin-top: 20px; display: none; }
+    .owner-download.show { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px; border: 1px solid var(--line); border-radius: 0; background: #050505; }
+    .warning { margin-top: 16px; color: var(--warning); font-weight: 700; }
+    code { color: var(--fg); }
+    .versions { margin-top: 18px; display: grid; gap: 8px; }
+    .version-row { border: 1px solid var(--line); border-radius: 0; padding: 11px; color: var(--muted); background: var(--panel); }
+    .live-title {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: flex;
+      align-items: flex-end;
+      padding: 22px;
+      background: linear-gradient(180deg, transparent 35%, rgba(0,0,0,0.84));
+      color: #fff;
+      font-size: clamp(2.8rem, 7vw, 8rem);
+      font-weight: 900;
+      letter-spacing: -0.08em;
+      line-height: 0.86;
+      opacity: 0;
+      pointer-events: none;
+      text-transform: lowercase;
+      transition: opacity 140ms ease;
+    }
+    .live-frame:hover .live-title,
+    .live-frame:focus-within .live-title { opacity: 1; }
+    .version-row a { color: var(--accent); }
+    body {
+      background: #050505;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: -0.02em;
+    }
+    .topbar {
+      background: rgba(5,5,5,0.94);
+      border-bottom: 1px solid #151515;
+    }
+    .topbar-inner {
+      width: min(1480px, calc(100% - 28px));
+      height: 82px;
+      gap: 28px;
+      justify-content: flex-end;
+    }
+    .brand {
+      min-width: auto;
+      gap: 24px;
+      font-size: 0.92rem;
+      letter-spacing: -0.04em;
+    }
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 0;
+      background: #f4f4f4;
+      color: #050505;
+      font-weight: 900;
+    }
+    .top-pill {
+      border: 0;
+      padding: 0;
+      color: #f4f4f4;
+      font-size: 0.9rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .wrap {
+      width: min(1480px, calc(100% - 28px));
+      padding: 18px 0 46px;
+    }
+    .hero {
+      grid-template-columns: minmax(0, 52%) minmax(260px, 1fr);
+      gap: clamp(20px, 4vw, 54px);
+      align-items: start;
+    }
+    .live {
+      border: 0;
+      padding: 0;
+      background: transparent;
+    }
+    .live-frame {
+      border: 0;
+      background: #050505;
+    }
+    .live-title { display: none; }
+    .panel { min-height: 0; }
+    .card {
+      border: 0;
+      padding: clamp(18px, 4vw, 54px) 0 0;
+      background: transparent;
+      color: #f4f4f4;
+      overflow: visible;
+    }
+    .top-nav { display: none; }
+    .back {
+      color: #f4f4f4;
+      font-size: 0.84rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .nav-links {
+      border: 0;
+      background: transparent;
+      gap: 18px;
+      overflow: visible;
+    }
+    .nav-links a,
+    .wallet-button {
+      border: 0;
+      color: #f4f4f4;
+      padding: 0;
+      background: transparent;
+      font-size: 0.84rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .nav-links a:hover,
+    .wallet-button:hover {
+      background: transparent;
+      text-decoration: underline;
+    }
+    .wallet-divider,
+    .wallet-icon { display: none; }
+    .work-kicker {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 6px;
+      color: #f4f4f4;
+      font-size: 0.84rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(3rem, 8vw, 8rem);
+      line-height: 0.86;
+      letter-spacing: -0.08em;
+      text-transform: uppercase;
+    }
+    .subtitle {
+      margin-bottom: 34px;
+      color: #f4f4f4;
+      font-size: 0.94rem;
+      font-weight: 700;
+      line-height: 1.35;
+      text-transform: uppercase;
+    }
+    .released {
+      margin: 24px 0 16px;
+      color: #9b9b9b;
+      font-size: 0.8rem;
+    }
+    .pills {
+      display: none;
+    }
+    .actions {
+      margin: 18px 0 24px;
+      gap: 18px;
+    }
+    button,
+    .button {
+      color: #f4f4f4;
+      border-bottom-color: #f4f4f4;
+      font-size: 0.84rem;
+    }
+    .work-section {
+      border-top: 1px solid #151515;
+      background: #080808;
+      margin-top: 0;
+    }
+    .work-section summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 10px;
+      color: #f4f4f4;
+      cursor: pointer;
+      font-size: 0.86rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      list-style: none;
+    }
+    .work-section summary::-webkit-details-marker { display: none; }
+    .work-section summary::after {
+      content: "⌄";
+      font-size: 1rem;
+    }
+    .work-section[open] summary::after {
+      content: "⌃";
+    }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0;
+      border-top: 1px solid #151515;
+    }
+    .detail-cell {
+      min-height: 54px;
+      padding: 10px;
+      border-right: 1px solid #151515;
+      border-bottom: 1px solid #151515;
+      color: #d8d8d8;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+    }
+    .detail-cell span {
+      display: block;
+      color: #777;
+      font-size: 0.66rem;
+      margin-bottom: 5px;
+    }
+    .media-strip {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      overflow-x: auto;
+      padding: 16px 10px 20px;
+      border-top: 1px solid #151515;
+    }
+    .media-thumb {
+      width: 92px;
+      aspect-ratio: 1 / 1;
+      flex: 0 0 auto;
+      border: 1px solid #151515;
+      background: #000;
+      object-fit: cover;
+    }
+    .video-download-row {
+      padding: 14px 10px 16px;
+      border-top: 1px solid #151515;
+    }
+    .media-download {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      border: 1px solid #151515;
+      padding: 10px;
+      color: #9b9b9b;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+    }
+    .media-download a {
+      color: #f4f4f4;
+      font-weight: 700;
+      text-decoration: underline;
+    }
+    .media-updated,
+    .version-downloads {
+      color: #9b9b9b;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+    }
+    .version-downloads {
+      display: grid;
+      gap: 8px;
+      padding: 0 10px 16px;
+    }
+    .version-download {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      border: 1px solid #151515;
+      padding: 10px;
+    }
+    .version-download a {
+      color: #f4f4f4;
+      font-weight: 700;
+      text-decoration: underline;
+      white-space: nowrap;
+    }
+    .media-label {
+      padding: 10px 10px 0;
+      color: #ff1010;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .related-strip {
+      display: flex;
+      gap: 18px;
+      align-items: center;
+      overflow-x: auto;
+      padding: 0 10px 18px;
+    }
+    .other-works-section {
+      border-top: 1px solid #151515;
+      background: #080808;
+      margin-top: 0;
+    }
+    .other-works-heading {
+      padding: 14px 10px;
+      color: #f4f4f4;
+      font-size: 0.86rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .related-card {
+      width: 92px;
+      aspect-ratio: 1 / 1;
+      flex: 0 0 auto;
+      border: 1px solid transparent;
+      background: #000;
+      display: block;
+      overflow: hidden;
+      text-decoration: none;
+    }
+    .related-card:hover,
+    .related-card:focus-visible {
+      border-color: #ff1010;
+      outline: none;
+    }
+    .related-card img,
+    .related-card video,
+    .related-card iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+      object-fit: cover;
+      background: #000;
+    }
+    .timeline-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 18px;
+      font-size: 0.78rem;
+    }
+    .timeline-row a {
+      color: #f4f4f4;
+      font-weight: 700;
+      text-decoration: underline;
+    }
+    .owner-download.show,
+    .output,
+    .version-row {
+      background: #080808;
+      border-color: #151515;
+    }
+    @media (max-width: 560px) {
+      .top-pill { display: none; }
+      .topbar-inner { height: auto; padding: 12px 0; flex-wrap: wrap; }
+      .brand { min-width: 0; }
+      .header-actions { width: 100%; justify-content: flex-end; }
+      .hero { grid-template-columns: 1fr; }
+      .live { padding: 14px; }
+      .top-nav { align-items: flex-start; flex-direction: column; }
+      .nav-links { margin-left: 0; max-width: 100%; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="header-actions" aria-label="Wallet actions">
+        <div class="wallet-menu">
+          <button type="button" class="profile-button" aria-label="Profile">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="8.5" r="3.25" stroke="currentColor" stroke-width="2"></circle>
+              <path d="M5.5 19c1.2-3.6 3.35-5.3 6.5-5.3s5.3 1.7 6.5 5.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+            </svg>
+          </button>
+          <button type="button" class="connect-wallet" id="connectWalletBtn">
+            <span class="wallet-label">Connect wallet</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+  <main class="wrap">
+    <div class="hero">
+      <section class="live" aria-label="Live composition preview">
+        <div class="live-frame">
+          <iframe src="{{ render_url }}" title="{{ composition.name }} square live composition preview"></iframe>
+          <div class="live-title">{{ composition.name }}</div>
+        </div>
+      </section>
+      <section class="panel">
+      <div class="card">
+        <h1>{{ composition.name }}</h1>
+        <p class="released">Released {% if composition.date %}{{ composition.date|date:"F j, Y" }}{% else %}as a live composition{% endif %}.</p>
+        <div class="pills">
+          <span class="pill">Ethereum</span>
+          <span class="pill">Square 1:1</span>
+          <span class="pill">Ready to mint</span>
+          <span class="pill" id="nftVersionLabel">Next version: v{{ nft_state.next_version|default:1 }}</span>
+          <span class="pill" id="nftOwnerLabel">Owner: {% if nft_state.latest_owner_wallet %}{{ nft_state.latest_owner_wallet|truncatechars:18 }}{% else %}first mint open{% endif %}</span>
+        </div>
+        <details class="work-section">
+          <summary>Detail</summary>
+          <div class="detail-grid">
+            <div class="detail-cell"><span>Type</span>{% if composition.type %}{{ composition.type }}{% else %}Live feed{% endif %}</div>
+            <div class="detail-cell"><span>Supply</span>1 of 1000</div>
+            <div class="detail-cell"><span>Standard</span>ERC-721</div>
+            <div class="detail-cell"><span>Dimensions</span>1080x1080</div>
+            <div class="detail-cell"><span>Storage</span>IPFS</div>
+            <div class="detail-cell"><span>Metadata</span>Onchain</div>
+            <div class="detail-cell"><span>Contract</span>Ethereum</div>
+            <div class="detail-cell"><span>Size</span>{% if nft_state.media.collector_45s.size_label %}{{ nft_state.media.collector_45s.size_label }}{% elif nft_state.media.preview_15s.size_label %}{{ nft_state.media.preview_15s.size_label }}{% else %}-{% endif %}</div>
+          </div>
+        </details>
+        <details class="work-section">
+          <summary>Media</summary>
+          <div class="video-download-row">
+            <div class="media-download">
+              <span>45-second collector file</span>
+              <a
+                id="ownerDownloadLink"
+                href="{% if nft_state.owner_download_url %}{{ nft_state.owner_download_url }}{% elif nft_state.media.collector_45s.url %}{{ nft_state.media.collector_45s.url }}{% elif nft_state.latest_collector_video_url %}{{ nft_state.latest_collector_video_url }}{% else %}#{% endif %}"
+                data-fallback-download-url="{% if nft_state.media.collector_45s.url %}{{ nft_state.media.collector_45s.url }}{% elif nft_state.latest_collector_video_url %}{{ nft_state.latest_collector_video_url }}{% endif %}"
+                download
+                {% if not nft_state.owner_download_url and not nft_state.media.collector_45s.url and not nft_state.latest_collector_video_url %}aria-disabled="true"{% endif %}
+              >
+                {% if nft_state.owner_download_url or nft_state.media.collector_45s.url or nft_state.latest_collector_video_url %}Video{% else %}Video pending{% endif %}
+              </a>
+              {% if nft_state.media.collector_45s.size_label %}
+              <span>{{ nft_state.media.collector_45s.size_label }}</span>
+              {% endif %}
+              {% if nft_state.media.collector_45s.generated_at_label %}
+              <span class="media-updated">Updated {{ nft_state.media.collector_45s.generated_at_label }}</span>
+              {% endif %}
+            </div>
+          </div>
+          {% if nft_state.versions %}
+          <div class="version-downloads">
+            {% for version in nft_state.versions %}
+              {% if version.collector_download_url %}
+              <div class="version-download">
+                <span>
+                  v{{ version.version }}
+                  {% if version.updated_at_label %} · {{ version.updated_at_label }}{% endif %}
+                  {% if version.collector_size_label %} · {{ version.collector_size_label }}{% endif %}
+                </span>
+                <a href="{{ version.collector_download_url }}" download>Video</a>
+              </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
+        </details>
+        {% if related_mint_rows %}
+        <section class="other-works-section" aria-label="Other works">
+          <div class="other-works-heading">Other works</div>
+          <div class="related-strip" aria-label="Other mintable compositions">
+            {% for row in related_mint_rows %}
+            <a class="related-card" href="{{ row.mint_url }}" title="{{ row.composition.name }}">
+              {% if row.nft.media.poster.url %}
+              <img src="{{ row.nft.media.poster.url }}" alt="{{ row.composition.name }} poster still" loading="lazy">
+              {% elif row.nft.media.preview_15s.url %}
+              <video src="{{ row.nft.media.preview_15s.url }}" muted loop autoplay></video>
+              {% elif row.render_url %}
+              <iframe src="{{ row.render_url }}" title="{{ row.composition.name }} live composition thumbnail" loading="lazy"></iframe>
+              {% else %}
+              <img src="{{ row.preview_url }}" alt="{{ row.composition.name }}" loading="lazy">
+              {% endif %}
+            </a>
+            {% endfor %}
+          </div>
+        </section>
+        {% endif %}
+        <div class="owner-download {% if nft_state.owner_download_url %}show{% endif %}" id="ownerDownload"></div>
+        <input type="hidden" id="nftCsrfToken" value="{{ csrf_token }}">
+        {{ nft_state|json_script:"composition-nft-state" }}
+        <div class="versions">
+          {% for version in nft_state.versions %}
+          <div class="version-row">
+            v{{ version.version }} · {{ version.status }}
+            {% if version.metadata_url %} · <a href="{{ version.metadata_url }}" target="_blank" rel="noopener">metadata</a>{% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        <div class="timeline-row">
+          <a href="{{ live_url }}" target="_blank" rel="noopener">Live work</a>
+          {% if nft_state.marketplace_base_url %}
+          <a href="{{ nft_state.marketplace_base_url }}" target="_blank" rel="noopener">Opensea</a>
+          {% else %}
+          <span>Opensea</span>
+          {% endif %}
+        </div>
+      </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const nftState = JSON.parse(document.getElementById("composition-nft-state").textContent || "{}");
+    const nftStatusUrl = "{{ nft_status_url|escapejs }}";
+    const nftPrepareUrl = "{{ nft_prepare_url|escapejs }}";
+    const connectWalletBtn = document.getElementById("connectWalletBtn");
+    const prepareNftBtn = document.getElementById("prepareNftBtn");
+    const nftStatusText = document.getElementById("nftStatusText");
+    const nftMintOutput = document.getElementById("nftMintOutput");
+    const nftVersionLabel = document.getElementById("nftVersionLabel");
+    const nftOwnerLabel = document.getElementById("nftOwnerLabel");
+    const ownerDownload = document.getElementById("ownerDownload");
+    const ownerDownloadLink = document.getElementById("ownerDownloadLink");
+    const walletButtonLabel = connectWalletBtn?.querySelector(".wallet-label");
+    let connectedWallet = "";
+    let currentCanPrepare = nftState?.can_prepare !== false;
+    document.querySelectorAll(".media-strip video").forEach((video) => {
+      video.playsInline = true;
+    });
+
+    const syncDetailCardHeight = () => {
+      const detailCard = document.querySelector(".panel .card");
+      if (!detailCard) return;
+      detailCard.style.height = "";
+    };
+    window.addEventListener("load", syncDetailCardHeight);
+    window.addEventListener("resize", syncDetailCardHeight);
+    setTimeout(syncDetailCardHeight, 250);
+
+    const shortWallet = (wallet) => wallet ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}` : "";
+    const setNftStatus = (text) => { if (nftStatusText) nftStatusText.textContent = text; };
+    const applyOwnerDownload = (state) => {
+      const fallbackUrl = ownerDownloadLink?.dataset?.fallbackDownloadUrl || "";
+      const downloadUrl = state?.owner_download_url || state?.media?.collector_45s?.url || fallbackUrl;
+      if (!ownerDownload || !ownerDownloadLink) return;
+      ownerDownload.classList.toggle("show", Boolean(downloadUrl));
+      ownerDownloadLink.href = downloadUrl || "#";
+      if (downloadUrl) {
+        ownerDownloadLink.removeAttribute("aria-disabled");
+        ownerDownloadLink.textContent = "Video";
+      } else {
+        ownerDownloadLink.setAttribute("aria-disabled", "true");
+        ownerDownloadLink.textContent = "Video pending";
+      }
+    };
+    const applyPrepareState = (state) => {
+      currentCanPrepare = state?.can_prepare !== false;
+      if (prepareNftBtn) prepareNftBtn.disabled = !currentCanPrepare;
+      if (!currentCanPrepare && state?.blocked_reason) setNftStatus(state.blocked_reason);
+      applyOwnerDownload(state);
+    };
+    const renderNftPackage = (payload) => {
+      const metadataUrl = payload.metadata_url || payload?.nft?.latest_metadata_url || "";
+      const tokenUri = payload.token_uri || metadataUrl;
+      if (payload?.nft?.next_version && nftVersionLabel) nftVersionLabel.textContent = `Next version: v${payload.nft.next_version}`;
+      if (connectedWallet && nftOwnerLabel) nftOwnerLabel.textContent = `Wallet: ${shortWallet(connectedWallet)}`;
+      applyOwnerDownload(payload?.nft || {});
+      const parts = [];
+      if (metadataUrl) parts.push(`<div>Metadata: <a href="${metadataUrl}" target="_blank" rel="noopener">${metadataUrl}</a></div>`);
+      if (tokenUri) parts.push(`<div>Ethereum tokenURI: <code>${tokenUri}</code></div>`);
+      if (nftState.contract_address) parts.push(`<div>Contract: <code>${nftState.contract_address}</code></div>`);
+      else parts.push("<div>Set <code>NFT_ETH_CONTRACT_ADDRESS</code> before production minting.</div>");
+      if (nftMintOutput) nftMintOutput.innerHTML = parts.join("");
+    };
+
+    applyPrepareState(nftState);
+
+    connectWalletBtn.addEventListener("click", async () => {
+      if (!window.ethereum || !window.ethereum.request) {
+        setNftStatus("No Ethereum wallet found. Install MetaMask or another injected wallet.");
+        return;
+      }
+      try {
+        const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+        connectedWallet = (accounts && accounts[0] ? accounts[0] : "").toLowerCase();
+        if (walletButtonLabel) walletButtonLabel.textContent = connectedWallet ? shortWallet(connectedWallet) : "Connect Wallet";
+        setNftStatus(connectedWallet ? "Wallet connected. You can prepare the mint package." : "No wallet account selected.");
+        if (connectedWallet && nftStatusUrl) {
+          const resp = await fetch(`${nftStatusUrl}?wallet=${encodeURIComponent(connectedWallet)}`);
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data?.nft && nftVersionLabel) nftVersionLabel.textContent = `Next version: v${data.nft.next_version || 1}`;
+            if (data?.nft?.latest_owner_wallet && nftOwnerLabel) nftOwnerLabel.textContent = `Owner: ${shortWallet(data.nft.latest_owner_wallet)}`;
+            applyPrepareState(data?.nft || {});
+            if (data?.nft?.owner_download_url) {
+              setNftStatus("Ownership confirmed. Your collector download is available.");
+            }
+          }
+        }
+      } catch (err) {
+        setNftStatus("Wallet connection was cancelled.");
+      }
+    });
+
+    prepareNftBtn?.addEventListener("click", async () => {
+      prepareNftBtn.disabled = true;
+      setNftStatus("Preparing a frozen mint package. This can take a minute.");
+      const form = new FormData();
+      form.append("wallet", connectedWallet);
+      try {
+        const resp = await fetch(nftPrepareUrl, {
+          method: "POST",
+          headers: { "X-CSRFToken": document.getElementById("nftCsrfToken")?.value || "" },
+          body: form,
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          setNftStatus(data.error || "Could not prepare NFT package.");
+          return;
+        }
+        setNftStatus(`Version ${data.version} is ready. Use the tokenURI when minting on Ethereum.`);
+        renderNftPackage(data);
+      } catch (err) {
+        setNftStatus("Could not prepare NFT package.");
+      } finally {
+        prepareNftBtn.disabled = !currentCanPrepare;
+      }
+    });
+  </script>
+</body>
+</html>

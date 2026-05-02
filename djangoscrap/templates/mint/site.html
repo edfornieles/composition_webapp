@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Feed</title>
+  <style>
+    :root {
+      --bg: #000;
+      --panel: #000;
+      --panel-soft: #111;
+      --fg: #fff;
+      --muted: rgba(255,255,255,0.62);
+      --line: rgba(255,255,255,0.22);
+      --line-strong: rgba(255,255,255,0.55);
+      --accent: #fff;
+      --accent-2: #d8d8d8;
+      --shadow: none;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      -webkit-backdrop-filter: blur(18px);
+      backdrop-filter: blur(18px);
+      background: rgba(0, 0, 0, 0.82);
+      border-bottom: 1px solid var(--line);
+    }
+    .topbar-inner {
+      width: min(1380px, calc(100% - 32px));
+      margin: 0 auto;
+      height: 72px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      justify-content: flex-end;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 850;
+      letter-spacing: 0.04em;
+      color: var(--fg);
+      text-decoration: none;
+      min-width: 210px;
+      text-transform: uppercase;
+    }
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: #fff;
+      color: #000;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.82rem;
+      letter-spacing: -0.04em;
+      overflow: hidden;
+      flex: 0 0 auto;
+    }
+    .brand-mark img,
+    .avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .search-wrap {
+      flex: 0 1 520px;
+      min-width: 220px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 0 14px;
+      height: 40px;
+      box-shadow: 0 1px 0 rgba(17,24,39,0.02);
+    }
+    .search-wrap input {
+      width: 100%;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--fg);
+      font-size: 0.95rem;
+    }
+    .search-wrap input::placeholder { color: var(--muted); }
+    .search-icon { color: var(--muted); font-size: 1rem; }
+    .search-wrap.has-value .search-icon { display: none; }
+    .top-pill {
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 8px 13px;
+      font-size: 0.86rem;
+      white-space: nowrap;
+    }
+    .header-actions {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      margin-left: auto;
+    }
+    .wallet-menu {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+      overflow: hidden;
+    }
+    .profile-button,
+    .connect-wallet {
+      height: 42px;
+      border: 0;
+      background: transparent;
+      color: var(--fg);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .profile-button {
+      width: 46px;
+      border-right: 1px solid var(--line);
+    }
+    .profile-button svg {
+      width: 21px;
+      height: 21px;
+      display: block;
+    }
+    .connect-wallet {
+      padding: 0 16px;
+      font-size: 0.9rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .profile-button:hover,
+    .connect-wallet:hover {
+      background: rgba(255,255,255,0.08);
+    }
+    .wrap { width: min(1380px, calc(100% - 32px)); margin: 0 auto; padding: 26px 0 56px; }
+    .hero {
+      border: 0;
+      background: transparent;
+      border-radius: 0;
+      padding: 48px 0 28px;
+      margin-bottom: 0;
+      box-shadow: none;
+    }
+    .collection-row {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    .feed-title-row {
+      display: flex;
+      align-items: baseline;
+      gap: clamp(18px, 4vw, 52px);
+      flex-wrap: wrap;
+      justify-content: space-between;
+      width: 100%;
+    }
+    .feed-mint-link {
+      color: #ff1010;
+      font-size: clamp(1.8rem, 4vw, 4.6rem);
+      font-weight: 900;
+      letter-spacing: -0.08em;
+      line-height: 0.86;
+      text-decoration: none;
+      text-transform: lowercase;
+    }
+    .feed-mint-link:hover { color: #ff5a5a; }
+    h1 { margin: 6px 0 8px; font-size: clamp(3rem, 8vw, 8rem); line-height: 0.86; letter-spacing: -0.08em; }
+    p { color: var(--muted); line-height: 1.5; margin: 0; max-width: 860px; }
+    .hero-pills { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .pill {
+      display: inline-flex;
+      border: 1px solid var(--line);
+      border-radius: 0;
+      padding: 8px 12px;
+      color: var(--muted);
+      background: transparent;
+      font-size: 0.84rem;
+    }
+    .stat-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(120px, 1fr));
+      gap: 10px;
+      min-width: min(100%, 420px);
+    }
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 0;
+      padding: 12px;
+      background: transparent;
+    }
+    .stat strong {
+      display: block;
+      font-size: 1.05rem;
+      letter-spacing: -0.03em;
+    }
+    .stat span {
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+    .controls {
+      border: 1px solid var(--line);
+      background: transparent;
+      border-radius: 0;
+      padding: 12px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+      box-shadow: none;
+    }
+    .controls .search-wrap { max-width: min(100%, 520px); }
+    .controls select, .controls button {
+      height: 40px;
+      border-radius: 0;
+      border: 1px solid var(--line);
+      background: #000;
+      color: var(--fg);
+      padding: 0 11px;
+      font-size: 0.9rem;
+    }
+    .controls button {
+      background: transparent;
+      cursor: pointer;
+    }
+    .controls button:hover { border-color: var(--line-strong); }
+    .results { color: var(--muted); font-size: 0.88rem; margin-left: auto; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 28px; align-items: stretch; }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 0;
+      overflow: hidden;
+      background: var(--panel);
+      box-shadow: none;
+      transition: border-color 160ms ease, transform 160ms ease;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    .card:hover { border-color: var(--line-strong); transform: translateY(-2px); }
+    .thumb { aspect-ratio: 1 / 1; width: 100%; background: #000; object-fit: cover; display: block; }
+    .thumb-wrap {
+      aspect-ratio: 1 / 1;
+      width: 100%;
+      background: #000;
+      position: relative;
+      overflow: hidden;
+    }
+    .art-title {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 5;
+      padding: 18px;
+      background: linear-gradient(180deg, transparent, rgba(0,0,0,0.86));
+      color: #fff;
+      font-size: clamp(1.7rem, 3.4vw, 3.8rem);
+      font-weight: 900;
+      letter-spacing: -0.08em;
+      line-height: 0.9;
+      max-width: 100%;
+      opacity: 0;
+      pointer-events: none;
+      text-transform: lowercase;
+      transition: opacity 140ms ease;
+      overflow: hidden;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      display: -webkit-box;
+    }
+    .card:hover .art-title,
+    .card:focus-visible .art-title { opacity: 1; }
+    .thumb-wrap .thumb {
+      position: absolute;
+      inset: 0;
+      height: 100%;
+    }
+    .thumb-poster { z-index: 1; }
+    .thumb-video {
+      z-index: 2;
+      opacity: 0;
+      transition: opacity 180ms ease;
+    }
+    .thumb-video.video-ready { opacity: 1; }
+    .thumb-frame { aspect-ratio: 1 / 1; width: 100%; background: #000; border: 0; display: block; position: relative; }
+    .thumb-frame iframe { width: 100%; height: 100%; border: 0; display: block; background: #000; }
+    .body { display: none; }
+    .name {
+      display: none;
+      margin-bottom: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 0.84rem;
+      display: none;
+      line-height: 1.45;
+      overflow: hidden;
+    }
+    .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: auto; padding-top: 0; }
+    a.button {
+      text-decoration: none;
+      border-radius: 0;
+      padding: 0 0 3px;
+      font-weight: 800;
+      font-size: 0.86rem;
+      background: transparent;
+      color: var(--fg);
+      border: 0;
+      border-bottom: 1px solid var(--fg);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    a.button:hover { background: transparent; border-color: var(--muted); color: var(--muted); }
+    a.button.secondary {
+      background: transparent;
+      color: var(--fg);
+      border: 0;
+      border-bottom: 1px solid var(--fg);
+    }
+    .empty {
+      display: none;
+      border: 1px dashed var(--line);
+      border-radius: 20px;
+      padding: 22px;
+      color: var(--muted);
+      background: var(--panel);
+      text-align: center;
+    }
+    .empty.show { display: block; }
+    .hidden-card { display: none !important; }
+    .text-warning { color: #b7791f; }
+    @media (max-width: 900px) {
+      .top-pill { display: none; }
+      .results { width: 100%; margin-left: 0; }
+      .topbar-inner { height: auto; padding: 12px 0; flex-wrap: wrap; }
+      .brand { min-width: 0; }
+      .header-actions { width: 100%; justify-content: flex-end; }
+      .stat-strip { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="header-actions" aria-label="Wallet actions">
+        <div class="wallet-menu">
+          <button type="button" class="profile-button" aria-label="Profile">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="8.5" r="3.25" stroke="currentColor" stroke-width="2"></circle>
+              <path d="M5.5 19c1.2-3.6 3.35-5.3 6.5-5.3s5.3 1.7 6.5 5.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+            </svg>
+          </button>
+          <button type="button" class="connect-wallet" id="connectWalletBtn">Connect wallet</button>
+        </div>
+      </div>
+    </div>
+  </header>
+  <main class="wrap">
+    <section class="hero">
+      <div class="collection-row">
+        <div>
+          <div class="feed-title-row">
+            <h1>The Feed</h1>
+            <a class="feed-mint-link" href="{% url 'mint_random' %}">Mint</a>
+          </div>
+          <p>
+            When an unsuspecting viewer enters The Feed, a psychic trance begins to implant competing identities within &gt;
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="controls" aria-label="Collection controls">
+      <label class="search-wrap" aria-label="Search works">
+        <span class="search-icon">Search</span>
+        <input id="searchInput" type="search">
+      </label>
+      <select id="typeFilter" title="Filter by type">
+        <option value="all">All types</option>
+      </select>
+      <select id="sortBy" title="Sort works">
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+        <option value="az">Name A-Z</option>
+        <option value="za">Name Z-A</option>
+      </select>
+      <button id="clearFilters" type="button">Clear</button>
+      <div class="results" id="resultsCount"></div>
+    </section>
+
+    <section class="grid">
+      {% for row in rows %}
+      <article
+        class="card"
+        data-name="{{ row.composition.name|lower }}"
+        data-type="{{ row.composition.type|lower }}"
+        data-slug="{{ row.slug|lower }}"
+        data-search="{{ row.search_text }}"
+        data-index="{{ forloop.counter0 }}"
+        data-mint-url="{{ row.mint_url }}"
+        role="link"
+        tabindex="0"
+      >
+        {% if row.nft.media.preview_15s.url %}
+        <div class="thumb-wrap">
+          {% if row.nft.media.poster.url %}
+          <img class="thumb thumb-poster" src="{{ row.nft.media.poster.url }}" alt="{{ row.composition.name }} poster still" loading="lazy">
+          {% endif %}
+          <video
+            class="thumb thumb-video"
+            src="{{ row.nft.media.preview_15s.url }}"
+            {% if row.nft.media.poster.url %}poster="{{ row.nft.media.poster.url }}"{% endif %}
+            autoplay
+            muted
+            loop
+            preload="auto"
+            data-loop-start="{% if row.slug == 'mountains' %}0.45{% else %}0{% endif %}"
+          ></video>
+          <div class="art-title">{{ row.composition.name }}</div>
+        </div>
+        {% elif row.nft.media.poster.url %}
+        <div class="thumb-wrap">
+          <img class="thumb" src="{{ row.nft.media.poster.url }}" alt="{{ row.composition.name }} poster still" loading="lazy">
+          <div class="art-title">{{ row.composition.name }}</div>
+        </div>
+        {% elif row.render_url %}
+        <div class="thumb-frame">
+          <iframe src="{{ row.render_url }}" title="{{ row.composition.name }} live composition preview" loading="lazy"></iframe>
+          <div class="art-title">{{ row.composition.name }}</div>
+        </div>
+        {% else %}
+        <div class="thumb-wrap">
+          <img class="thumb" src="{{ row.preview_url }}" alt="{{ row.composition.name }}" loading="lazy">
+          <div class="art-title">{{ row.composition.name }}</div>
+        </div>
+        {% endif %}
+        <div class="body">
+          <div class="name">{{ row.composition.name }}</div>
+          <div class="meta">
+            type: {{ row.composition.type }}<br>
+            {% if row.association_label %}associations: {{ row.association_label }}<br>{% endif %}
+            {% if row.state_label %}states: {{ row.state_label }}{% endif %}
+          </div>
+        </div>
+      </article>
+      {% empty %}
+      <p>No compositions are marked ready for minting yet.</p>
+      {% endfor %}
+    </section>
+    <div class="empty" id="noResults">No works match your search/filter right now.</div>
+  </main>
+  <script>
+    (() => {
+      const connectWalletBtn = document.getElementById("connectWalletBtn");
+      const shortWallet = (wallet) => wallet ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}` : "";
+      connectWalletBtn?.addEventListener("click", async () => {
+        if (!window.ethereum || !window.ethereum.request) return;
+        try {
+          const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+          const wallet = (accounts && accounts[0] ? accounts[0] : "").toLowerCase();
+          if (wallet) connectWalletBtn.textContent = shortWallet(wallet);
+        } catch (error) {
+          // Wallet connection was cancelled.
+        }
+      });
+
+      const grid = document.querySelector(".grid");
+      if (!grid) return;
+      const cards = Array.from(grid.querySelectorAll(".card"));
+      if (!cards.length) return;
+
+      const searchInput = document.getElementById("searchInput");
+      const typeFilter = document.getElementById("typeFilter");
+      const sortBy = document.getElementById("sortBy");
+      const clearFilters = document.getElementById("clearFilters");
+      const resultsCount = document.getElementById("resultsCount");
+      const noResults = document.getElementById("noResults");
+      const interactiveSelector = "a, button, input, select, textarea, label";
+
+      document.querySelectorAll(".thumb-video").forEach((video) => {
+        video.playsInline = true;
+        const loopStart = Number(video.dataset.loopStart || "0");
+        const revealVideo = () => {
+          if (video.readyState >= 2) {
+            video.classList.add("video-ready");
+          }
+        };
+        const seekPastBlankStart = () => {
+          if (!loopStart || !Number.isFinite(video.duration) || video.duration <= loopStart + 0.5) return;
+          if (video.currentTime < loopStart) {
+            try {
+              video.currentTime = loopStart;
+            } catch (error) {
+              // Some browsers reject seeks until enough metadata is loaded.
+            }
+          }
+        };
+
+        video.addEventListener("loadedmetadata", seekPastBlankStart);
+        video.addEventListener("canplay", () => {
+          seekPastBlankStart();
+          revealVideo();
+          video.play().catch(() => {});
+        });
+        video.addEventListener("playing", revealVideo);
+        video.addEventListener("timeupdate", () => {
+          if (!loopStart || !Number.isFinite(video.duration) || video.duration <= loopStart + 0.5) return;
+          if (video.currentTime >= video.duration - 0.18) {
+            video.currentTime = loopStart;
+            video.play().catch(() => {});
+          }
+        });
+      });
+
+      const types = new Set();
+      cards.forEach((card) => {
+        types.add(card.dataset.type || "");
+        card.addEventListener("click", (event) => {
+          if (event.target.closest(interactiveSelector)) return;
+          if (card.dataset.mintUrl) window.location.href = card.dataset.mintUrl;
+        });
+        card.addEventListener("keydown", (event) => {
+          if (event.target.closest(interactiveSelector)) return;
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          if (card.dataset.mintUrl) window.location.href = card.dataset.mintUrl;
+        });
+      });
+      Array.from(types).sort().forEach((type) => {
+        if (!type || !typeFilter) return;
+        const option = document.createElement("option");
+        option.value = type;
+        option.textContent = type;
+        typeFilter.appendChild(option);
+      });
+
+      const applyFilters = () => {
+        const q = (searchInput?.value || "").trim().toLowerCase();
+        searchInput?.closest(".search-wrap")?.classList.toggle("has-value", Boolean(q));
+        const type = typeFilter?.value || "all";
+        const sort = sortBy?.value || "newest";
+
+        const visible = [];
+        cards.forEach((card) => {
+          const haystack = `${card.dataset.name || ""} ${card.dataset.type || ""} ${card.dataset.slug || ""} ${card.dataset.search || ""}`;
+          const matchesQuery = !q || haystack.includes(q);
+          const matchesType = type === "all" || (card.dataset.type === type);
+          const keep = matchesQuery && matchesType;
+          card.classList.toggle("hidden-card", !keep);
+          if (keep) visible.push(card);
+        });
+
+        const sorted = visible.slice().sort((a, b) => {
+          const ia = Number(a.dataset.index || "0");
+          const ib = Number(b.dataset.index || "0");
+          const na = (a.dataset.name || "");
+          const nb = (b.dataset.name || "");
+          if (sort === "oldest") return ia - ib;
+          if (sort === "az") return na.localeCompare(nb);
+          if (sort === "za") return nb.localeCompare(na);
+          return ib - ia;
+        });
+
+        sorted.forEach((card) => grid.appendChild(card));
+        if (resultsCount) resultsCount.textContent = `${visible.length} result${visible.length === 1 ? "" : "s"}`;
+        if (noResults) noResults.classList.toggle("show", visible.length === 0);
+      };
+
+      searchInput?.addEventListener("input", applyFilters);
+      typeFilter?.addEventListener("change", applyFilters);
+      sortBy?.addEventListener("change", applyFilters);
+      clearFilters?.addEventListener("click", () => {
+        if (searchInput) searchInput.value = "";
+        if (typeFilter) typeFilter.value = "all";
+        if (sortBy) sortBy.value = "newest";
+        applyFilters();
+      });
+
+      applyFilters();
+    })();
+  </script>
+</body>
+</html>

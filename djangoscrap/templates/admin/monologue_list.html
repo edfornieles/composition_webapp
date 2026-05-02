@@ -1,0 +1,77 @@
+{% extends "layouts/admin.html" %}
+{% load static %}
+
+{% block content %}
+<div class="content-wrapper">
+  <section class="content">
+    <div class="container-fluid">
+      <div class="row">
+        <div class="col-12">
+          {% if messages %}
+            {% for message in messages %}
+              <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+
+          <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <h3 class="card-title mb-0">Character thought pages</h3>
+              <div class="d-flex">
+                <a href="{% url 'thoughtscape_lab' %}" class="btn btn-outline-secondary btn-sm mr-2">Open Thoughtscape Lab</a>
+                <a href="{% url 'monologue_add' %}" class="btn btn-primary btn-sm">New thought page</a>
+              </div>
+            </div>
+            <div class="card-body p-0">
+              <table class="table table-hover text-center align-middle mb-0">
+                <thead class="thead-dark">
+                  <tr>
+                    <th>Title</th>
+                    <th>Slug</th>
+                    <th>Archetype</th>
+                    <th>Published</th>
+                    <th>Updated</th>
+                    <th>Public page</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for p in personas %}
+                  <tr>
+                    <td class="text-left"><a href="{% url 'monologue_edit' p.id %}">{{ p.title }}</a></td>
+                    <td><code>{{ p.slug }}</code></td>
+                    <td>{{ p.archetype|default:"—" }}</td>
+                    <td>{% if p.is_published %}<span class="badge badge-success">Yes</span>{% else %}<span class="badge badge-secondary">No</span>{% endif %}</td>
+                    <td>{{ p.updated_at|date:"Y-m-d H:i" }}</td>
+                    <td>
+                      {% if p.is_published %}
+                        <a href="{% url 'monologue_public' p.slug %}" target="_blank" rel="noopener">Open</a>
+                      {% else %}
+                        <span class="text-muted">—</span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      <a href="{% url 'monologue_edit' p.id %}" class="btn btn-sm btn-outline-primary">Edit</a>
+                      <form method="post" action="{% url 'monologue_delete' p.id %}" class="d-inline" onsubmit="return confirm('Delete this thought page?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                      </form>
+                    </td>
+                  </tr>
+                  {% empty %}
+                  <tr>
+                    <td colspan="7" class="text-muted py-4">No thought pages yet. <a href="{% url 'monologue_add' %}">Create one</a>.</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,469 @@
+{% extends "layouts/admin.html" %}
+{% block content %}
+<style>
+  .ts-pool-box {
+    max-height: 260px;
+    overflow: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 8px;
+  }
+  .ts-actions {
+    gap: 8px;
+  }
+  .ts-grid {
+    display: grid;
+    gap: 8px;
+  }
+  .ts-grid-cell {
+    min-height: 220px;
+  }
+  .ts-screen-media {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    background: #f7f7f7;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+  .ts-screen-media > img,
+  .ts-screen-media > video,
+  .ts-screen-media > iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    object-fit: cover;
+    display: block;
+  }
+  .ts-screen-media > iframe {
+    pointer-events: none;
+    background: #101010;
+  }
+  .ts-thought-copy {
+    font-size: 12px;
+    line-height: 1.35;
+    max-height: 180px;
+    overflow: auto;
+  }
+  .ts-logic-list {
+    margin-top: 12px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 8px;
+    background: #fff;
+  }
+  .ts-logic-row {
+    font-size: 12px;
+    line-height: 1.35;
+    border-bottom: 1px solid #f0f0f0;
+    padding: 4px 0;
+  }
+  .ts-logic-row:last-child {
+    border-bottom: 0;
+  }
+  .ts-comp-preview {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .ts-comp-link {
+    color: inherit;
+    text-decoration: none;
+    display: block;
+    height: 100%;
+  }
+  .ts-comp-link:hover {
+    color: inherit;
+    text-decoration: none;
+  }
+</style>
+<div class="content-wrapper">
+  <section class="content">
+    <div class="container-fluid">
+      <div class="card card-primary card-outline">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h3 class="card-title mb-0">Thoughtscape Lab</h3>
+          <div class="small text-muted">Auto-only v1 simulator</div>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-lg-4">
+              <div class="form-group">
+                <label for="tsCharacterPreset">Bring character into lab</label>
+                <div class="input-group input-group-sm">
+                  <select id="tsCharacterPreset" class="form-control">
+                    <option value="">Select character preset...</option>
+                    {% for p in persona_presets %}
+                      <option value="persona:{{ p.id }}">{{ p.title }}{% if p.characterName %} · {{ p.characterName }}{% endif %}</option>
+                    {% endfor %}
+                    {% for s in scenario_presets %}
+                      <option value="scenario:{{ s.id }}">[Advanced] {{ s.title }}{% if s.characterName %} · {{ s.characterName }}{% endif %}</option>
+                    {% endfor %}
+                  </select>
+                  <div class="input-group-append">
+                    <button type="button" id="tsApplyCharacter" class="btn btn-outline-secondary">Apply</button>
+                  </div>
+                </div>
+                <div id="tsCharacterMeta" class="small text-muted mt-1"></div>
+              </div>
+              <div class="form-group">
+                <label for="tsThought">Thought text</label>
+                <textarea id="tsThought" class="form-control" rows="4" placeholder="Type scenario thoughts..."></textarea>
+              </div>
+              <div class="form-group">
+                <label for="tsLocation">Where is the character?</label>
+                <input id="tsLocation" class="form-control form-control-sm" placeholder="e.g. crowded gym, bedroom, club entrance">
+              </div>
+              <div class="form-group">
+                <label for="tsPeople">Who is around them?</label>
+                <input id="tsPeople" class="form-control form-control-sm" placeholder="comma separated, e.g. friends, crush, rival, coach">
+              </div>
+              <div class="form-row">
+                <div class="col-6 form-group">
+                  <label for="tsState">Scenario state</label>
+                  <select id="tsState" class="form-control form-control-sm">
+                    <option value="calm">calm</option>
+                    <option value="neutral" selected>neutral</option>
+                    <option value="distracted">distracted</option>
+                    <option value="intense">intense</option>
+                    <option value="asleep">asleep</option>
+                  </select>
+                </div>
+                <div class="col-3 form-group">
+                  <label for="tsRows">Rows</label>
+                  <input id="tsRows" type="number" min="2" max="5" class="form-control form-control-sm" value="{{ default_rows }}">
+                </div>
+                <div class="col-3 form-group">
+                  <label for="tsCols">Cols</label>
+                  <input id="tsCols" type="number" min="2" max="5" class="form-control form-control-sm" value="{{ default_cols }}">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="col-6 form-group">
+                  <label for="tsHasThought">Thought tile included</label>
+                  <select id="tsHasThought" class="form-control form-control-sm">
+                    <option value="1" {% if default_has_thought %}selected{% endif %}>Yes</option>
+                    <option value="0" {% if not default_has_thought %}selected{% endif %}>No</option>
+                  </select>
+                </div>
+                <div class="col-6 form-group">
+                  <label for="tsThoughtIdx">Thought tile index</label>
+                  <input id="tsThoughtIdx" type="number" min="0" class="form-control form-control-sm" value="{{ default_thought_tile }}">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="tsFilter">Composition pool</label>
+                <input id="tsFilter" class="form-control form-control-sm mb-2" placeholder="Filter by name or hashtag">
+                <div id="tsPool" class="ts-pool-box">
+                  {% for c in compositions %}
+                    <div class="form-check ts-pool-item" data-search="{{ c.name|lower }} {{ c.hashtags|join:' '|lower }}">
+                      <input class="form-check-input ts-pool-cb" type="checkbox" value="{{ c.id }}" id="cmp{{ c.id }}" checked>
+                      <label class="form-check-label small" for="cmp{{ c.id }}">{{ c.name }}{% if c.hashtags %} · #{{ c.hashtags|join:' #' }}{% endif %}</label>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <div class="d-flex ts-actions">
+                <button id="tsRun" class="btn btn-primary btn-sm">Run / Refresh</button>
+                <button id="tsAuto" class="btn btn-outline-secondary btn-sm" data-running="0">Start Auto</button>
+              </div>
+              <div class="form-group mt-2 mb-0">
+                <label for="tsPreviewMode">Preview mode</label>
+                <select id="tsPreviewMode" class="form-control form-control-sm">
+                  <option value="loop20" selected>Loop 20s (recommended)</option>
+                  <option value="static">Static (fastest)</option>
+                  <option value="live">Live motion (max 6 screens)</option>
+                </select>
+                <small class="text-muted">Loop mode uses rendered composition videos when available. Live embeds active pages (max 6) for heavier testing.</small>
+                <div class="form-check mt-1">
+                  <input class="form-check-input" type="checkbox" id="tsLiveFallback">
+                  <label class="form-check-label small" for="tsLiveFallback">
+                    Use live fallback when loop video missing (higher memory/CPU)
+                  </label>
+                </div>
+              </div>
+              <div id="tsMeta" class="small text-muted mt-2"></div>
+            </div>
+
+            <div class="col-lg-8">
+              <div id="tsGrid" class="d-grid ts-grid"></div>
+              <div class="ts-logic-list">
+                <div class="small font-weight-bold mb-1">Per-screen logic</div>
+                <div id="tsLogicLines" class="small text-muted">Run simulation to view tile logic.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  const $ = (id)=>document.getElementById(id);
+  const grid = $('tsGrid');
+  const meta = $('tsMeta');
+  const logicLines = $('tsLogicLines');
+  const personaPresets = {{ persona_presets|default:"[]"|safe }};
+  const scenarioPresets = {{ scenario_presets|default:"[]"|safe }};
+  let tick = 0;
+  let timer = null;
+  let previousAssignments = [];
+
+  function disposeGridMedia(){
+    if (!grid) return;
+    grid.querySelectorAll('iframe').forEach((frame) => {
+      try { frame.src = 'about:blank'; } catch (_) {}
+    });
+    grid.querySelectorAll('video').forEach((v) => {
+      try {
+        v.pause();
+        v.removeAttribute('src');
+        v.load();
+      } catch (_) {}
+    });
+  }
+
+  function setMediaPowerState(active){
+    if (!grid) return;
+    grid.querySelectorAll('.ts-screen-media iframe').forEach((frame) => {
+      if (active) {
+        if (frame.dataset.srcBackup && frame.src === 'about:blank') {
+          frame.src = frame.dataset.srcBackup;
+        }
+      } else {
+        if (frame.src && frame.src !== 'about:blank') {
+          frame.dataset.srcBackup = frame.src;
+          frame.src = 'about:blank';
+        }
+      }
+    });
+    grid.querySelectorAll('.ts-screen-media video').forEach((v) => {
+      try {
+        if (active) v.play().catch(() => {});
+        else v.pause();
+      } catch (_) {}
+    });
+  }
+
+  function selectedPoolIds() {
+    return Array.from(document.querySelectorAll('.ts-pool-cb:checked')).map(el => Number(el.value));
+  }
+
+  function buildPayload(){
+    return {
+      thoughtText: $('tsThought').value || '',
+      scenarioState: $('tsState').value || 'neutral',
+      characterPresetKey: ($('tsCharacterPreset') && $('tsCharacterPreset').value) || '',
+      rows: Number($('tsRows').value || 3),
+      cols: Number($('tsCols').value || 3),
+      sceneLocation: $('tsLocation').value || '',
+      scenePeople: ($('tsPeople').value || '').split(',').map(s => s.trim()).filter(Boolean),
+      hasThoughtTile: $('tsHasThought').value === '1',
+      thoughtTileIndex: Number($('tsThoughtIdx').value || 0),
+      poolCompositionIds: selectedPoolIds(),
+      previousAssignments,
+      tick,
+    };
+  }
+
+  function tileHtml(t, mode, liveOn){
+    if (t.kind === 'thought') {
+      return `<div class="p-2 border rounded h-100 bg-dark text-light">
+        <div class="small text-uppercase text-warning">Thought</div>
+        <div class="ts-screen-media"></div>
+        <div class="ts-thought-copy">${(t.thoughtText || '(no thought text)').replace(/</g,'&lt;')}</div>
+      </div>`;
+    }
+    const c = t.composition;
+    if (!c) {
+      return `<div class="p-2 border rounded h-100 bg-light"><div class="small text-muted">No composition</div></div>`;
+    }
+    const url = c.admin_url || c.url || "{% url 'composition-view' %}";
+    const preview = c.preview_image_url || '';
+    const liveUrl = c.live_preview_url || c.url || '';
+    const loopVideoUrl = c.loop_video_url || '';
+    const liveSrc = liveUrl ? `${liveUrl}${liveUrl.includes('?') ? '&' : '?'}render=1` : '';
+    let mediaNode = `${preview ? `<div class="ts-screen-media"><img class="ts-comp-preview" src="${preview}" alt="${(c.name || 'composition').replace(/"/g, '&quot;')} preview" loading="lazy"></div>` : ''}`;
+    if (mode === 'loop20' && loopVideoUrl) {
+      mediaNode = `<div class="ts-screen-media"><video src="${loopVideoUrl}" autoplay muted loop playsinline preload="metadata"></video></div>`;
+    } else if ((mode === 'live' || (mode === 'loop20' && !loopVideoUrl)) && liveOn && liveSrc) {
+      mediaNode = `<div class="ts-screen-media"><iframe src="${liveSrc}" loading="lazy" title="${(c.name || 'composition').replace(/"/g, '&quot;')} live preview" referrerpolicy="no-referrer"></iframe></div>`;
+    }
+    return `<a class="ts-comp-link" href="${url}"><div class="p-2 border rounded h-100 bg-white">
+      <div class="d-flex justify-content-between align-items-start mb-1">
+        <div class="small font-weight-bold">${(c.name || '').replace(/</g,'&lt;')}</div>
+        <span class="badge badge-light">${t.layer}</span>
+      </div>
+      ${mediaNode}
+    </div></a>`;
+  }
+
+  function render(state){
+    const rows = Number(state.rows || 3);
+    const cols = Number(state.cols || 3);
+    disposeGridMedia();
+    grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+    grid.innerHTML = '';
+    const assignments = [];
+    const mode = (($('tsPreviewMode') && $('tsPreviewMode').value) || 'loop20');
+    const liveFallbackEnabled = Boolean($('tsLiveFallback') && $('tsLiveFallback').checked);
+    const isLiveMode = mode === 'live';
+    const totalCompositionTiles = Math.max(
+      0,
+      (state.tiles || []).filter((t) => t.kind === 'composition').length
+    );
+    // In live mode we should keep all visible screens faithful to runtime behavior.
+    // For loop mode fallback, allow all composition tiles when explicitly enabled.
+    const loopFallbackCap = totalCompositionTiles;
+    const liveCap = isLiveMode ? totalCompositionTiles : loopFallbackCap;
+    let liveAssigned = 0;
+    (state.tiles || []).forEach((t) => {
+      const cell = document.createElement('div');
+      cell.className = 'ts-grid-cell';
+      const needsLoopFallback = mode === 'loop20' && liveFallbackEnabled && t.kind === 'composition' && !(t.composition && t.composition.loop_video_url);
+      const canUseLive = (isLiveMode || needsLoopFallback) && t.kind === 'composition' && liveAssigned < liveCap;
+      if (canUseLive) liveAssigned += 1;
+      cell.innerHTML = tileHtml(t, mode, canUseLive);
+      grid.appendChild(cell);
+      if (t.kind === 'composition' && t.composition && t.composition.id) {
+        assignments.push({ tileIndex: t.tileIndex, compositionId: t.composition.id });
+      }
+    });
+    previousAssignments = assignments;
+    const contextWords = state.contextWords || [];
+    const people = state.scenePeople || [];
+    const location = state.sceneLocation || '';
+    const restrictionMeta = state.characterRestrictionApplied
+      ? ` · character_filter=on(${state.characterRestrictionLabel || ''})`
+      : '';
+    const powerMeta = ` · live_mode=${isLiveMode ? 'on' : 'off'} · live_fallback=${liveFallbackEnabled ? 'on' : 'off'}(${liveFallbackEnabled ? loopFallbackCap : 0})`;
+    meta.textContent = `intensity=${state.intensity || 'mid'} · cadence=${state.cadenceSeconds || '?'}s · replacements/tick=${state.replacementsPerTick || '?'}${restrictionMeta}${powerMeta} · thought_words=[${(state.words || []).join(', ')}] · context_words=[${contextWords.join(', ')}] · location=${location || '-'} · people=[${people.join(', ')}]`;
+    renderLogicLines(state.tiles || []);
+    setMediaPowerState(!document.hidden);
+    return Number(state.cadenceSeconds || 12);
+  }
+
+  function renderLogicLines(tiles){
+    if (!tiles.length) {
+      logicLines.textContent = 'No tiles returned.';
+      return;
+    }
+    logicLines.innerHTML = '';
+    tiles.forEach((t) => {
+      const row = document.createElement('div');
+      row.className = 'ts-logic-row';
+      if (t.kind === 'thought') {
+        row.textContent = `Screen ${t.tileIndex + 1}: thought tile — shows current character stream`;
+      } else {
+        const name = t.composition && t.composition.name ? t.composition.name : '(none)';
+        const why = t.reason || 'no reason';
+        row.textContent = `Screen ${t.tileIndex + 1}: ${name} · ${why}`;
+      }
+      logicLines.appendChild(row);
+    });
+  }
+
+  function resolvePreset(key){
+    if (!key || !key.includes(':')) return null;
+    const [kind, idStr] = key.split(':');
+    const id = Number(idStr || 0);
+    if (!id) return null;
+    if (kind === 'persona') return (personaPresets || []).find((p) => Number(p.id) === id) || null;
+    if (kind === 'scenario') return (scenarioPresets || []).find((p) => Number(p.id) === id) || null;
+    return null;
+  }
+
+  function applyPreset(){
+    const key = $('tsCharacterPreset').value || '';
+    const preset = resolvePreset(key);
+    if (!preset) {
+      $('tsCharacterMeta').textContent = '';
+      return;
+    }
+    $('tsThought').value = preset.seedThought || '';
+    $('tsState').value = preset.state || 'neutral';
+    const who = preset.characterName ? `${preset.characterName} · ` : '';
+    const arch = preset.archetype ? ` · archetype=${preset.archetype}` : '';
+    $('tsCharacterMeta').textContent = `Loaded ${who}${preset.title}${arch}`;
+    previousAssignments = [];
+    tick = 0;
+  }
+
+  async function step(){
+    tick += 1;
+    const res = await fetch('{% url "thoughtscape_lab_simulate" %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildPayload()),
+      credentials: 'same-origin'
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const cadence = render(data);
+    return cadence;
+  }
+
+  async function runOnce(){
+    try { await step(); } catch (e) { console.error(e); meta.textContent = `error: ${e.message}`; }
+  }
+
+  async function loop(){
+    const btn = $('tsAuto');
+    if (btn.dataset.running !== '1') return;
+    const cadence = await step().catch(() => 12);
+    timer = setTimeout(loop, Math.max(3000, Math.min(30000, cadence * 1000)));
+  }
+
+  $('tsRun').addEventListener('click', runOnce);
+  $('tsAuto').addEventListener('click', () => {
+    const btn = $('tsAuto');
+    const running = btn.dataset.running === '1';
+    if (running) {
+      btn.dataset.running = '0';
+      btn.textContent = 'Start Auto';
+      if (timer) clearTimeout(timer);
+      timer = null;
+      return;
+    }
+    btn.dataset.running = '1';
+    btn.textContent = 'Stop Auto';
+    loop();
+  });
+
+  $('tsFilter').addEventListener('input', (e) => {
+    const q = (e.target.value || '').trim().toLowerCase();
+    document.querySelectorAll('.ts-pool-item').forEach((row) => {
+      const hay = row.getAttribute('data-search') || '';
+      row.style.display = (!q || hay.includes(q)) ? '' : 'none';
+    });
+  });
+  $('tsPreviewMode').addEventListener('change', runOnce);
+  $('tsLiveFallback').addEventListener('change', runOnce);
+  $('tsApplyCharacter').addEventListener('click', () => { applyPreset(); runOnce(); });
+  $('tsCharacterPreset').addEventListener('change', applyPreset);
+  document.addEventListener('visibilitychange', () => {
+    const active = !document.hidden;
+    setMediaPowerState(active);
+    if (!active && timer) {
+      clearTimeout(timer);
+      timer = null;
+      const btn = $('tsAuto');
+      if (btn && btn.dataset.running === '1') {
+        btn.dataset.running = '0';
+        btn.textContent = 'Start Auto';
+      }
+    }
+  });
+
+  runOnce();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wall Player {{ screen_id }}</title>
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; background: #000; overflow: hidden; }
+    .player-shell { position: relative; width: 100vw; height: 100vh; background: #000; }
+    .layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms linear;
+      background: #000;
+    }
+    .layer.active { opacity: 1; pointer-events: auto; z-index: 2; }
+    .status {
+      position: fixed;
+      left: 8px;
+      bottom: 8px;
+      z-index: 10;
+      color: #ddd;
+      background: rgba(0, 0, 0, 0.45);
+      font: 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      padding: 4px 6px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="player-shell">
+    <iframe id="layerA" class="layer active" src="about:blank" title="Wall layer A"></iframe>
+    <iframe id="layerB" class="layer" src="about:blank" title="Wall layer B"></iframe>
+    <div id="status" class="status">Screen {{ screen_id }} · waiting</div>
+  </div>
+
+  <script>
+  (function () {
+    const screenId = "{{ screen_id|escapejs }}";
+    const layerA = document.getElementById("layerA");
+    const layerB = document.getElementById("layerB");
+    const statusEl = document.getElementById("status");
+    let activeLayer = layerA;
+    let inactiveLayer = layerB;
+    let lastTickId = 0;
+    let clockOffsetMs = 0;
+    let swapTimer = null;
+    let scheduledTick = null;
+    let running = false;
+
+    function nowAdjusted() {
+      return Date.now() + clockOffsetMs;
+    }
+
+    function withRenderParam(url) {
+      if (!url) return "";
+      return url.includes("?") ? `${url}&render=1` : `${url}?render=1`;
+    }
+
+    function setStatus(text) {
+      statusEl.textContent = `Screen ${screenId} · ${text}`;
+    }
+
+    function doSwap(targetUrl, tickId, startAtMs) {
+      if (!targetUrl) return;
+      inactiveLayer.src = withRenderParam(targetUrl);
+      const delay = Math.max(0, startAtMs - nowAdjusted());
+      if (swapTimer) clearTimeout(swapTimer);
+      swapTimer = setTimeout(() => {
+        activeLayer.classList.remove("active");
+        inactiveLayer.classList.add("active");
+        const prev = activeLayer;
+        activeLayer = inactiveLayer;
+        inactiveLayer = prev;
+        lastTickId = tickId;
+        const drift = nowAdjusted() - startAtMs;
+        scheduledTick = { tickId, driftMs: drift, startAtMs };
+        sendHeartbeat(drift);
+        setStatus(`tick ${tickId} · drift ${Math.round(drift)}ms`);
+      }, delay);
+    }
+
+    function estimateClockOffset(serverNowMs) {
+      const sample = Number(serverNowMs || 0) - Date.now();
+      if (!Number.isFinite(sample)) return;
+      clockOffsetMs = (clockOffsetMs * 0.8) + (sample * 0.2);
+    }
+
+    async function pollState() {
+      try {
+        const res = await fetch(`/api/wall/state?screen_id=${encodeURIComponent(screenId)}`, { credentials: "same-origin" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        estimateClockOffset(data.server_now_ms);
+        running = Boolean(data.running);
+        if (!running) {
+          setStatus("stopped");
+          return;
+        }
+        const assignment = data.assignment || {};
+        const tickId = Number(data.tick_id || 0);
+        const startAtMs = Number(data.start_at_unix_ms || 0);
+        const compositionUrl = String(assignment.composition_url || "");
+        if (!compositionUrl) {
+          setStatus(`tick ${tickId} · no composition`);
+          return;
+        }
+        if (tickId !== lastTickId) {
+          doSwap(compositionUrl, tickId, startAtMs);
+          setStatus(`tick ${tickId} scheduled`);
+        }
+      } catch (err) {
+        setStatus(`error ${err.message}`);
+      }
+    }
+
+    async function sendHeartbeat(driftMs) {
+      const payload = {
+        screen_id: screenId,
+        last_applied_tick: Number(lastTickId || 0),
+        clock_offset_ms: Math.round(clockOffsetMs),
+        drift_ms: Math.round(driftMs || 0),
+        last_error: "",
+      };
+      try {
+        await fetch("/api/wall/heartbeat", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } catch (_) {
+        // keep playback going even if telemetry fails
+      }
+    }
+
+    setInterval(pollState, 1000);
+    setInterval(() => {
+      if (running && scheduledTick) sendHeartbeat(scheduledTick.driftMs || 0);
+    }, 4000);
+    pollState();
+  })();
+  </script>
+</body>
+</html>

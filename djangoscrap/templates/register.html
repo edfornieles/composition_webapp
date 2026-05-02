@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shapiai Registration</title>
+  {% load static %}  <!-- Load Django static files -->
+  <link rel="shortcut icon" type="image/png" href="{% static 'img/logo-book.png' %}" />
+  <link rel="stylesheet" href="{% static 'admin/css/styles.min.css' %}" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<style>
+    body {
+      background: url('{% static "img/testimonials-bg.jpg" %}') no-repeat center center fixed;
+      background-size: cover;
+    }
+    
+  </style>
+<body>
+  <!--  Body Wrapper -->
+  <div class="page-wrapper d-flex align-items-center justify-content-center min-vh-100">
+    <div class="container">
+      <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+          <div class="card shadow">
+            <div class="card-body">
+              <a href="{% url 'home' %}" class="text-center d-block mb-4">
+                <img src="{% static 'img/logo-book.png' %}" width="100" alt="Logo">
+              </a>
+              {% if messages %}
+              {% for message in messages %}
+                  <p style="color: red;">{{ message }}</p>
+              {% endfor %}
+          {% endif %}
+          <form method="POST" enctype="multipart/form-data" action="{% url 'register' %}">
+            {% csrf_token %}
+                
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label for="username" class="form-label">Username</label>
+                    <input type="text" id="username" class="form-control" name="username" required>
+                  </div>
+                  
+                  <div class="col-md-6 mb-3">
+                    <label for="email" class="form-label">Email</label>
+                    <input type="email" class="form-control" id="email" name="email" required>
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label for="password" class="form-label">Password</label>
+                    <input type="password" class="form-control" id="password" name="password" required>
+                  </div>
+                </div>
+
+                <div class="row">
+                  
+                  
+                  <div class="col-md-6 mb-3">
+                    <label for="confirm_password" class="form-label">Confirm Password</label>
+                    <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label for="mobile" class="form-label">Mobile</label>
+                    <input type="text" class="form-control" id="mobile" name="mobile" required>
+                  </div>
+                </div>
+
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label d-block">Gender</label>
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input" type="radio" id="male" name="gender" value="Male" required>
+                      <label class="form-check-label" for="male">Male</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input" type="radio" id="female" name="gender" value="Female" required>
+                      <label class="form-check-label" for="female">Female</label>
+                    </div>
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label for="dob" class="form-label">Date of Birth</label>
+                    <input type="date" class="form-control" id="dob" name="dob" required>
+                  </div>
+                </div>
+
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label for="image" class="form-label">Profile Image</label>
+                    <input type="file" class="form-control" id="image" name="image" >
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label for="address" class="form-label">Address</label>
+                    <textarea class="form-control" id="address" name="address" maxlength="100"></textarea>
+                  </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 py-2 fs-5 rounded-2">Sign Up</button>
+                <div class="d-flex align-items-center justify-content-center mt-3">
+                  <p class="mb-0 fw-bold">Already have an Account?</p>
+                  <a class="text-primary fw-bold ms-2" href="{% url 'login' %}">Sign In</a>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="{% static 'admin/libs/jquery/dist/jquery.min.js' %}"></script>
+  <script src="{% static 'admin/libs/bootstrap/dist/js/bootstrap.bundle.min.js' %}"></script>
+</body>
+
+</html>

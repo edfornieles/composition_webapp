@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if persona.character_name %}{{ persona.character_name }}{% else %}{{ persona.title }}{% endif %}</title>
+    <style>
+        :root {
+            --bg: #060608;
+            --fg: #f2efe9;
+            --muted: #8a8580;
+            --cursor: #e8dcc8;
+            --panel: rgba(6, 6, 10, 0.52);
+            --stream-h: min(30vh, 14rem);
+        }
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0;
+            min-height: 100vh;
+            min-height: 100svh;
+            background: var(--bg);
+            color: var(--fg);
+            font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+            font-size: clamp(1.02rem, 2.1vw, 1.28rem);
+            line-height: 1.62;
+            overflow-x: hidden;
+        }
+        #bg-stage {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            overflow: hidden;
+            background: radial-gradient(ellipse at 30% 20%, #1a1520 0%, #060608 55%, #020203 100%);
+        }
+        .bg-tile {
+            position: absolute;
+            min-width: 45%;
+            min-height: 45%;
+            background-size: cover;
+            background-position: center;
+            opacity: 0;
+            filter: saturate(1.08) contrast(1.05);
+            animation: kb 28s ease-in-out infinite alternate, fadeIn 2.4s ease forwards;
+            mix-blend-mode: soft-light;
+        }
+        .bg-tile:nth-child(odd) { animation-duration: 36s, 2.4s; }
+        .bg-tile:nth-child(3n) { animation-duration: 22s, 2.4s; mix-blend-mode: overlay; }
+        @keyframes kb {
+            0% { transform: scale(1) translate(0, 0); }
+            100% { transform: scale(1.12) translate(-2%, 1.5%); }
+        }
+        @keyframes fadeIn {
+            to { opacity: 0.42; }
+        }
+        .bg-scrim {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            background: linear-gradient(180deg, rgba(4,4,8,0.75) 0%, rgba(4,4,8,0.55) 40%, rgba(4,4,8,0.88) 100%);
+            pointer-events: none;
+        }
+        .wrap-outer {
+            position: relative;
+            z-index: 2;
+            min-height: 100vh;
+            min-height: 100svh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: clamp(1rem, 3vw, 2rem);
+        }
+        .panel {
+            width: min(44rem, 100%);
+            padding: clamp(1.75rem, 4vw, 2.5rem);
+            border-radius: 4px;
+            background: var(--panel);
+            -webkit-backdrop-filter: blur(14px);
+            backdrop-filter: blur(14px);
+            box-shadow: 0 12px 48px rgba(0,0,0,0.45);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        /* Fixed-size single-line thought window, centered in the panel */
+        .stream-viewport {
+            position: relative;
+            width: 100%;
+            height: var(--stream-h);
+            min-height: 12rem;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .mono-chunk {
+            margin: 0;
+            white-space: pre-wrap;
+            width: min(100%, 36rem);
+            text-align: center;
+            text-shadow: 0 1px 18px rgba(0,0,0,0.65);
+            opacity: 1;
+            transition: opacity 0.7s ease;
+        }
+        .mono-chunk.fade-out {
+            opacity: 0;
+        }
+        .mono-chunk .caret {
+            display: inline-block;
+            width: 0.09em;
+            height: 1em;
+            margin-left: 2px;
+            background: var(--cursor);
+            vertical-align: -0.08em;
+            animation: blink 1.05s step-end infinite;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+        .meta {
+            position: fixed;
+            bottom: clamp(1rem, 3vw, 2rem);
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 3;
+            margin: 0;
+            font-size: 0.72rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--muted);
+            text-align: center;
+            pointer-events: none;
+        }
+        .live-hint {
+            position: fixed;
+            top: clamp(0.75rem, 2.5vw, 1.5rem);
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 3;
+            max-width: min(36rem, calc(100% - 2rem));
+            margin: 0;
+            font-size: 0.68rem;
+            color: var(--muted);
+            letter-spacing: 0.04em;
+            text-align: center;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="bg-stage" aria-hidden="true"></div>
+    <div class="bg-scrim" aria-hidden="true"></div>
+    <div class="wrap-outer">
+        {% if not has_openai %}
+        <p class="live-hint">Add <code>OPENAI_API_KEY</code> for endless, non-repeating lines. Until then, lines rotate from your curated corpus.</p>
+        {% endif %}
+        <div class="panel">
+            <div class="stream-viewport" aria-live="polite">
+                <p id="chunk" class="mono-chunk"></p>
+            </div>
+        </div>
+        {% if persona.character_name %}
+        <p class="meta">{{ persona.character_name }}</p>
+        {% endif %}
+    </div>
+    <script>
+(function () {
+    var STREAM = "{{ stream_endpoint|escapejs }}";
+    var BG = "{{ bg_endpoint|escapejs }}";
+    var chunkEl = document.getElementById("chunk");
+    var bgStage = document.getElementById("bg-stage");
+    var minMs = {{ typing_min_ms }};
+    var maxMs = Math.max({{ typing_max_ms }}, {{ typing_min_ms }});
+    var speedFactor = 1.45; // >1 = slower typing
+    var pauseMs = {{ pause_between_segments_ms }};
+    var holdMs = 1250;
+    var fadeMs = 700;
+    var recent = [];
+    var maxRecent = 14;
+    var lastSentence = "";
+
+    function randDelay() {
+        var base = minMs + Math.floor(Math.random() * (maxMs - minMs + 1));
+        return Math.floor(base * speedFactor);
+    }
+
+    function sleep(ms) {
+        return new Promise(function (r) { setTimeout(r, ms); });
+    }
+
+    function fetchNext() {
+        return fetch(STREAM, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ recent: recent })
+        }).then(function (r) { return r.json(); });
+    }
+
+    function typeInto(el, text) {
+        return new Promise(function (resolve) {
+            var i = 0;
+            var s = text || "";
+            el.textContent = "";
+            el.classList.remove("fade-out");
+            function tick() {
+                if (i >= s.length) {
+                    var caret = document.createElement("span");
+                    caret.className = "caret";
+                    el.appendChild(caret);
+                    resolve();
+                    return;
+                }
+                el.textContent = s.slice(0, i + 1);
+                var caret = document.createElement("span");
+                caret.className = "caret";
+                el.appendChild(caret);
+                i += 1;
+                setTimeout(tick, randDelay());
+            }
+            tick();
+        });
+    }
+
+    function pushRecent(seg) {
+        recent.push(seg);
+        while (recent.length > maxRecent) recent.shift();
+    }
+
+    function firstSentence(text) {
+        var t = (text || "").trim().replace(/\s+/g, " ");
+        if (!t) return "";
+        var m = t.match(/.*?[.!?](?=\s|$)/);
+        return (m ? m[0] : t).trim();
+    }
+
+    function placeBgTiles(urls) {
+        if (!urls || !urls.length) return;
+        var n = Math.min(12, Math.max(6, urls.length));
+        bgStage.innerHTML = "";
+        for (var t = 0; t < n; t++) {
+            var u = urls[t % urls.length];
+            var div = document.createElement("div");
+            div.className = "bg-tile";
+            div.style.backgroundImage = "url(" + JSON.stringify(String(u)) + ")";
+            div.style.left = ((t * 17 + 7) % 80) + "%";
+            div.style.top = ((t * 23 + 3) % 75) + "%";
+            div.style.width = (38 + (t % 4) * 8) + "%";
+            div.style.height = (42 + (t % 3) * 10) + "%";
+            div.style.animationDelay = (t * 0.35) + "s, " + (t * 0.2) + "s";
+            bgStage.appendChild(div);
+        }
+    }
+
+    fetch(BG).then(function (r) { return r.json(); }).then(function (data) {
+        placeBgTiles(data.urls || []);
+    }).catch(function () {});
+
+    async function loop() {
+        while (true) {
+            var tries = 0;
+            var sentence = "";
+            while (tries < 3 && !sentence) {
+                var data = await fetchNext();
+                var seg = data.segment || "";
+                sentence = firstSentence(seg);
+                if (!sentence || sentence === lastSentence) {
+                    sentence = "";
+                    tries += 1;
+                }
+            }
+            if (!sentence) {
+                await sleep(pauseMs);
+                continue;
+            }
+            var c = chunkEl.querySelector(".caret");
+            if (c) c.remove();
+            await typeInto(chunkEl, sentence);
+            pushRecent(sentence);
+            lastSentence = sentence;
+            await sleep(Math.max(pauseMs, holdMs));
+            chunkEl.classList.add("fade-out");
+            await sleep(fadeMs);
+            chunkEl.textContent = "";
+        }
+    }
+
+    loop();
+})();
+    </script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+{% extends "layouts/admin.html" %}
+{% load static %}
+{% block content %}
+<div class="content-wrapper">
+    <section class="content">
+        <div class="container-fluid">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">{{ composition.name }}</h3>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            {% if composition.img %}
+                                <img src="{{ composition.img.url }}" alt="{{ composition.name }}" style="max-width:100%; border:1px solid #ddd; padding:6px;">
+                            {% else %}
+                                <p class="text-muted">No representative image available.</p>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-8">
+                            <p><strong>Type:</strong> {{ composition.type }}</p>
+                            <p><strong>Status:</strong> {{ composition.status }}</p>
+                            <p><strong>Created:</strong> {{ composition.date|date:"d/m/Y H:i" }}</p>
+                            <p><strong>Hashtags:</strong>
+                                {% if composition.composition_hashtags %}
+                                    {% for tag in composition.composition_hashtags %}
+                                        <span class="badge bg-secondary">#{{ tag }}</span>
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="text-muted">None</span>
+                                {% endif %}
+                            </p>
+                            <form method="POST" action="{% url 'composition_detail' composition.id %}" class="mb-3">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="save_hashtags">
+                                <label class="form-label" for="composition_hashtags"><strong>Edit hashtags</strong></label>
+                                <input
+                                    id="composition_hashtags"
+                                    name="composition_hashtags"
+                                    type="text"
+                                    class="form-control mb-2"
+                                    value="{{ composition.composition_hashtags|join:', ' }}"
+                                    placeholder="e.g. food, junkfood, craving"
+                                >
+                                <button type="submit" class="btn btn-outline-dark btn-sm">Save hashtags</button>
+                            </form>
+                            <form method="POST" action="{% url 'composition_detail' composition.id %}" class="mb-3">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="refresh_preview">
+                                <button type="submit" class="btn btn-outline-primary btn-sm">Regenerate preview image</button>
+                            </form>
+                            {% if composition.url %}
+                                <p><strong>Link:</strong> <a href="{{ composition.url }}" target="_blank">{{ composition.url }}</a></p>
+                            {% endif %}
+                            {% if composition.final_video %}
+                                <p><strong>Latest Render:</strong> <a href="{% url 'composition_latest_render' composition.id %}" target="_blank">Open latest video</a></p>
+                            {% endif %}
+                            <p><strong>Background sources:</strong>
+                                {% if composition.background_sources %}
+                                    {{ composition.background_sources|join:", " }}
+                                {% else %}
+                                    <span class="text-muted">None</span>
+                                {% endif %}
+                            </p>
+                            <p><strong>Foreground sources:</strong>
+                                {% if composition.foreground_sources %}
+                                    {{ composition.foreground_sources|join:", " }}
+                                {% else %}
+                                    <span class="text-muted">None</span>
+                                {% endif %}
+                            </p>
+                            <hr>
+                            <h5 class="mb-2">Export Video (MVP)</h5>
+                            <form method="POST" action="{% url 'render_composition_export' composition.id %}" class="mb-3">
+                                {% csrf_token %}
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-md-4">
+                                        <label class="form-label" for="duration_seconds">Duration (seconds)</label>
+                                        <input id="duration_seconds" name="duration_seconds" type="number" min="3" max="600" step="1" value="20" class="form-control" required>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label" for="aspect_preset">Format</label>
+                                        <select id="aspect_preset" name="aspect_preset" class="form-control">
+                                            <option value="laptop">Laptop (1440x900)</option>
+                                            <option value="portrait">Portrait (1080x1920)</option>
+                                            <option value="square">Square (1080x1080)</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <button type="submit" class="btn btn-primary btn-sm w-100">Generate Video Now</button>
+                                    </div>
+                                </div>
+                            </form>
+                            <form method="POST" action="{% url 'composition_delete' composition.id %}" class="mb-3" onsubmit="return confirm('Delete this composition? This cannot be undone.');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-danger btn-sm">Delete composition</button>
+                            </form>
+                            <a class="btn btn-outline-secondary btn-sm" href="{% url 'composition-edit' composition.id %}">Edit composition</a>
+                            <a class="btn btn-secondary btn-sm" href="{% url 'composition-view' %}">Back to list</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}
