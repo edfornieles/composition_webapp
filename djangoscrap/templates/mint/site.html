@@ -429,14 +429,14 @@
         role="link"
         tabindex="0"
       >
-        {% if row.nft.media.preview_15s.url %}
+        {% if row.nft.media.preview_10s.url %}
         <div class="thumb-wrap">
           {% if row.nft.media.poster.url %}
           <img class="thumb thumb-poster" src="{{ row.nft.media.poster.url }}" alt="{{ row.composition.name }} poster still" loading="lazy">
           {% endif %}
           <video
             class="thumb thumb-video"
-            src="{{ row.nft.media.preview_15s.url }}"
+            src="{{ row.nft.media.preview_10s.url }}"
             {% if row.nft.media.poster.url %}poster="{{ row.nft.media.poster.url }}"{% endif %}
             autoplay
             muted

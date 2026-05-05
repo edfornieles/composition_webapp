@@ -1,6 +1,13 @@
 {% extends "layouts/admin.html" %}
+{% load static %}
 
 {% block content %}
+<style>
+  .dash-grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 0; aspect-ratio: 16/9; width: 100%; max-width: 1080px; margin: 0 auto; background: #000; }
+  .dash-grid .cell { position: relative; overflow: hidden; background: #050505; border: 1px solid #111; }
+  .dash-grid .cell iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .dash-grid .cell .label { position: absolute; top: 4px; left: 6px; color: rgba(255,255,255,0.55); font-size: 10px; font-family: monospace; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,0.8); z-index: 2; }
+</style>
 <div class="content-wrapper">
   <div class="content-header">
     <div class="container-fluid">
@@ -68,37 +75,19 @@
         </div>
       </div>
 
-      <!-- Ready compositions by character (up to 9 per section: 3×3) -->
+      <!-- Random 3×3 live grid -->
       {% if character_preview_sections %}
       {% for section in character_preview_sections %}
       <div class="row mb-4">
         <div class="col-12">
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title mb-0">{{ section.label }}</h3>
+          <h5 class="mb-2">{{ section.label }}</h5>
+          <div class="dash-grid">
+            {% for comp in section.compositions %}
+            <div class="cell">
+              <span class="label">{{ comp.name|truncatechars:24 }}</span>
+              <iframe src="{% url 'composition_live_by_id' comp.id %}?render=1" loading="lazy" allow="autoplay; fullscreen"></iframe>
             </div>
-            <div class="card-body pt-3">
-              <div class="row">
-                {% for comp in section.compositions %}
-                <div class="col-md-4 mb-4">
-                  <a href="{% url 'composition_detail' composition_id=comp.id %}" class="text-decoration-none text-dark">
-                    <div class="card h-100 shadow-sm">
-                      {% if comp.img %}
-                      <img src="{{ comp.img.url }}" class="card-img-top" alt="{{ comp.name }}" style="height:160px;object-fit:cover;">
-                      {% else %}
-                      <div style="height:160px;background:#222;display:flex;align-items:center;justify-content:center;">
-                        <i class="fas fa-film fa-2x text-secondary"></i>
-                      </div>
-                      {% endif %}
-                      <div class="card-body p-2">
-                        <p class="mb-0 small font-weight-bold">{{ comp.name }}</p>
-                      </div>
-                    </div>
-                  </a>
-                </div>
-                {% endfor %}
-              </div>
-            </div>
+            {% endfor %}
           </div>
         </div>
       </div>
@@ -107,13 +96,7 @@
       <div class="row">
         <div class="col-12">
           <div class="card">
-            <div class="card-body text-muted">
-              {% if ready_count %}
-              Preview grids appear only when a character tag has at least nine ready compositions (same rules as the composition form). None of your tags meet that yet.
-              {% else %}
-              No compositions ready yet.
-              {% endif %}
-            </div>
+            <div class="card-body text-muted">No compositions ready yet.</div>
           </div>
         </div>
       </div>
@@ -122,4 +105,6 @@
     </div>
   </section>
 </div>
+<script src="{% static 'js/iframe_video_kicker.js' %}"></script>
+<script>window.IframeVideoKicker && window.IframeVideoKicker.attachAll(".dash-grid iframe");</script>
 {% endblock %}

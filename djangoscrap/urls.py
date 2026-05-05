@@ -33,6 +33,11 @@ urlpatterns = [
     path('aggregation-library/', views.aggregation_library, name='aggregation_library'),
     path('composition/<int:composition_id>/set-ready/', views.set_composition_ready, name='set_composition_ready'),
     path('composition/<int:composition_id>/duplicate/', views.composition_duplicate, name='composition_duplicate'),
+    path('composition/<int:composition_id>/generate-grid/', views.composition_generate_grid, name='composition_generate_grid'),
+    path('composition/<int:composition_id>/reset-folder/', views.composition_folder_reset, name='composition_folder_reset'),
+    path('grid/<str:grid_id>/', views.composition_grid_view, name='composition_grid_view'),
+    path('folder/<str:grid_id>/', views.composition_folder_view, name='composition_folder_view'),
+    path('composition-live/<int:composition_id>/', views.composition_live_by_id, name='composition_live_by_id'),
     path('compositions/seed-character/', views.seed_character_compositions, name='seed_character_compositions'),
     # Legacy plural URL — bookmarks and muscle memory used /compositions/<id>/
     path(
@@ -83,8 +88,16 @@ urlpatterns = [
     path('nft/version/<int:nft_id>/metadata.json', views.composition_nft_version_metadata, name='composition_nft_version_metadata'),
     path('composition/<int:composition_id>/nft/generate/', views.composition_generate_nft, name='composition_generate_nft'),
     path('composition/<int:composition_id>/nft/media/generate/', views.composition_generate_nft_media, name='composition_generate_nft_media'),
+    path('composition/<int:composition_id>/generate-media/', views.composition_generate_media_single, name='composition_generate_media_single'),
+    path('composition/<int:composition_id>/media-status/', views.composition_media_status, name='composition_media_status'),
+    path('composition/<int:composition_id>/nft/voucher/', views.composition_voucher_sign, name='composition_voucher_sign'),
+    path('composition/<int:composition_id>/nft/voucher/redeem/', views.composition_voucher_record_redeem, name='composition_voucher_record_redeem'),
+    path('composition/<int:composition_id>/nft/media/<str:kind>/delete/', views.composition_nft_media_delete, name='composition_nft_media_delete'),
+    path('composition/<int:composition_id>/nft/media/<str:kind>/archive/delete/', views.composition_nft_media_archive_delete, name='composition_nft_media_archive_delete'),
+    path('composition/<int:composition_id>/nft/media/<str:kind>/archive/reinstate/', views.composition_nft_media_archive_reinstate, name='composition_nft_media_archive_reinstate'),
     path('nft/media/generate-all/', views.generate_all_nft_media, name='generate_all_nft_media'),
     path('nft/media/generate-selected/', views.generate_selected_nft_media, name='generate_selected_nft_media'),
+    path('nft/launchpad/', views.nft_launchpad, name='nft-launchpad'),
     path('composition/<int:composition_id>/delete/', views.composition_delete, name='composition_delete'),
     path('composition/<int:composition_id>/latest-render/', views.composition_latest_render, name='composition_latest_render'),
     path('composition/<int:composition_id>/render-export/', views.render_composition_export, name='render_composition_export'),
@@ -156,12 +169,25 @@ urlpatterns = [
     path("api/advanced-thoughts/<slug:slug>/tick/", views.advanced_thoughts_tick, name="advanced_thoughts_tick"),
     path("sim-artwork/", include("djangoscrap.sim_artwork.urls")),
     path("collect/<slug:page_slug>/", views.composition_collect_page, name="composition_collect_page"),
+    # Masks
+    path("admin/masks/", views.mask_admin_view, name="mask-view"),
+    path("admin/masks/studio/", views.mask_studio_view, name="mask-studio"),
+    path("admin/masks/asset/<int:asset_id>/delete/", views.mask_asset_delete_view, name="mask-asset-delete"),
+    path("admin/masks/tribe/new/", views.tribe_create_view, name="tribe-create"),
+    path("admin/masks/new/", views.mask_edit_view, name="mask-add"),
+    path("admin/masks/<int:mask_id>/edit/", views.mask_edit_view, name="mask-edit"),
+    path("arena/", views.mask_arena_view, name="mask-arena"),
+    path("api/mask/<slug:slug>/", views.mask_detail_api, name="mask-detail-api"),
+    path("api/battle/intent/", views.battle_intent_view, name="battle-intent"),
+    path("api/battle/<int:battle_id>/resolve/", views.battle_resolve_view, name="battle-resolve"),
+    path("api/wallet/link/", views.wallet_link_view, name="wallet-link"),
+    path("api/health/", views.health_view, name="api-health"),
+    path("api/page_beacon/", views.page_beacon_view, name="api-page-beacon"),
+    path("admin/health/", views.health_dashboard, name="admin-health"),
     path('<slug:page_slug>/', views.composition_public_page, name='composition_public_page'),
-     
-]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+]
 
-# Serving media files during development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-    
+
     

@@ -23,7 +23,7 @@
                         </div>
                        
                         <div class="card-header">
-                            <h3 class="card-title">Composition List</h3>
+                            <h3 class="card-title">Composition Library</h3>
                         </div>
                         <!-- /.card-header -->
                      
@@ -64,22 +64,12 @@
                                         {% endif %}
                                     </form>
                                     <div class="d-flex align-items-center gap-2">
-                                        <button type="button" class="btn btn-primary btn-sm" id="generateSelectedMediaBtn">Generate Media</button>
-                                        <button type="button" class="btn btn-outline-primary btn-sm" id="regenerateSelectedMediaBtn">Regenerate Media</button>
-                                        <select id="bulkSeriesSelect" class="form-control form-control-sm" title="Assign selected compositions to existing series">
-                                            <option value="">Assign to existing series</option>
-                                            {% for series in series_list %}
-                                            <option value="{{ series.id }}">{{ series.name }}</option>
-                                            {% endfor %}
-                                        </select>
-                                        <input type="text" id="bulkNewSeriesName" class="form-control form-control-sm" placeholder="or create new series" title="Create a new series and assign selected compositions">
-                                        <label class="form-check-label small" for="bulkClearSeries">
-                                            <input type="checkbox" class="form-check-input me-1" id="bulkClearSeries">
-                                            Remove series
-                                        </label>
-                                        <button type="button" class="btn btn-outline-dark btn-sm" id="assignSeriesBtn">Apply Series</button>
-                                        <!-- Delete Button -->
+                                        <button type="button" class="btn btn-primary btn-sm" id="generateSelectedMediaBtn">Generate NFT</button>
                                         <button type="button" class="btn btn-danger btn-sm" id="deleteSelectedBtn">Delete Selected</button>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <button type="button" class="btn btn-outline-secondary active" id="viewList" title="List view">☰</button>
+                                            <button type="button" class="btn btn-outline-secondary" id="viewTile" title="Tile view">⊞</button>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -97,7 +87,7 @@
                                                 <th>Characters</th>
                                                 <th>Hashtags</th>
                                                 <th>Updated</th>
-                                                <th>NFT Online Video</th> 
+                                                <th>Media</th>
                                                 <th>Ready</th>
                                                 <th>Action</th>
                                                 <th>Select</th>
@@ -143,22 +133,24 @@
                                                     {% endif %}
                                                 </td>
                                                 <td>{{ comp.updated_at|date:"d/m/Y H:i" }}</td>
-                                                <td>
-                                                    {% if comp.nft_online_video_ready %}
-                                                        <a href="{% url 'composition_nft_video' comp.id %}" class="btn btn-primary btn-sm" target="_blank" rel="noopener">
-                                                            🎥 Ready
-                                                        </a>
-                                                    {% else %}
-                                                        <span class="text-muted">Not generated</span>
-                                                    {% endif %}
+                                                <td style="white-space:nowrap;">
+                                                    {% with ps=comp.media_status.poster cs=comp.media_status.clip %}
+                                                    <span title="Poster: {{ ps }}" style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:0.7rem;font-weight:600;margin-right:3px;
+                                                        background:{% if ps == 'ready' %}#198754{% elif ps == 'failed' %}#dc3545{% elif ps == 'rendering' %}#ffc107{% else %}#6c757d{% endif %};
+                                                        color:{% if ps == 'rendering' %}#000{% else %}#fff{% endif %};">🖼{% if ps == 'ready' %} ✓{% elif ps == 'failed' %} ✗{% elif ps == 'rendering' %} …{% endif %}</span>
+                                                    <span title="Clip: {{ cs }}" style="display:inline-block;padding:1px 5px;border-radius:3px;font-size:0.7rem;font-weight:600;
+                                                        background:{% if cs == 'ready' %}#198754{% elif cs == 'failed' %}#dc3545{% elif cs == 'rendering' %}#ffc107{% else %}#6c757d{% endif %};
+                                                        color:{% if cs == 'rendering' %}#000{% else %}#fff{% endif %};">🎬{% if cs == 'ready' %} ✓{% elif cs == 'failed' %} ✗{% elif cs == 'rendering' %} …{% endif %}</span>
+                                                    {% endwith %}
                                                 </td>
-                                                <td>
+                                                <td style="text-align:center; vertical-align:middle;">
                                                     <input
                                                         type="checkbox"
                                                         class="ready-deploy-checkbox form-check-input"
                                                         title="Tick when composition is ready for deployment"
                                                         data-ready-url="{% url 'set_composition_ready' comp.id %}"
                                                         {% if comp.ready_for_deployment %}checked{% endif %}
+                                                        style="display:block; margin:0 auto; position:static; float:none;"
                                                     >
                                                 </td>
                                                 <td class="d-flex justify-content-center gap-1">
@@ -167,7 +159,7 @@
                                                     {% else %}
                                                         <a href="{% url 'composition_detail' comp.id %}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm">Open</a>
                                                     {% endif %}
-                                                    <a href="{% url 'composition-edit' comp.id %}?return_page={{ compositions.number }}" class="btn btn-outline-secondary btn-sm">Edit</a>
+                                                    <a href="{% url 'composition-edit' comp.id %}?return_page={{ compositions.number }}" class="btn btn-danger btn-sm">Edit</a>
                                                     <button
                                                         type="submit"
                                                         formaction="{% url 'composition_duplicate' comp.id %}?return_page={{ compositions.number }}"
@@ -176,6 +168,22 @@
                                                     >
                                                         Duplicate
                                                     </button>
+                                                    <button
+                                                        type="submit"
+                                                        formaction="{% url 'composition_generate_grid' comp.id %}"
+                                                        formmethod="post"
+                                                        class="btn btn-outline-info btn-sm"
+                                                        title="Generate folder of 9 exact clones — edit each inside"
+                                                    >
+                                                        Grid
+                                                    </button>
+                                                    {% if comp.grid_id %}
+                                                        <a href="{% url 'composition_folder_view' comp.grid_id %}"
+                                                           class="btn btn-outline-success btn-sm"
+                                                           title="Open folder {{ comp.grid_id }}">
+                                                            📁
+                                                        </a>
+                                                    {% endif %}
                                                 </td>
                                                 <td><input type="checkbox" class="selectCheckbox" data-id="{{ comp.id }}" title="Select {{ comp.name }}"></td>
                                             </tr>
@@ -187,6 +195,86 @@
                                         </tbody>
                                     </table>
                                 </form>
+
+                                <!-- Tile View -->
+                                <div id="tileViewGrid" class="d-none" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;">
+                                    {% for comp in compositions %}
+                                    <div class="card shadow-sm comp-tile" data-comp-id="{{ comp.id }}">
+                                        <div style="position:relative;aspect-ratio:1/1;background:#111;overflow:hidden;">
+                                            {% if comp.preview_video_url %}
+                                            <video autoplay muted loop playsinline preload="auto"
+                                                   style="width:100%;height:100%;object-fit:cover;display:block;"
+                                                   poster="{{ comp.list_thumbnail_src|default:'' }}">
+                                                <source src="{{ comp.preview_video_url }}" type="video/mp4">
+                                            </video>
+                                            {% elif comp.list_thumbnail_src %}
+                                            <img src="{{ comp.list_thumbnail_src }}" alt="{{ comp.name }}" loading="lazy"
+                                                 style="width:100%;height:100%;object-fit:cover;"
+                                                 onerror="this.onerror=null;this.style.display='none'">
+                                            {% endif %}
+                                            <span style="position:absolute;top:6px;right:6px;">
+                                                <input type="checkbox" class="selectCheckbox" data-id="{{ comp.id }}"
+                                                       title="Select {{ comp.name }}"
+                                                       style="width:1.2rem;height:1.2rem;cursor:pointer;">
+                                            </span>
+                                            {% if comp.ready_for_deployment %}
+                                            <span style="position:absolute;top:6px;left:6px;background:rgba(40,167,69,0.85);color:#fff;font-size:0.7rem;padding:2px 6px;border-radius:4px;">Ready</span>
+                                            {% endif %}
+                                            <!-- Media status badges -->
+                                            <span class="media-badges" style="position:absolute;bottom:6px;left:6px;display:flex;gap:4px;">
+                                                <span class="media-badge media-badge-poster"
+                                                      data-status="{{ comp.media_status.poster }}"
+                                                      title="Poster: {{ comp.media_status.poster }}"
+                                                      style="font-size:0.65rem;padding:1px 5px;border-radius:3px;font-weight:600;
+                                                             background:{% if comp.media_status.poster == 'ready' %}rgba(25,135,84,0.85){% elif comp.media_status.poster == 'failed' %}rgba(220,53,69,0.85){% elif comp.media_status.poster == 'rendering' %}rgba(255,193,7,0.9){% else %}rgba(80,80,80,0.7){% endif %};
+                                                             color:{% if comp.media_status.poster == 'rendering' %}#000{% else %}#fff{% endif %};">
+                                                    🖼{% if comp.media_status.poster == 'rendering' %} …{% elif comp.media_status.poster == 'failed' %} ✗{% elif comp.media_status.poster == 'ready' %} ✓{% endif %}
+                                                </span>
+                                                <span class="media-badge media-badge-clip"
+                                                      data-status="{{ comp.media_status.clip }}"
+                                                      title="Clip: {{ comp.media_status.clip }}"
+                                                      style="font-size:0.65rem;padding:1px 5px;border-radius:3px;font-weight:600;
+                                                             background:{% if comp.media_status.clip == 'ready' %}rgba(25,135,84,0.85){% elif comp.media_status.clip == 'failed' %}rgba(220,53,69,0.85){% elif comp.media_status.clip == 'rendering' %}rgba(255,193,7,0.9){% else %}rgba(80,80,80,0.7){% endif %};
+                                                             color:{% if comp.media_status.clip == 'rendering' %}#000{% else %}#fff{% endif %};">
+                                                    🎬{% if comp.media_status.clip == 'rendering' %} …{% elif comp.media_status.clip == 'failed' %} ✗{% elif comp.media_status.clip == 'ready' %} ✓{% endif %}
+                                                </span>
+                                            </span>
+                                        </div>
+                                        <div class="card-body p-2">
+                                            <div class="fw-semibold text-truncate small mb-1">
+                                                <a href="{% url 'composition_detail' comp.id %}" class="text-dark text-decoration-none">{{ comp.name }}</a>
+                                            </div>
+                                            <div class="text-muted" style="font-size:0.7rem;">{{ comp.type }} · {{ comp.updated_at|date:"d/m/Y" }}</div>
+                                            <div class="d-flex gap-1 flex-wrap mt-2">
+                                                {% if comp.url %}
+                                                <a href="{{ comp.url }}" target="_blank" class="btn btn-outline-primary btn-sm" style="font-size:0.7rem;padding:2px 6px;">Open</a>
+                                                {% endif %}
+                                                <a href="{% url 'composition-edit' comp.id %}?return_page={{ compositions.number }}" class="btn btn-danger btn-sm" style="font-size:0.7rem;padding:2px 6px;">Edit</a>
+                                                <a href="{% url 'composition_generate_grid' comp.id %}" class="btn btn-outline-info btn-sm" style="font-size:0.7rem;padding:2px 6px;">Grid</a>
+                                                <!-- Generate media dropdown -->
+                                                <div class="dropdown">
+                                                    <button class="btn btn-outline-secondary btn-sm dropdown-toggle comp-gen-btn"
+                                                            style="font-size:0.7rem;padding:2px 6px;"
+                                                            data-comp-id="{{ comp.id }}"
+                                                            data-toggle="dropdown" aria-expanded="false">
+                                                        ⚙
+                                                    </button>
+                                                    <div class="dropdown-menu dropdown-menu-right" style="font-size:0.8rem;min-width:130px;">
+                                                        <button class="dropdown-item gen-media-btn" data-comp-id="{{ comp.id }}" data-kinds="poster">Poster</button>
+                                                        <button class="dropdown-item gen-media-btn" data-comp-id="{{ comp.id }}" data-kinds="preview_10s">10s clip</button>
+                                                        <button class="dropdown-item gen-media-btn" data-comp-id="{{ comp.id }}" data-kinds="poster,preview_10s">All media</button>
+                                                        <div class="dropdown-divider"></div>
+                                                        <button class="dropdown-item gen-media-btn text-warning" data-comp-id="{{ comp.id }}" data-kinds="poster,preview_10s" data-force="1">Regenerate all</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% empty %}
+                                    <p class="text-muted">No compositions found.</p>
+                                    {% endfor %}
+                                </div>
+
                                 <form id="assignSeriesForm" method="POST" action="{% url 'assign_compositions_series' %}" class="d-none">
                                     {% csrf_token %}
                                     <input type="hidden" name="compositions_to_assign" id="compositionsToAssign">
@@ -232,6 +320,30 @@
 
 <!-- JavaScript -->
 <script>
+    // View toggle (list / tile)
+    (function () {
+        const tableWrap = document.querySelector('form#deleteForm');
+        const tileGrid = document.getElementById('tileViewGrid');
+        const btnList = document.getElementById('viewList');
+        const btnTile = document.getElementById('viewTile');
+        const PREF_KEY = 'compViewMode';
+        const setView = (mode) => {
+            const isTile = mode === 'tile';
+            tableWrap.style.display = isTile ? 'none' : '';
+            tileGrid.classList.toggle('d-none', !isTile);
+            tileGrid.style.display = isTile ? 'grid' : 'none';
+            btnList.classList.toggle('active', !isTile);
+            btnTile.classList.toggle('active', isTile);
+            try { localStorage.setItem(PREF_KEY, mode); } catch(e) {}
+        };
+        btnList.addEventListener('click', () => setView('list'));
+        btnTile.addEventListener('click', () => setView('tile'));
+        try {
+            const saved = localStorage.getItem(PREF_KEY);
+            setView(saved === 'list' ? 'list' : 'tile');
+        } catch(e) { setView('tile'); }
+    })();
+
     const getSelectedCompositionIds = () => Array.from(document.querySelectorAll('.selectCheckbox:checked'))
         .map((checkbox) => checkbox.getAttribute('data-id'));
 
@@ -300,6 +412,110 @@
         submitSelectedMediaGeneration(true);
     });
 
+    // Per-tile async media generation
+    (function () {
+        const getCsrf = () => {
+            const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+            return m ? m[1] : '';
+        };
+
+        const STATUS_BG = {
+            ready:     'rgba(25,135,84,0.85)',
+            failed:    'rgba(220,53,69,0.85)',
+            rendering: 'rgba(255,193,7,0.9)',
+            none:      'rgba(80,80,80,0.7)',
+        };
+        const STATUS_COLOR = { rendering: '#000' };
+        const STATUS_ICON = { ready: ' ✓', failed: ' ✗', rendering: ' …' };
+
+        function applyBadge(badge, status) {
+            if (!badge) return;
+            badge.dataset.status = status;
+            badge.style.background = STATUS_BG[status] || STATUS_BG.none;
+            badge.style.color = STATUS_COLOR[status] || '#fff';
+            const icon = badge.dataset.icon || '';
+            badge.title = badge.dataset.label + ': ' + status;
+            badge.textContent = icon + (STATUS_ICON[status] || '');
+        }
+
+        // Assign data-icon and data-label to each badge on load
+        document.querySelectorAll('.media-badge-poster').forEach(b => { b.dataset.icon = '🖼'; b.dataset.label = 'Poster'; applyBadge(b, b.dataset.status); });
+        document.querySelectorAll('.media-badge-clip').forEach(b => { b.dataset.icon = '🎬'; b.dataset.label = 'Clip'; applyBadge(b, b.dataset.status); });
+
+        const polling = new Map(); // compId -> intervalId
+
+        function startPolling(compId, tile) {
+            if (polling.has(compId)) return;
+            const id = setInterval(async () => {
+                try {
+                    const res = await fetch(`/composition/${compId}/media-status/`, { credentials: 'same-origin' });
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    const posterBadge = tile.querySelector('.media-badge-poster');
+                    const clipBadge   = tile.querySelector('.media-badge-clip');
+                    applyBadge(posterBadge, data.assets.poster?.status || 'none');
+                    applyBadge(clipBadge,   data.assets.clip?.status   || 'none');
+                    const stillRendering = ['rendering'].includes(data.assets.poster?.status) || ['rendering'].includes(data.assets.clip?.status);
+                    if (!stillRendering) {
+                        clearInterval(id);
+                        polling.delete(compId);
+                    }
+                } catch (_) {}
+            }, 4000);
+            polling.set(compId, id);
+        }
+
+        document.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.gen-media-btn');
+            if (!btn) return;
+            e.preventDefault();
+            const compId = btn.dataset.compId;
+            const kinds  = btn.dataset.kinds;
+            const force  = btn.dataset.force || '';
+            const tile   = document.querySelector(`.comp-tile[data-comp-id="${compId}"]`);
+            const genBtn = tile && tile.querySelector('.comp-gen-btn');
+
+            if (genBtn) { genBtn.disabled = true; genBtn.textContent = '⏳'; }
+
+            // Optimistically set badges to rendering
+            if (tile) {
+                kinds.split(',').forEach(k => {
+                    const cls = k === 'poster' ? '.media-badge-poster' : '.media-badge-clip';
+                    applyBadge(tile.querySelector(cls), 'rendering');
+                });
+            }
+
+            try {
+                const body = new FormData();
+                body.append('kinds', kinds);
+                if (force) body.append('force', '1');
+                const res = await fetch(`/composition/${compId}/generate-media/`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest' },
+                    body,
+                    credentials: 'same-origin',
+                });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                if (tile) startPolling(compId, tile);
+            } catch (err) {
+                alert('Generate failed: ' + err.message);
+            } finally {
+                if (genBtn) { genBtn.disabled = false; genBtn.textContent = '⚙'; }
+            }
+        });
+
+        // Auto-start polling for any tile already in rendering state
+        document.querySelectorAll('.comp-tile').forEach(tile => {
+            const compId = tile.dataset.compId;
+            const posterStatus = tile.querySelector('.media-badge-poster')?.dataset.status;
+            const clipStatus   = tile.querySelector('.media-badge-clip')?.dataset.status;
+            if (posterStatus === 'rendering' || clipStatus === 'rendering') {
+                startPolling(compId, tile);
+            }
+        });
+    })();
+
+
     (function () {
         const getCsrfToken = () => {
             const input = document.querySelector('input[name="csrfmiddlewaretoken"]');
@@ -331,6 +547,47 @@
                     checkbox.disabled = false;
                 }
             });
+        });
+    })();
+
+    // Play tile videos only when visible — prevents 50 simultaneous decodes
+    (function () {
+        const grid = document.getElementById('tileViewGrid');
+        if (!grid) return;
+
+        const playIfVisible = (tile) => {
+            const vid = tile.querySelector('video');
+            if (!vid) return;
+            const rect = tile.getBoundingClientRect();
+            const inView = rect.top < window.innerHeight && rect.bottom > 0;
+            if (inView) vid.play().catch(() => {});
+        };
+
+        if (!('IntersectionObserver' in window)) {
+            grid.querySelectorAll('.comp-tile').forEach(playIfVisible);
+            return;
+        }
+
+        const obs = new IntersectionObserver((entries) => {
+            entries.forEach(e => {
+                const vid = e.target.querySelector('video');
+                if (!vid) return;
+                if (e.isIntersecting) {
+                    vid.play().catch(() => {});
+                } else {
+                    vid.pause();
+                }
+            });
+        }, { root: null, threshold: 0.1 });
+
+        grid.querySelectorAll('.comp-tile').forEach(tile => {
+            obs.observe(tile);
+            playIfVisible(tile); // IO fires async; kick off visible ones immediately
+        });
+
+        // Also play when switching to tile view
+        document.getElementById('viewTile')?.addEventListener('click', () => {
+            setTimeout(() => grid.querySelectorAll('.comp-tile').forEach(playIfVisible), 50);
         });
     })();
 

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ mask.name }} · {{ mask.tribe.name }}</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #0a0a0a; color: #eee; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .stage { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+  .bg { position: absolute; inset: 0; background: #111; }
+  .bg img, .bg iframe { width: 100%; height: 100%; object-fit: cover; border: 0; }
+  .layer { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  .layer img { max-width: 70%; max-height: 90%; image-rendering: pixelated; }
+  .l-clothing { z-index: 10; }
+  .l-face { z-index: 20; }
+  .l-accessory { z-index: 25; }
+  .l-hat { z-index: 30; }
+  .panel { position: absolute; top: 16px; left: 16px; background: rgba(0,0,0,0.6); border: 1px solid #333; padding: 12px 16px; border-radius: 8px; max-width: 280px; z-index: 50; backdrop-filter: blur(6px); }
+  .panel h1 { font-size: 18px; margin: 0 0 4px; }
+  .panel .tribe { color: #aaa; font-size: 12px; margin-bottom: 8px; }
+  .stats { display: grid; grid-template-columns: repeat(2,1fr); gap: 4px 12px; font-size: 12px; }
+  .stats span { color: #888; }
+  .fun { margin-top: 8px; font-size: 12px; color: #c4d; }
+  .actions { margin-top: 10px; display: flex; gap: 6px; }
+  .btn { background: #2a2; color: #fff; border: 0; padding: 6px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; text-decoration: none; }
+  .btn.outline { background: transparent; border: 1px solid #555; color: #ccc; }
+  .history { position: absolute; bottom: 16px; right: 16px; background: rgba(0,0,0,0.6); border: 1px solid #333; padding: 10px 14px; border-radius: 8px; font-size: 11px; max-width: 320px; z-index: 50; }
+  .history h3 { margin: 0 0 6px; font-size: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+  .history li { list-style: none; margin: 0; padding: 2px 0; color: #bbb; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="bg">
+    {% if mask.background_source_name %}
+      <iframe src="/source-thumbnail/{{ mask.background_source_name }}/__random__" allow="autoplay" loading="lazy"></iframe>
+    {% endif %}
+  </div>
+  {% if mask.clothing %}<div class="layer l-clothing"><img src="{{ mask.clothing.image.url }}" alt=""></div>{% endif %}
+  {% if mask.face %}<div class="layer l-face"><img src="{{ mask.face.image.url }}" alt=""></div>{% endif %}
+  {% if mask.accessory %}<div class="layer l-accessory"><img src="{{ mask.accessory.image.url }}" alt=""></div>{% endif %}
+  {% if mask.hat %}<div class="layer l-hat"><img src="{{ mask.hat.image.url }}" alt=""></div>{% endif %}
+
+  <div class="panel">
+    <h1>{{ mask.name }}</h1>
+    <div class="tribe">{{ mask.tribe.name }}</div>
+    <div class="stats">
+      <div><span>POW</span> {{ mask.power }}</div>
+      <div><span>SPD</span> {{ mask.speed }}</div>
+      <div><span>WIT</span> {{ mask.wit }}</div>
+      <div><span>CHM</span> {{ mask.charm }}</div>
+    </div>
+    <div class="fun">fun {{ mask.fun_level }} · face tier {{ mask.face_tier }}</div>
+    <div class="actions">
+      <a href="/arena/" class="btn">⚔ Challenge</a>
+      <a href="/arena/" class="btn outline">Arena</a>
+    </div>
+  </div>
+
+  {% if recent_battles %}
+  <div class="history">
+    <h3>Recent battles</h3>
+    <ul>
+      {% for b in recent_battles %}
+        <li>vs {% if b.attacker_id == mask.id %}{{ b.defender.name }}{% else %}{{ b.attacker.name }}{% endif %} —
+          {% if b.winner_id == mask.id %}<span style="color:#7c7;">WON</span>{% else %}<span style="color:#c77;">lost</span>{% endif %}
+          <span style="color:#666">{{ b.resolved_at|date:"d/m H:i" }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+</body>
+</html>

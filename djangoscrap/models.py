@@ -130,6 +130,21 @@ class Composition(models.Model):
     nft_last_generated_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(default=now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # Folder grouping: every composition belongs to exactly one folder, identified
+    # by grid_id. A new composition gets a fresh folder (= itself, cell 1). The
+    # "Generate Grid" action populates siblings (cells 2..9) into that folder.
+    grid_id = models.CharField(max_length=32, blank=True, default="", db_index=True)
+    grid_cell_index = models.PositiveSmallIntegerField(default=0)
+
+    def save(self, *args, **kwargs):
+        if not self.grid_id:
+            import uuid as _uuid
+            self.grid_id = _uuid.uuid4().hex[:10]
+            if not self.grid_cell_index:
+                self.grid_cell_index = 1
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
@@ -252,7 +267,7 @@ class CompositionNFT(models.Model):
 class CompositionMediaAsset(models.Model):
     KIND_CHOICES = [
         ("poster", "Poster still"),
-        ("preview_15s", "15s preview video"),
+        ("preview_10s", "10s preview video"),
         ("collector_45s", "45s collector video"),
     ]
     STATUS_CHOICES = [
@@ -271,6 +286,7 @@ class CompositionMediaAsset(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     error_message = models.TextField(blank=True, default="")
     generated_at = models.DateTimeField(null=True, blank=True)
+    archive = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(default=now)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -291,6 +307,41 @@ class CompositionMediaAsset(models.Model):
         from .nft_media import composition_source_signature
 
         return bool(self.source_signature) and self.source_signature != composition_source_signature(self.composition)
+
+
+class NFTMintVoucher(models.Model):
+    """
+    EIP-712 lazy-mint voucher for TheFeed collection.
+    The creator signs a voucher off-chain; the collector redeems it on-chain
+    via mintWithVoucher(), paying at least min_price_wei to mint one token
+    with the voucher's URI attached.
+    """
+    composition = models.ForeignKey(
+        Composition, on_delete=models.CASCADE, related_name="mint_vouchers"
+    )
+    min_price_wei = models.BigIntegerField(help_text="Minimum ETH in wei (e.g. 70000000000000000 = 0.07 ETH)")
+    uri = models.CharField(max_length=500, help_text="Metadata URI embedded in the voucher (e.g. ipfs://...)")
+    nonce = models.BigIntegerField(unique=True, help_text="Unique nonce to prevent replay")
+    signature = models.CharField(max_length=200, help_text="0x-prefixed EIP-712 signature from authorizedSigner")
+    signed_by = models.CharField(max_length=42, help_text="Ethereum address that signed this voucher")
+    signed_at = models.DateTimeField(null=True, blank=True)
+    redeemed = models.BooleanField(default=False)
+    redeemed_tx = models.CharField(max_length=128, blank=True, default="", help_text="Transaction hash when redeemed")
+    redeemed_token_id = models.CharField(max_length=64, blank=True, default="")
+    redeemed_by = models.CharField(max_length=42, blank=True, default="", help_text="Collector wallet address")
+    redeemed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=now)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        status = "redeemed" if self.redeemed else "active"
+        return f"Voucher #{self.pk} for {self.composition.name} ({status})"
+
+    @property
+    def min_price_eth(self):
+        return self.min_price_wei / 1e18
 
 
 class MintCollectionSettings(models.Model):
@@ -534,9 +585,6 @@ class Bucket(models.Model):
     
     def __str__(self):
         return self.name
-    
-
-from django.db import models
 
 class VideoComposition(models.Model):
     audio = models.FileField(upload_to="audios/", null=True, blank=True)
@@ -753,3 +801,123 @@ class SocialMemory(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+# -- Masks ----------------------------------------------------------------
+
+class Tribe(models.Model):
+    slug = models.SlugField(max_length=64, unique=True)
+    name = models.CharField(max_length=128)
+    description = models.TextField(blank=True, default="")
+    palette_json = models.JSONField(default=dict, blank=True)
+    lore_md = models.TextField(blank=True, default="")
+    mint_authority_pubkey = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(default=now)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class MaskAsset(models.Model):
+    SLOT_CHOICES = [
+        ("face", "Face"),
+        ("hat", "Hat"),
+        ("clothing", "Clothing"),
+        ("accessory", "Accessory"),
+    ]
+    slot = models.CharField(max_length=16, choices=SLOT_CHOICES)
+    tier = models.PositiveSmallIntegerField(default=0)
+    image = models.ImageField(upload_to="mask_assets/")
+    tribe = models.ForeignKey(Tribe, on_delete=models.SET_NULL, null=True, blank=True, related_name="assets")
+    name = models.CharField(max_length=128)
+    created_at = models.DateTimeField(default=now)
+
+    class Meta:
+        ordering = ["slot", "tier", "name"]
+        indexes = [models.Index(fields=["slot", "tier", "tribe"])]
+
+    def __str__(self):
+        return f"{self.slot}:{self.name}(t{self.tier})"
+
+
+class Mask(models.Model):
+    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="masks")
+    tribe = models.ForeignKey(Tribe, on_delete=models.PROTECT, related_name="masks")
+    name = models.CharField(max_length=128)
+    slug = models.SlugField(max_length=80, unique=True)
+
+    face = models.ForeignKey(MaskAsset, on_delete=models.PROTECT, related_name="masks_as_face", limit_choices_to={"slot": "face"})
+    hat = models.ForeignKey(MaskAsset, on_delete=models.SET_NULL, null=True, blank=True, related_name="masks_as_hat", limit_choices_to={"slot": "hat"})
+    clothing = models.ForeignKey(MaskAsset, on_delete=models.SET_NULL, null=True, blank=True, related_name="masks_as_clothing", limit_choices_to={"slot": "clothing"})
+    accessory = models.ForeignKey(MaskAsset, on_delete=models.SET_NULL, null=True, blank=True, related_name="masks_as_accessory", limit_choices_to={"slot": "accessory"})
+
+    background_source_name = models.CharField(max_length=255, blank=True, default="")
+
+    power = models.PositiveSmallIntegerField(default=5)
+    speed = models.PositiveSmallIntegerField(default=5)
+    wit = models.PositiveSmallIntegerField(default=5)
+    charm = models.PositiveSmallIntegerField(default=5)
+
+    fun_level = models.IntegerField(default=0)
+    mint_address = models.CharField(max_length=64, blank=True, null=True, unique=True)
+
+    created_at = models.DateTimeField(default=now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def face_tier(self):
+        if self.fun_level >= 40:
+            return 3
+        if self.fun_level >= 15:
+            return 2
+        if self.fun_level >= 5:
+            return 1
+        return 0
+
+
+class MaskBattle(models.Model):
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("escrowed", "Escrowed"),
+        ("resolved", "Resolved"),
+        ("settled", "Settled"),
+        ("cancelled", "Cancelled"),
+    ]
+    SOURCE_CHOICES = [
+        ("stats", "Stat-based roll"),
+        ("polymarket", "Polymarket market"),
+    ]
+    resolution_source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="stats")
+    polymarket_market_id = models.CharField(max_length=128, blank=True, default="")
+    polymarket_attacker_outcome = models.CharField(max_length=64, blank=True, default="")
+    attacker = models.ForeignKey(Mask, on_delete=models.CASCADE, related_name="battles_as_attacker")
+    defender = models.ForeignKey(Mask, on_delete=models.CASCADE, related_name="battles_as_defender")
+    winner = models.ForeignKey(Mask, on_delete=models.SET_NULL, null=True, blank=True, related_name="battles_won")
+
+    wager_lamports = models.BigIntegerField(default=0)
+    wager_mint = models.CharField(max_length=64, blank=True, default="")
+    nft_at_stake = models.BooleanField(default=False)
+    escrow_account = models.CharField(max_length=64, blank=True, default="")
+
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="pending")
+    result_signature = models.CharField(max_length=128, blank=True, default="")
+    seed = models.CharField(max_length=64, blank=True, default="")
+    roll_log = models.JSONField(default=dict, blank=True)
+
+    started_at = models.DateTimeField(default=now)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-started_at"]
+
+    def __str__(self):
+        return f"Battle#{self.id}: {self.attacker_id} vs {self.defender_id} ({self.status})"

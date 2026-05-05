@@ -1,0 +1,42 @@
+{% extends "layouts/admin.html" %}
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<div class="content-wrapper">
+  <section class="content">
+    <div class="container-fluid py-3">
+      {% if messages %}{% for message in messages %}<div class="alert alert-{{ message.tags }}">{{ message }}</div>{% endfor %}{% endif %}
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0">Masks</h3>
+        <div>
+          <a href="{% url 'mask-add' %}" class="btn btn-primary btn-sm">+ New Mask</a>
+          <a href="{% url 'mask-arena' %}" class="btn btn-outline-success btn-sm" target="_blank">⚔ Arena</a>
+        </div>
+      </div>
+      <table class="table table-bordered align-middle">
+        <thead class="bg-dark text-white"><tr>
+          <th>Face</th><th>Name</th><th>Tribe</th><th>Stats</th><th>Fun</th><th>Tier</th><th>Slug</th><th>Action</th>
+        </tr></thead>
+        <tbody>
+        {% for m in masks %}
+          <tr>
+            <td>{% if m.face %}<img src="{{ m.face.image.url }}" width="40" height="40" style="object-fit:cover;border:1px solid #ccc;">{% endif %}</td>
+            <td>{{ m.name }}</td>
+            <td>{{ m.tribe.name }}</td>
+            <td><small>P{{ m.power }} · S{{ m.speed }} · W{{ m.wit }} · C{{ m.charm }}</small></td>
+            <td>{{ m.fun_level }}</td>
+            <td><span class="badge bg-info text-dark">t{{ m.face_tier }}</span></td>
+            <td><code>/{{ m.slug }}/</code></td>
+            <td>
+              <a href="/{{ m.slug }}/" target="_blank" class="btn btn-outline-primary btn-sm">Open</a>
+              <a href="{% url 'mask-edit' m.id %}" class="btn btn-outline-secondary btn-sm">Edit</a>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="8" class="text-center text-muted">No masks yet. <a href="{% url 'mask-add' %}">Create one</a>.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

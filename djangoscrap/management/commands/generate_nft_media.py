@@ -13,7 +13,7 @@ class Command(BaseCommand):
         parser.add_argument("--force", action="store_true", help="Regenerate even when generated media is fresh.")
         parser.add_argument(
             "--kinds",
-            default="poster,preview_15s,collector_45s",
+            default="poster,preview_10s,collector_45s",
             help="Comma-separated media kinds to generate.",
         )
         parser.add_argument("--poster", action="store_true", help="Compatibility flag; poster is included by default.")
@@ -29,7 +29,7 @@ class Command(BaseCommand):
                 kinds.append("poster")
             durations = {value.strip() for value in (options.get("durations") or "").split(",")}
             if "15" in durations:
-                kinds.append("preview_15s")
+                kinds.append("preview_10s")
             if "45" in durations:
                 kinds.append("collector_45s")
         unknown = [kind for kind in kinds if kind not in MEDIA_KINDS]

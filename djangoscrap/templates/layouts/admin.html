@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>New Composition Admin Dashboard</title>
 
-  <!-- Google Font: Source Sans Pro -->
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
+  <!-- Google Font: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   <!-- Font Awesome -->
   <link rel="stylesheet" href="/static/admin/plugins/fontawesome-free/css/all.min.css">
   <!-- AdminLTE -->
@@ -52,7 +53,7 @@
               <li class="nav-item">
                 <a href="{% url 'composition-view' %}" class="nav-link">
                   <i class="far fa-circle nav-icon"></i>
-                  <p>View Composition </p>
+                  <p>Composition Library</p>
                 </a>
               </li>
               <li class="nav-item">
@@ -206,7 +207,61 @@
               <p>Upload</p>
             </a>
           </li> -->
+
+          <li class="nav-item">
+            <a href="javascript:void(0)" class="nav-link">
+              <i class="nav-icon fas fa-mask"></i>
+              <p>Masks <i class="fas fa-angle-left right"></i></p>
+            </a>
+            <ul class="nav nav-treeview">
+              <li class="nav-item">
+                <a href="{% url 'mask-studio' %}" class="nav-link">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Studio</p>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="{% url 'mask-view' %}" class="nav-link">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Library</p>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="{% url 'mask-arena' %}" class="nav-link">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Arena</p>
+                </a>
+              </li>
+            </ul>
+          </li>
           
+          <li class="nav-item">
+            <a href="javascript:void(0)" class="nav-link">
+              <i class="nav-icon fas fa-gem"></i>
+              <p>NFT <i class="fas fa-angle-left right"></i></p>
+            </a>
+            <ul class="nav nav-treeview">
+              <li class="nav-item">
+                <a href="{% url 'nft-launchpad' %}" class="nav-link">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Launchpad</p>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="{% url 'mint-collection-settings' %}" class="nav-link">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Collection Settings</p>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="{% url 'mint_site' %}" class="nav-link" target="_blank" rel="noopener">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Mint Site ↗</p>
+                </a>
+              </li>
+            </ul>
+          </li>
+
           <li class="nav-item menu-open">
             <a href="{% url 'logout' %}" class="nav-link">
               <i class="nav-icon fas fa-sign-out-alt"></i>

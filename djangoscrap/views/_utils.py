@@ -403,7 +403,6 @@ def _is_stock_image_candidate(filename: str) -> bool:
 def _detect_uniform_border_crop_box_from_array(
     arr,
     max_crop_fraction: float = 0.22,
-    min_strip_std: float = 12.0,
     dark_thresh: float = 26.0,
     light_thresh: float = 229.0,
 ):
@@ -431,9 +430,18 @@ def _detect_uniform_border_crop_box_from_array(
     max_left = max(2, int(w * max_crop_fraction))
 
     def is_border_strip(values):
-        mean = float(values.mean())
-        std = float(values.std())
-        return std <= min_strip_std and (mean <= dark_thresh or mean >= light_thresh)
+        # Use median so text/logos within a light or dark border don't break detection.
+        median = float(np.median(values))
+        is_light = median >= light_thresh
+        is_dark = median <= dark_thresh
+        if not (is_light or is_dark):
+            return False
+        # At least 55 % of pixels must match the border colour (allows text in border).
+        if is_light:
+            fraction = float(np.mean(values >= light_thresh - 40))
+        else:
+            fraction = float(np.mean(values <= dark_thresh + 40))
+        return fraction >= 0.55
 
     top = 0
     while top < max_top and is_border_strip(gray[top:top + 1, :]):

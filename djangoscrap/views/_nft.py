@@ -115,7 +115,7 @@ def _build_nft_metadata_payload(request, composition: Composition) -> dict:
     )
     generated_assets = composition_media_assets(composition)
     poster_asset = generated_assets.get("poster")
-    preview_asset = generated_assets.get("preview_15s")
+    preview_asset = generated_assets.get("preview_10s")
     collector_asset = generated_assets.get("collector_45s")
     image_url = (
         _storage_file_url(request, poster_asset.file.name)
@@ -134,8 +134,11 @@ def _build_nft_metadata_payload(request, composition: Composition) -> dict:
     )
     mode = (composition.nft_mode or "live").strip().lower()
     external_url = (composition.nft_external_url or "").strip() or (composition.page_url or "").strip() or (composition.url or "").strip()
+    last_updated = composition.updated_at.strftime("%Y-%m-%d") if composition.updated_at else ""
     attributes = [
         {"trait_type": "Composition ID", "value": int(composition.id)},
+        {"trait_type": "Last Updated", "value": last_updated},
+        {"trait_type": "Live URL", "value": external_url},
         {"trait_type": "Mode", "value": mode},
         {"trait_type": "Type", "value": (composition.type or "classic")},
         {"trait_type": "Mood", "value": (composition.mood_rating or "mid")},
@@ -224,19 +227,31 @@ def _composition_media_context(request, composition: Composition) -> dict:
     rows = {}
     for kind, label in (
         ("poster", "Poster still"),
-        ("preview_15s", "10s marketplace preview"),
+        ("preview_10s", "10s marketplace preview"),
         ("collector_45s", "45s collector video"),
     ):
         asset = assets.get(kind)
+        archive_entries = []
+        if asset and asset.archive:
+            for entry in reversed(asset.archive):
+                p = entry.get("path", "")
+                archive_entries.append({
+                    "path": p,
+                    "url": _storage_file_url(request, p) if p else "",
+                    "generated_at": entry.get("generated_at", ""),
+                    "size": entry.get("size", 0),
+                })
         rows[kind] = {
             "label": label,
             "asset": asset,
+            "asset_id": asset.id if asset else None,
             "ready": bool(asset and asset.status == "ready" and asset.file),
             "status": asset.status if asset else "missing",
             "url": _storage_file_url(request, asset.file.name) if asset and asset.file and asset.status == "ready" else "",
             "stale": bool(asset and asset.source_signature and asset.source_signature != current_signature),
             "generated_at": asset.generated_at if asset else None,
             "error": asset.error_message if asset else "",
+            "archive": archive_entries,
         }
     return {
         "assets": rows,
@@ -266,9 +281,14 @@ def _build_nft_version_metadata_payload(request, nft: CompositionNFT) -> dict:
         else ""
     )
     external_url = nft.live_url or (composition.url or "")
+    version_date = (nft.prepared_at or nft.created_at).strftime("%Y-%m-%d") if (nft.prepared_at or nft.created_at) else ""
+    last_updated = composition.updated_at.strftime("%Y-%m-%d") if composition.updated_at else ""
     attributes = [
         {"trait_type": "Composition ID", "value": int(composition.id)},
         {"trait_type": "Version", "display_type": "number", "value": int(nft.version_number)},
+        {"trait_type": "Version Date", "value": version_date},
+        {"trait_type": "Last Updated", "value": last_updated},
+        {"trait_type": "Live URL", "value": external_url},
         {"trait_type": "Chain", "value": "Ethereum"},
         {"trait_type": "Mode", "value": (composition.nft_mode or "live")},
         {"trait_type": "Type", "value": (composition.type or "classic")},
@@ -324,7 +344,7 @@ def _prepare_composition_nft_version(request, composition: Composition, wallet: 
     )
     try:
         media_assets = composition_media_assets(composition)
-        required_kinds = ["poster", "preview_15s", "collector_45s"]
+        required_kinds = ["poster", "preview_10s", "collector_45s"]
         missing_required = [
             kind
             for kind in required_kinds
@@ -336,7 +356,7 @@ def _prepare_composition_nft_version(request, composition: Composition, wallet: 
         if missing_required:
             media_assets.update(generate_composition_media_assets(composition, force=False, kinds=missing_required))
         poster_asset = media_assets.get("poster")
-        preview_asset = media_assets.get("preview_15s")
+        preview_asset = media_assets.get("preview_10s")
         collector_asset = media_assets.get("collector_45s")
         if not poster_asset or not poster_asset.file or poster_asset.status != "ready":
             raise RuntimeError("Poster still is not ready.")
@@ -394,7 +414,7 @@ def _nft_public_state(request, composition: Composition, wallet: str = "") -> di
         except Exception:
             return value.isoformat() if hasattr(value, "isoformat") else str(value)
 
-    for kind in ["poster", "preview_15s", "collector_45s"]:
+    for kind in ["poster", "preview_10s", "collector_45s"]:
         asset = generated_assets.get(kind)
         file_name = asset.file.name if asset and asset.file and asset.status == "ready" else ""
         media_state[kind] = {
@@ -819,7 +839,10 @@ def composition_generate_nft(request, composition_id):
 def composition_generate_nft_media(request, composition_id):
     composition = get_object_or_404(Composition, id=composition_id)
     force = request.POST.get("force") == "1"
-    results = generate_composition_media_assets(composition, force=force)
+    valid_kinds = {"poster", "preview_10s", "collector_45s"}
+    requested_kind = request.POST.get("kind", "").strip()
+    kinds = [requested_kind] if requested_kind in valid_kinds else None
+    results = generate_composition_media_assets(composition, force=force, kinds=kinds)
     failed = [asset for asset in results.values() if asset.status != "ready"]
     if failed:
         messages.error(
@@ -827,12 +850,101 @@ def composition_generate_nft_media(request, composition_id):
             "Some NFT media failed: " + "; ".join(f"{asset.kind}: {asset.error_message}" for asset in failed),
         )
     else:
-        messages.success(request, "NFT media generated: poster still, 10s preview, and 45s collector video.")
+        label = requested_kind if requested_kind in valid_kinds else "all media"
+        messages.success(request, f"NFT media generated: {label}.")
     return redirect("composition-edit", composition_id=composition.id)
 
 
 @require_POST
+def composition_nft_media_delete(request, composition_id, kind):
+    from django.core.files.storage import default_storage
+    from ..models import CompositionMediaAsset
+    composition = get_object_or_404(Composition, id=composition_id)
+    valid_kinds = {"poster", "preview_10s", "collector_45s"}
+    if kind not in valid_kinds:
+        return JsonResponse({"error": "invalid kind"}, status=400)
+    try:
+        asset = CompositionMediaAsset.objects.get(composition=composition, kind=kind)
+        if asset.file and asset.file.name:
+            try:
+                default_storage.delete(asset.file.name)
+            except Exception:
+                pass
+        asset.file = None
+        asset.status = "pending"
+        asset.source_signature = ""
+        asset.generated_at = None
+        asset.error_message = ""
+        asset.save(update_fields=["file", "status", "source_signature", "generated_at", "error_message", "updated_at"])
+    except CompositionMediaAsset.DoesNotExist:
+        pass
+    return redirect("composition-edit", composition_id=composition.id)
 
+
+@require_POST
+def composition_nft_media_archive_delete(request, composition_id, kind):
+    from django.core.files.storage import default_storage
+    from ..models import CompositionMediaAsset
+    composition = get_object_or_404(Composition, id=composition_id)
+    archive_path = request.POST.get("path", "").strip()
+    if not archive_path or not archive_path.startswith(f"nft/generated/composition_{composition_id}/archive/"):
+        return JsonResponse({"error": "invalid path"}, status=400)
+    try:
+        asset = CompositionMediaAsset.objects.get(composition=composition, kind=kind)
+        try:
+            default_storage.delete(archive_path)
+        except Exception:
+            pass
+        asset.archive = [e for e in (asset.archive or []) if e.get("path") != archive_path]
+        asset.save(update_fields=["archive", "updated_at"])
+    except CompositionMediaAsset.DoesNotExist:
+        pass
+    return redirect("composition-edit", composition_id=composition.id)
+
+
+@require_POST
+def composition_nft_media_archive_reinstate(request, composition_id, kind):
+    from django.core.files.storage import default_storage
+    from django.core.files.base import ContentFile
+    from ..models import CompositionMediaAsset
+    from django.utils import timezone as tz
+    composition = get_object_or_404(Composition, id=composition_id)
+    archive_path = request.POST.get("path", "").strip()
+    if not archive_path or not archive_path.startswith(f"nft/generated/composition_{composition_id}/archive/"):
+        return JsonResponse({"error": "invalid path"}, status=400)
+    try:
+        asset = CompositionMediaAsset.objects.get(composition=composition, kind=kind)
+        archive = list(asset.archive or [])
+        entry = next((e for e in archive if e.get("path") == archive_path), None)
+        if not entry or not default_storage.exists(archive_path):
+            return redirect("composition-edit", composition_id=composition.id)
+
+        # Move current active file into archive
+        if asset.file and asset.file.name and default_storage.exists(asset.file.name):
+            ts = tz.now().strftime("%Y%m%d_%H%M%S")
+            from pathlib import Path as _Path
+            ext = _Path(asset.file.name).suffix
+            displaced_path = f"nft/generated/composition_{composition_id}/archive/{kind}_{ts}{ext}"
+            with default_storage.open(asset.file.name, "rb") as src:
+                default_storage.save(displaced_path, ContentFile(src.read()))
+            archive.append({
+                "path": displaced_path,
+                "generated_at": asset.generated_at.isoformat() if asset.generated_at else "",
+                "size": default_storage.size(displaced_path),
+            })
+
+        # Promote archive entry to active
+        asset.file.name = archive_path
+        asset.generated_at = tz.now()
+        asset.status = "ready"
+        asset.archive = [e for e in archive if e.get("path") != archive_path]
+        asset.save(update_fields=["file", "generated_at", "status", "archive", "updated_at"])
+    except CompositionMediaAsset.DoesNotExist:
+        pass
+    return redirect("composition-edit", composition_id=composition.id)
+
+
+@require_POST
 def generate_all_nft_media(request):
     force = request.POST.get("force") == "1"
     compositions = (
@@ -857,7 +969,6 @@ def generate_all_nft_media(request):
 
 
 @require_POST
-
 def generate_selected_nft_media(request):
     try:
         selected_ids = json.loads(request.POST.get("composition_ids", "[]"))
@@ -888,8 +999,6 @@ def generate_selected_nft_media(request):
         messages.success(request, f"Generated NFT media for {processed} selected composition(s).{suffix}")
     return redirect("composition-view")
 
-
-@require_POST
 
 def _mintable_compositions_queryset():
     return (
@@ -932,7 +1041,7 @@ def _related_mint_rows(request, page_slug: str, limit: int = 5) -> list[dict]:
                 "composition": comp,
                 "slug": slug,
                 "mint_url": reverse("mint_composition", kwargs={"page_slug": slug}),
-                "render_url": (comp.url or "").strip() + ("&render=1" if "?" in (comp.url or "") else "?render=1") if (comp.url or "").strip() else "",
+                "render_url": reverse("composition_live_by_id", kwargs={"composition_id": int(comp.id)}) + "?muted=1",
                 "preview_url": reverse("composition-preview", kwargs={"composition_id": int(comp.id)}),
                 "nft": state,
             }
@@ -977,7 +1086,7 @@ def mint_site(request):
                 "association_label": " · ".join(association_labels),
                 "state_label": " · ".join(state_labels),
                 "live_url": comp.url or "",
-                "render_url": (comp.url or "").strip() + ("&render=1" if "?" in (comp.url or "") else "?render=1") if (comp.url or "").strip() else "",
+                "render_url": reverse("composition_live_by_id", kwargs={"composition_id": int(comp.id)}) + "?muted=1",
                 "mint_url": reverse("mint_composition", kwargs={"page_slug": slug}),
                 "preview_url": reverse("composition-preview", kwargs={"composition_id": int(comp.id)}),
                 "nft": state,
@@ -1016,7 +1125,7 @@ def mint_random_page(request):
                 "composition": comp,
                 "slug": slug,
                 "live_url": comp.url or "",
-                "render_url": (comp.url or "").strip() + ("&render=1" if "?" in (comp.url or "") else "?render=1") if (comp.url or "").strip() else "",
+                "render_url": reverse("composition_live_by_id", kwargs={"composition_id": int(comp.id)}) + "?muted=1",
                 "mint_url": reverse("mint_composition", kwargs={"page_slug": slug}),
                 "preview_url": reverse("composition-preview", kwargs={"composition_id": int(comp.id)}),
                 "nft": state,
@@ -1047,7 +1156,7 @@ def mint_composition_page(request, page_slug):
     if not matched or not matched.ready_for_deployment:
         raise Http404("Composition is not ready to mint")
     live_url = (matched.url or "").strip()
-    render_url = live_url + ("&render=1" if "?" in live_url else "?render=1") if live_url else ""
+    render_url = reverse("composition_live_by_id", kwargs={"composition_id": int(matched.id)}) + "?muted=1"
     prev_mint, next_mint = _mint_navigation(page_slug)
     return render(
         request,
@@ -1074,9 +1183,7 @@ def composition_collect_page(request, page_slug):
     matched = _find_composition_by_slug(page_slug)
     if not matched:
         raise Http404("Composition page not found")
-    live_url = (matched.url or "").strip()
-    if live_url:
-        live_url = live_url + ("&render=1" if "?" in live_url else "?render=1")
+    live_url = reverse("composition_live_by_id", kwargs={"composition_id": int(matched.id)}) + "?muted=1"
     metadata = _build_nft_metadata_payload(request, matched)
     context = {
         "composition": matched,
@@ -1097,5 +1204,80 @@ def composition_collect_page(request, page_slug):
 
 from ._utils import create_video_ffmpeg  # noqa: F401
 from django.http import HttpResponseNotAllowed
+
+
+@login_required
+def nft_launchpad(request):
+    from urllib.parse import urlparse
+    from ._compositions import _composition_list_thumbnail_src
+    from ._associations import _composition_slug_from_url
+    from ..nft_media import composition_source_signature, composition_media_assets
+
+    compositions = (
+        Composition.objects.filter(ready_for_deployment=True)
+        .prefetch_related("media_assets")
+        .order_by("-updated_at")
+    )
+
+    rows = []
+    for comp in compositions:
+        assets_by_kind = {a.kind: a for a in comp.media_assets.all()}
+        current_sig = composition_source_signature(comp)
+
+        media = {}
+        all_media_ready = True
+        any_stale = False
+        for kind, label in (
+            ("poster", "Poster"),
+            ("preview_10s", "10s Preview"),
+            ("collector_45s", "45s Collector"),
+        ):
+            asset = assets_by_kind.get(kind)
+            ready = bool(asset and asset.status == "ready" and asset.file)
+            stale = bool(asset and asset.source_signature and asset.source_signature != current_sig)
+            if not ready:
+                all_media_ready = False
+            if stale:
+                any_stale = True
+            media[kind] = {
+                "label": label,
+                "ready": ready,
+                "stale": stale,
+                "status": asset.status if asset else "missing",
+                "url": request.build_absolute_uri(asset.file.url) if (ready and asset and asset.file) else "",
+                "error": (asset.error_message or "") if asset else "",
+            }
+
+        slug = _composition_slug_from_url(comp.url or "")
+        mint_url = reverse("mint_composition", kwargs={"page_slug": slug}) if slug else ""
+        collect_url = reverse("composition_collect_page", kwargs={"page_slug": slug}) if slug else ""
+
+        comp.list_thumbnail_src = _composition_list_thumbnail_src(comp)
+
+        rows.append({
+            "composition": comp,
+            "media": media,
+            "all_media_ready": all_media_ready,
+            "any_stale": any_stale,
+            "mint_url": mint_url,
+            "collect_url": collect_url,
+            "slug": slug,
+        })
+
+    total = len(rows)
+    fully_ready = sum(1 for r in rows if r["all_media_ready"] and not r["any_stale"] and r["slug"])
+    has_url = sum(1 for r in rows if r["composition"].url)
+
+    collection_settings = MintCollectionSettings.get_solo()
+
+    return render(request, "admin/nft-launchpad.html", {
+        "rows": rows,
+        "total": total,
+        "fully_ready": fully_ready,
+        "has_url": has_url,
+        "collection_settings": collection_settings,
+        "contract_address": (getattr(settings, "NFT_ETH_CONTRACT_ADDRESS", "") or "").strip(),
+        "network_name": getattr(settings, "NFT_ETH_NETWORK_NAME", "Ethereum"),
+    })
 from django.utils.log import log_response
 __all__ = [n for n in list(vars().keys()) if not n.startswith('__')]

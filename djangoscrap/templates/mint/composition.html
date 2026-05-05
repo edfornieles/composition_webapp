@@ -1,9 +1,10 @@
+{% load composition_tags %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mint {{ composition.name }}</title>
+  <title>Mint {{ composition.name|underscored }}</title>
   <style>
     :root {
       --bg: #050505;
@@ -615,12 +616,12 @@
       <section class="live" aria-label="Live composition preview">
         <div class="live-frame">
           <iframe src="{{ render_url }}" title="{{ composition.name }} square live composition preview"></iframe>
-          <div class="live-title">{{ composition.name }}</div>
+          <div class="live-title">{{ composition.name|underscored }}</div>
         </div>
       </section>
       <section class="panel">
       <div class="card">
-        <h1>{{ composition.name }}</h1>
+        <h1>{{ composition.name|underscored }}</h1>
         <p class="released">Released {% if composition.date %}{{ composition.date|date:"F j, Y" }}{% else %}as a live composition{% endif %}.</p>
         <div class="pills">
           <span class="pill">Ethereum</span>
@@ -639,7 +640,7 @@
             <div class="detail-cell"><span>Storage</span>IPFS</div>
             <div class="detail-cell"><span>Metadata</span>Onchain</div>
             <div class="detail-cell"><span>Contract</span>Ethereum</div>
-            <div class="detail-cell"><span>Size</span>{% if nft_state.media.collector_45s.size_label %}{{ nft_state.media.collector_45s.size_label }}{% elif nft_state.media.preview_15s.size_label %}{{ nft_state.media.preview_15s.size_label }}{% else %}-{% endif %}</div>
+            <div class="detail-cell"><span>Size</span>{% if nft_state.media.collector_45s.size_label %}{{ nft_state.media.collector_45s.size_label }}{% elif nft_state.media.preview_10s.size_label %}{{ nft_state.media.preview_10s.size_label }}{% else %}-{% endif %}</div>
           </div>
         </details>
         <details class="work-section">
@@ -689,8 +690,8 @@
             <a class="related-card" href="{{ row.mint_url }}" title="{{ row.composition.name }}">
               {% if row.nft.media.poster.url %}
               <img src="{{ row.nft.media.poster.url }}" alt="{{ row.composition.name }} poster still" loading="lazy">
-              {% elif row.nft.media.preview_15s.url %}
-              <video src="{{ row.nft.media.preview_15s.url }}" muted loop autoplay></video>
+              {% elif row.nft.media.preview_10s.url %}
+              <video src="{{ row.nft.media.preview_10s.url }}" muted loop autoplay></video>
               {% elif row.render_url %}
               <iframe src="{{ row.render_url }}" title="{{ row.composition.name }} live composition thumbnail" loading="lazy"></iframe>
               {% else %}

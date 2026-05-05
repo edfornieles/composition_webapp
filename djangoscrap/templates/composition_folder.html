@@ -1,0 +1,260 @@
+{% extends "layouts/admin.html" %}
+{% load static %}
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  .live-grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 0; aspect-ratio: 1/1; width: 100%; max-width: 1080px; margin: 0 auto; background: #000; }
+  .live-grid .cell { position: relative; overflow: hidden; background: #050505; border: 1px solid #111; }
+  .live-grid .cell iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .live-grid .cell .label { position: absolute; top: 4px; left: 6px; color: rgba(255,255,255,0.55); font-size: 10px; font-family: monospace; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,0.8); z-index: 4; }
+  .live-grid .cell.empty { display: flex; align-items: center; justify-content: center; color: #444; font-family: monospace; font-size: 12px; }
+  .cell-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 3; pointer-events: none; transition: opacity 1.5s ease; }
+  .cell-poster.faded { opacity: 0; }
+
+  /* Ready toggle */
+  .ready-toggle { width: 20px; height: 20px; cursor: pointer; accent-color: #16a34a; }
+  .ready-toggle:disabled { cursor: wait; opacity: 0.5; }
+
+  /* Row select checkbox */
+  .row-select { width: 16px; height: 16px; cursor: pointer; }
+
+  /* Bulk action bar */
+  .bulk-bar { display: none; align-items: center; gap: 8px; padding: 8px 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; margin-bottom: 12px; }
+  .bulk-bar.visible { display: flex; }
+  .bulk-bar .sel-count { font-size: 0.82rem; font-weight: 600; color: #1d4ed8; margin-right: 4px; }
+</style>
+
+<div class="content-wrapper">
+  <section class="content">
+    <div class="container-fluid py-3">
+
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+          <h3 class="mb-0">Folder <code>{{ grid_id }}</code></h3>
+          <small class="text-muted">Source: <a href="{% url 'composition-edit' source.id %}">{{ source.name }}</a> · {{ cells|length }} composition{{ cells|length|pluralize }}{% if missing_count > 0 %} · {{ missing_count }} empty cell{{ missing_count|pluralize }}{% endif %}</small>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+          <form method="post" action="{% url 'composition_generate_grid' source.id %}" class="m-0">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-primary btn-sm" {% if missing_count == 0 %}disabled{% endif %} title="Clone source into empty cells (existing cells untouched)">
+              {% if missing_count == 0 %}Folder full{% else %}Fill {{ missing_count }} empty cell{{ missing_count|pluralize }}{% endif %}
+            </button>
+          </form>
+          <form method="post" action="{% url 'composition_folder_reset' source.id %}" class="m-0" onsubmit="return confirm('Wipe cells 2–9 and re-clone from cell 1? Hand edits on those cells will be lost.');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-warning btn-sm" title="Reset cells 2–9 to fresh clones of the source">
+              ↻ Reset to source
+            </button>
+          </form>
+          <a href="{% url 'composition_grid_view' grid_id %}" target="_blank" rel="noopener" class="btn btn-outline-success btn-sm">▦ Open standalone</a>
+          <a href="{% url 'composition-view' %}" class="btn btn-outline-secondary btn-sm">← Library</a>
+        </div>
+      </div>
+
+      <!-- Bulk action bar (shown when rows are selected) -->
+      <div class="bulk-bar" id="bulkBar">
+        <span class="sel-count" id="selCount">0 selected</span>
+        <button type="button" class="btn btn-success btn-sm" id="btnGenerateSelected">🎥 Generate Videos</button>
+        <button type="button" class="btn btn-danger btn-sm" id="btnDeleteSelected">🗑 Delete Selected</button>
+      </div>
+
+      <!-- Members table -->
+      <div class="card mb-4">
+        <div class="card-body p-0">
+          <table class="table table-bordered text-center align-middle mb-0" id="cellsTable">
+            <thead class="bg-dark text-white">
+              <tr>
+                <th><input type="checkbox" id="selectAll" class="row-select" title="Select all"></th>
+                <th>Cell</th>
+                <th>Image</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Scenes</th>
+                <th>Characters</th>
+                <th>Hashtags</th>
+                <th>Updated</th>
+                <th>NFT Video</th>
+                <th>Ready</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for cell in cells %}
+              <tr data-id="{{ cell.id }}">
+                <td><input type="checkbox" class="row-select cell-cb" value="{{ cell.id }}"></td>
+                <td><span class="badge bg-secondary">{{ cell.grid_cell_index }}</span></td>
+                <td>
+                  {% if cell.list_thumbnail_src %}
+                    <img src="{{ cell.list_thumbnail_src }}" alt="" loading="lazy" width="36" height="36" style="width:36px;height:36px;object-fit:cover;border:1px solid #ccc;">
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+                <td><a href="{% url 'composition_detail' cell.id %}">{{ cell.name }}</a></td>
+                <td>{{ cell.type }}</td>
+                <td>
+                  {% if cell.composition_emotions %}
+                    {% for scene in cell.composition_emotions %}<span class="badge bg-info text-dark">{{ scene }}</span>{% endfor %}
+                  {% else %}<span class="text-muted">None</span>{% endif %}
+                </td>
+                <td>
+                  {% if cell.composition_characters %}
+                    {% for character in cell.composition_characters %}<span class="badge bg-light text-dark border">{{ character }}</span>{% endfor %}
+                  {% else %}<span class="text-muted">None</span>{% endif %}
+                </td>
+                <td>
+                  {% if cell.composition_hashtags %}
+                    {% for tag in cell.composition_hashtags %}<span class="badge bg-secondary">#{{ tag }}</span>{% endfor %}
+                  {% else %}<span class="text-muted">None</span>{% endif %}
+                </td>
+                <td>{{ cell.updated_at|date:"d/m/Y H:i" }}</td>
+                <td>
+                  {% if cell.nft_online_video_ready %}
+                    <a href="{% url 'composition_nft_video' cell.id %}" class="btn btn-primary btn-sm" target="_blank" rel="noopener">🎥 Ready</a>
+                  {% else %}
+                    <button type="button" class="btn btn-outline-secondary btn-sm btn-gen-video" data-id="{{ cell.id }}" title="Generate NFT video">Generate</button>
+                  {% endif %}
+                </td>
+                <td>
+                  <input type="checkbox" class="ready-toggle"
+                    data-id="{{ cell.id }}"
+                    data-url="{% url 'set_composition_ready' cell.id %}"
+                    {% if cell.ready_for_deployment %}checked{% endif %}
+                    title="Mark as ready for NFT/video">
+                </td>
+                <td class="d-flex justify-content-center gap-1">
+                  <a href="{% if cell.url %}{{ cell.url }}{% else %}{% url 'composition_detail' cell.id %}{% endif %}" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">Open</a>
+                  <a href="{% url 'composition-edit' cell.id %}?return_folder={{ grid_id }}" class="btn btn-outline-secondary btn-sm">Edit</a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Live 3x3 grid -->
+      <h5 class="mb-2">Live 3×3 preview</h5>
+      <div class="live-grid">
+        {% for cell_at in cells_by_slot %}
+          {% if cell_at %}
+            <div class="cell">
+              <span class="label">{{ forloop.counter }} · {{ cell_at.name|truncatechars:24 }}</span>
+              <iframe src="{% url 'composition_live_by_id' cell_at.id %}" loading="lazy" allow="autoplay; fullscreen"></iframe>
+              {% if cell_at.list_thumbnail_src %}<img class="cell-poster" src="{{ cell_at.list_thumbnail_src }}" alt="" loading="eager">{% endif %}
+            </div>
+          {% else %}
+            <div class="cell empty">cell {{ forloop.counter }} empty</div>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+    </div>
+  </section>
+</div>
+
+<script src="{% static 'js/iframe_video_kicker.js' %}"></script>
+<script>
+const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+// ── Poster fade ──────────────────────────────────────────────────────────────
+window.IframeVideoKicker && window.IframeVideoKicker.attachAll(".live-grid iframe");
+document.querySelectorAll('.live-grid .cell').forEach(function(cell) {
+  var iframe = cell.querySelector('iframe');
+  var poster = cell.querySelector('.cell-poster');
+  if (!iframe || !poster) return;
+  iframe.addEventListener('load', function() {
+    setTimeout(function() { poster.classList.add('faded'); }, 4000);
+  });
+});
+
+// ── Ready toggle (AJAX) ──────────────────────────────────────────────────────
+document.querySelectorAll('.ready-toggle').forEach(function(cb) {
+  cb.addEventListener('change', function() {
+    var url = cb.dataset.url;
+    cb.disabled = true;
+    var body = new FormData();
+    body.append('csrfmiddlewaretoken', CSRF);
+    if (cb.checked) body.append('ready_for_deployment', 'on');
+    fetch(url, {method: 'POST', headers: {'X-Requested-With': 'XMLHttpRequest'}, body: body})
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        cb.disabled = false;
+        cb.checked = data.ready;
+        cb.closest('tr').style.background = data.ready ? '#f0fdf4' : '';
+      })
+      .catch(function() { cb.disabled = false; cb.checked = !cb.checked; });
+  });
+});
+
+// ── Row selection ────────────────────────────────────────────────────────────
+function updateBulkBar() {
+  var checked = document.querySelectorAll('.cell-cb:checked');
+  var bar = document.getElementById('bulkBar');
+  var count = document.getElementById('selCount');
+  count.textContent = checked.length + ' selected';
+  bar.classList.toggle('visible', checked.length > 0);
+}
+
+document.getElementById('selectAll').addEventListener('change', function() {
+  document.querySelectorAll('.cell-cb').forEach(function(cb) { cb.checked = this.checked; }, this);
+  updateBulkBar();
+});
+
+document.querySelectorAll('.cell-cb').forEach(function(cb) {
+  cb.addEventListener('change', updateBulkBar);
+});
+
+function getSelectedIds() {
+  return Array.from(document.querySelectorAll('.cell-cb:checked')).map(function(cb) { return cb.value; });
+}
+
+// ── Generate video (single row) ──────────────────────────────────────────────
+document.querySelectorAll('.btn-gen-video').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var id = btn.dataset.id;
+    if (!confirm('Generate NFT video for this composition?')) return;
+    btn.disabled = true;
+    btn.textContent = '…';
+    var body = new FormData();
+    body.append('csrfmiddlewaretoken', CSRF);
+    body.append('composition_ids', JSON.stringify([id]));
+    fetch('{% url "generate_selected_nft_media" %}', {method: 'POST', body: body})
+      .then(function() { window.location.reload(); })
+      .catch(function() { btn.disabled = false; btn.textContent = 'Generate'; });
+  });
+});
+
+// ── Bulk: generate videos ────────────────────────────────────────────────────
+document.getElementById('btnGenerateSelected').addEventListener('click', function() {
+  var ids = getSelectedIds();
+  if (!ids.length) return;
+  if (!confirm('Generate NFT videos for ' + ids.length + ' composition(s)?')) return;
+  var body = new FormData();
+  body.append('csrfmiddlewaretoken', CSRF);
+  body.append('composition_ids', JSON.stringify(ids));
+  fetch('{% url "generate_selected_nft_media" %}', {method: 'POST', body: body})
+    .then(function() { window.location.reload(); })
+    .catch(function(e) { alert('Error: ' + e); });
+});
+
+// ── Bulk: delete ─────────────────────────────────────────────────────────────
+document.getElementById('btnDeleteSelected').addEventListener('click', function() {
+  var ids = getSelectedIds();
+  if (!ids.length) return;
+  if (!confirm('Permanently delete ' + ids.length + ' composition(s)? This cannot be undone.')) return;
+  var body = new FormData();
+  body.append('csrfmiddlewaretoken', CSRF);
+  body.append('compositions_to_delete', JSON.stringify(ids));
+  fetch('{% url "delete_compositions" %}', {method: 'POST', body: body})
+    .then(function() { window.location.reload(); })
+    .catch(function(e) { alert('Error: ' + e); });
+});
+</script>
+{% endblock %}

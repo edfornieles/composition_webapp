@@ -89,7 +89,6 @@ import sys
 import threading
 import logging
 from typing import Any
-from collections import defaultdict
 from django.db import close_old_connections
 from celery_app import classic_task, left_to_right_task, tunnel_task, right_to_left_task
 from django.utils.crypto import get_random_string
@@ -104,7 +103,6 @@ except ImportError:
 from ._constants import *
 from ._source_utils import *
 from ._ingestion_dedup import *
-from ._utils import parse_composition_hashtags
 s3 = boto3.client('s3')
 
 
@@ -168,59 +166,16 @@ def admin_login(request):
 def admin_dashboard(request):
     from ..models import Composition, IngestionBatch
 
+    import random
     ready_qs = Composition.objects.filter(ready_for_deployment=True).order_by("-id")
     ready_list = list(ready_qs)
 
-    # Group by normalized character tokens (same rules as the composition form: comma-split, slugify).
-    # Each list entry may be "goth" or "goth, punk" — expand so every tag counts toward the right bucket.
-    buckets: dict[str, list] = defaultdict(list)
-    unlabeled: list = []
-
-    for comp in ready_list:
-        raw = comp.composition_characters
-        if raw is None:
-            raw_list = []
-        elif isinstance(raw, str):
-            raw_list = [raw]
-        elif isinstance(raw, list):
-            raw_list = raw
-        else:
-            raw_list = []
-
-        tokens: list[str] = []
-        seen_tok: set[str] = set()
-        for c in raw_list:
-            if not isinstance(c, str):
-                continue
-            for tok in parse_composition_hashtags(c):
-                if tok not in seen_tok:
-                    seen_tok.add(tok)
-                    tokens.append(tok)
-        if not tokens:
-            unlabeled.append(comp)
-            continue
-        per_comp_seen: set[str] = set()
-        for t in tokens:
-            if t in per_comp_seen:
-                continue
-            per_comp_seen.add(t)
-            buckets[t].append(comp)
-
-    def _heading(norm: str) -> str:
-        return norm.replace("-", " ").replace("_", " ").title()
-
-    # Only show a 3×3 grid when we have at least nine ready compositions for that tag (or unlabeled / fallback).
-    min_section = 9
     character_preview_sections = []
-    for norm in sorted(buckets.keys(), key=lambda k: _heading(k).lower()):
-        bucket_list = buckets[norm]
-        if len(bucket_list) < min_section:
-            continue
-        character_preview_sections.append({"label": _heading(norm), "compositions": bucket_list[:9]})
-    if len(unlabeled) >= min_section:
-        character_preview_sections.append({"label": "Unlabeled", "compositions": unlabeled[:9]})
-    if not character_preview_sections and len(ready_list) >= min_section:
-        character_preview_sections.append({"label": "Recently ready", "compositions": ready_list[:9]})
+    if len(ready_list) >= 9:
+        sample = random.sample(ready_list, 9)
+        character_preview_sections.append({"label": "Random Selection", "compositions": sample})
+    elif ready_list:
+        character_preview_sections.append({"label": "Random Selection", "compositions": ready_list})
 
     context = {
         "total_compositions": Composition.objects.count(),

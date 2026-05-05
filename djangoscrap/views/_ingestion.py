@@ -4207,6 +4207,31 @@ def bucket_contents(request, bucket_name):
     for file in sorted(source_dir.iterdir()):
         if file.is_file() and not file.name.startswith("."):
             ext = file.suffix.lower()
+            # Auto-delete zero-byte files and unreadable images.
+            try:
+                stat = file.stat()
+            except OSError:
+                try:
+                    file.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                continue
+            if stat.st_size == 0:
+                try:
+                    file.unlink()
+                except OSError:
+                    pass
+                continue
+            if ext in LOCAL_SOURCE_IMAGE_EXTS:
+                try:
+                    with Image.open(file) as img:
+                        img.verify()
+                except Exception:
+                    try:
+                        file.unlink()
+                    except OSError:
+                        pass
+                    continue
             allowed = _local_source_path_allowed(file)
             if not allowed:
                 stray_count += 1
@@ -4229,8 +4254,8 @@ def bucket_contents(request, bucket_name):
             )
             objects.append({
                 "Key": file.name,
-                "Size": file.stat().st_size,
-                "LastModified": datetime.fromtimestamp(file.stat().st_mtime),
+                "Size": stat.st_size,
+                "LastModified": datetime.fromtimestamp(stat.st_mtime),
                 "preview_url": media_url,
                 "thumbnail_url": thumb_url,
                 "is_image": is_image,
@@ -4243,11 +4268,15 @@ def bucket_contents(request, bucket_name):
     except OSError:
         folder_updated_at = None
     media_file_count = sum(1 for o in objects if not o.get("is_stray"))
+    paginator = Paginator(objects, 100)
+    page_number = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_number)
     return render(
         request,
         "admin/bucket_contents.html",
         {
-            "objects": objects,
+            "objects": page_obj,
+            "page_obj": page_obj,
             "bucket_name": bucket_name,
             "stray_count": stray_count,
             "media_file_count": media_file_count,
@@ -4373,9 +4402,7 @@ def delete_source_files(request, bucket_name):
         except Exception:
             continue
 
-    if deleted_count:
-        messages.success(request, f"Deleted {deleted_count} file(s).")
-    else:
+    if not deleted_count:
         messages.error(request, "No files were deleted.")
     return redirect("bucket_contents", bucket_name=bucket_name)
 

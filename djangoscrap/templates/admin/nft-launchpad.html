@@ -1,0 +1,315 @@
+{% extends "layouts/admin.html" %}
+{% load static %}
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  .stat-card { background: #fff; border: 1px solid #e4e7ec; border-radius: 8px; padding: 18px 22px; }
+  .stat-card .num { font-size: 2rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+  .stat-card .lbl { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280; margin-top: 4px; }
+  .stat-card.green .num { color: #16a34a; }
+  .stat-card.blue .num { color: #2563eb; }
+  .stat-card.amber .num { color: #d97706; }
+
+  .checklist-item { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-size: 0.875rem; border-bottom: 1px solid #f3f4f6; }
+  .checklist-item:last-child { border-bottom: none; }
+  .check-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; flex-shrink: 0; }
+  .check-icon.pass { background: #dcfce7; color: #16a34a; }
+  .check-icon.fail { background: #fee2e2; color: #dc2626; }
+  .check-icon.warn { background: #fef3c7; color: #d97706; }
+
+  .media-pip { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 1px; }
+  .media-pip.ready { background: #16a34a; }
+  .media-pip.stale { background: #d97706; }
+  .media-pip.missing { background: #e5e7eb; border: 1px solid #d1d5db; }
+  .media-pip.failed { background: #dc2626; }
+
+  .launch-bar { background: #0f172a; border-radius: 10px; padding: 20px 24px; color: #fff; }
+  .launch-bar h5 { font-weight: 700; font-size: 1rem; margin: 0 0 4px; color: #fff; }
+  .launch-bar small { color: #94a3b8; font-size: 0.78rem; }
+</style>
+
+<div class="content-wrapper">
+  <section class="content">
+    <div class="container-fluid py-3">
+
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+
+      <!-- Header -->
+      <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+          <h3 class="mb-0">NFT Launchpad</h3>
+          <small class="text-muted">Review and release compositions marked as ready for deployment</small>
+        </div>
+        <a href="{% url 'composition-view' %}" class="btn btn-outline-secondary btn-sm">← Library</a>
+      </div>
+
+      <!-- Stats row -->
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+          <div class="stat-card blue">
+            <div class="num">{{ total }}</div>
+            <div class="lbl">Ready compositions</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card green">
+            <div class="num">{{ fully_ready }}</div>
+            <div class="lbl">Fully prepared</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card {% if has_url == total %}green{% else %}amber{% endif %}">
+            <div class="num">{{ has_url }}</div>
+            <div class="lbl">Have public URL</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card {% if total > 0 and fully_ready == total %}green{% else %}amber{% endif %}">
+            <div class="num">{% if total > 0 %}{% widthratio fully_ready total 100 %}{% else %}0{% endif %}%</div>
+            <div class="lbl">Media complete</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Launch bar + checklist -->
+      <div class="row g-3 mb-4">
+        <div class="col-md-7">
+          <div class="launch-bar h-100">
+            <h5>🚀 Launch Controls</h5>
+            <small>Open the public NFT mint interface or trigger media generation for all ready compositions.</small>
+            <div class="d-flex flex-wrap gap-2 mt-3">
+              <a href="{% url 'mint_site' %}" target="_blank" rel="noopener" class="btn btn-success btn-sm">▶ Open Mint Site</a>
+              <form method="post" action="{% url 'generate_all_nft_media' %}" class="m-0 d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary btn-sm" onclick="return confirm('Generate NFT media for all {{ total }} ready composition(s)?')">
+                  ⚙ Generate All Media
+                </button>
+              </form>
+              <form method="post" action="{% url 'generate_all_nft_media' %}" class="m-0 d-inline">
+                {% csrf_token %}
+                <input type="hidden" name="force" value="1">
+                <button type="submit" class="btn btn-outline-warning btn-sm" onclick="return confirm('Force-regenerate media for ALL {{ total }} ready compositions? Existing files will be replaced.')">
+                  ↺ Regenerate All
+                </button>
+              </form>
+              <a href="{% url 'mint-collection-settings' %}" class="btn btn-outline-secondary btn-sm">⚙ Collection Settings</a>
+            </div>
+            {% if contract_address %}
+            <div class="mt-3 pt-3" style="border-top:1px solid #1e293b;">
+              <small class="text-secondary d-block">Contract: <code style="color:#94a3b8;background:transparent;border:none;font-size:0.75rem;">{{ contract_address }}</code></small>
+              <small class="text-secondary">Network: {{ network_name }}</small>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="col-md-5">
+          <div class="card h-100 mb-0">
+            <div class="card-body py-3 px-3">
+              <div class="fw-600 mb-2" style="font-size:0.82rem;font-weight:600;">Pre-release checklist</div>
+              <div class="checklist-item">
+                <div class="check-icon {% if total > 0 %}pass{% else %}fail{% endif %}">{% if total > 0 %}✓{% else %}✗{% endif %}</div>
+                <span>{{ total }} composition{{ total|pluralize }} marked ready</span>
+              </div>
+              <div class="checklist-item">
+                <div class="check-icon {% if has_url == total and total > 0 %}pass{% elif has_url > 0 %}warn{% else %}fail{% endif %}">
+                  {% if has_url == total and total > 0 %}✓{% elif has_url > 0 %}!{% else %}✗{% endif %}
+                </div>
+                <span>{{ has_url }}/{{ total }} have public URLs</span>
+              </div>
+              <div class="checklist-item">
+                <div class="check-icon {% if fully_ready == total and total > 0 %}pass{% elif fully_ready > 0 %}warn{% else %}fail{% endif %}">
+                  {% if fully_ready == total and total > 0 %}✓{% elif fully_ready > 0 %}!{% else %}✗{% endif %}
+                </div>
+                <span>{{ fully_ready }}/{{ total }} fully media-prepared</span>
+              </div>
+              <div class="checklist-item">
+                <div class="check-icon {% if collection_settings.collection_title %}pass{% else %}warn{% endif %}">
+                  {% if collection_settings.collection_title %}✓{% else %}!{% endif %}
+                </div>
+                <span>Collection title: <em>{{ collection_settings.collection_title|default:"(not set)" }}</em></span>
+              </div>
+              <div class="checklist-item">
+                <div class="check-icon {% if contract_address %}pass{% else %}warn{% endif %}">
+                  {% if contract_address %}✓{% else %}!{% endif %}
+                </div>
+                <span>Contract address {% if contract_address %}set{% else %}<a href="{% url 'mint-collection-settings' %}">not configured</a>{% endif %}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bulk action bar -->
+      <div id="bulkBar" style="display:none;align-items:center;gap:8px;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;margin-bottom:12px;">
+        <span id="selCount" style="font-size:0.82rem;font-weight:600;color:#1d4ed8;margin-right:4px;">0 selected</span>
+        <button type="button" class="btn btn-primary btn-sm" id="btnGenSel">⚙ Generate Media</button>
+        <button type="button" class="btn btn-outline-warning btn-sm" id="btnRegenSel">↺ Force Regenerate</button>
+      </div>
+
+      <!-- Compositions table -->
+      {% if rows %}
+      <div class="card mb-4">
+        <div class="card-body p-0">
+          <table class="table table-bordered align-middle mb-0" id="launchTable">
+            <thead class="bg-dark text-white">
+              <tr>
+                <th><input type="checkbox" id="selectAll" style="width:16px;height:16px;cursor:pointer;" title="Select all"></th>
+                <th>Image</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th title="Poster · 10s Preview · 45s Collector">Media</th>
+                <th>Public URL</th>
+                <th>Mint Page</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+              <tr data-id="{{ row.composition.id }}" {% if row.all_media_ready and not row.any_stale and row.slug %}style="background:#f0fdf4;"{% elif not row.all_media_ready %}style="background:#fffbeb;"{% endif %}>
+                <td><input type="checkbox" class="row-cb" value="{{ row.composition.id }}" style="width:16px;height:16px;cursor:pointer;"></td>
+                <td>
+                  {% if row.composition.list_thumbnail_src %}
+                    <img src="{{ row.composition.list_thumbnail_src }}" alt="" loading="lazy" width="40" height="40" style="width:40px;height:40px;object-fit:cover;border:1px solid #e4e7ec;border-radius:4px;">
+                  {% else %}
+                    <div style="width:40px;height:40px;background:#f3f4f6;border:1px solid #e4e7ec;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:10px;">—</div>
+                  {% endif %}
+                </td>
+                <td>
+                  <a href="{% url 'composition-edit' row.composition.id %}" style="font-weight:500;">{{ row.composition.name }}</a>
+                  {% if row.any_stale %}<span class="badge bg-warning ms-1" title="Some media assets are stale">stale</span>{% endif %}
+                </td>
+                <td><span class="badge bg-secondary">{{ row.composition.type }}</span></td>
+                <td>
+                  <div class="d-flex align-items-center gap-1">
+                    <!-- poster -->
+                    {% with m=row.media.poster %}
+                    <span class="media-pip {% if m.ready and not m.stale %}ready{% elif m.stale %}stale{% elif m.status == 'failed' %}failed{% else %}missing{% endif %}"
+                          title="Poster: {% if m.ready and not m.stale %}ready{% elif m.stale %}stale{% elif m.status == 'failed' %}failed{% else %}{{ m.status }}{% endif %}{% if m.url %} — click to preview{% endif %}"></span>
+                    {% endwith %}
+                    <!-- preview_10s -->
+                    {% with m=row.media.preview_10s %}
+                    <span class="media-pip {% if m.ready and not m.stale %}ready{% elif m.stale %}stale{% elif m.status == 'failed' %}failed{% else %}missing{% endif %}"
+                          title="10s Preview: {% if m.ready and not m.stale %}ready{% elif m.stale %}stale{% elif m.status == 'failed' %}failed{% else %}{{ m.status }}{% endif %}"></span>
+                    {% endwith %}
+                    <!-- collector_45s -->
+                    {% with m=row.media.collector_45s %}
+                    <span class="media-pip {% if m.ready and not m.stale %}ready{% elif m.stale %}stale{% elif m.status == 'failed' %}failed{% else %}missing{% endif %}"
+                          title="45s Collector: {% if m.ready and not m.stale %}ready{% elif m.stale %}stale{% elif m.status == 'failed' %}failed{% else %}{{ m.status }}{% endif %}"></span>
+                    {% endwith %}
+                    <span style="font-size:0.7rem;color:#6b7280;margin-left:4px;">
+                      {% if row.all_media_ready and not row.any_stale %}✓{% elif row.all_media_ready and row.any_stale %}stale{% else %}incomplete{% endif %}
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  {% if row.composition.url %}
+                    <a href="{{ row.composition.url }}" target="_blank" rel="noopener" style="font-size:0.78rem;max-width:160px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                      {{ row.composition.url }}
+                    </a>
+                  {% else %}
+                    <span class="text-muted" style="font-size:0.78rem;">—</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if row.mint_url %}
+                    <a href="{{ row.mint_url }}" target="_blank" rel="noopener" class="btn btn-outline-success btn-sm">Mint ↗</a>
+                    <a href="{{ row.collect_url }}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm">Collect ↗</a>
+                  {% else %}
+                    <span class="text-muted" style="font-size:0.78rem;">No URL</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <div class="d-flex gap-1">
+                    <button type="button" class="btn btn-outline-primary btn-sm btn-gen-row" data-id="{{ row.composition.id }}" title="Generate NFT media for this composition">⚙ Generate</button>
+                    <a href="{% url 'composition-edit' row.composition.id %}" class="btn btn-outline-secondary btn-sm">Edit</a>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% else %}
+      <div class="card">
+        <div class="card-body text-center py-5 text-muted">
+          <p class="mb-2" style="font-size:1rem;">No compositions marked as ready yet.</p>
+          <small>Tick the <strong>Ready</strong> checkbox on any composition or folder page to add it here.</small>
+          <div class="mt-3">
+            <a href="{% url 'composition-view' %}" class="btn btn-primary btn-sm">Go to Library</a>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+  </section>
+</div>
+
+<script>
+const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+// ── Select all ────────────────────────────────────────────────────────────────
+document.getElementById('selectAll')?.addEventListener('change', function() {
+  document.querySelectorAll('.row-cb').forEach(function(cb) { cb.checked = this.checked; }, this);
+  updateBulkBar();
+});
+document.querySelectorAll('.row-cb').forEach(function(cb) { cb.addEventListener('change', updateBulkBar); });
+
+function updateBulkBar() {
+  var n = document.querySelectorAll('.row-cb:checked').length;
+  var bar = document.getElementById('bulkBar');
+  document.getElementById('selCount').textContent = n + ' selected';
+  bar.style.display = n > 0 ? 'flex' : 'none';
+}
+
+function getSelectedIds() {
+  return Array.from(document.querySelectorAll('.row-cb:checked')).map(function(cb) { return cb.value; });
+}
+
+// ── Per-row generate ──────────────────────────────────────────────────────────
+document.querySelectorAll('.btn-gen-row').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    if (!confirm('Generate NFT media for this composition?')) return;
+    postGenerate([btn.dataset.id], false);
+  });
+});
+
+// ── Bulk generate ─────────────────────────────────────────────────────────────
+document.getElementById('btnGenSel')?.addEventListener('click', function() {
+  var ids = getSelectedIds();
+  if (!ids.length) return;
+  if (!confirm('Generate NFT media for ' + ids.length + ' composition(s)?')) return;
+  postGenerate(ids, false);
+});
+
+document.getElementById('btnRegenSel')?.addEventListener('click', function() {
+  var ids = getSelectedIds();
+  if (!ids.length) return;
+  if (!confirm('Force-regenerate media for ' + ids.length + ' composition(s)? Existing files will be replaced.')) return;
+  postGenerate(ids, true);
+});
+
+function postGenerate(ids, force) {
+  var body = new FormData();
+  body.append('csrfmiddlewaretoken', CSRF);
+  body.append('composition_ids', JSON.stringify(ids));
+  if (force) body.append('force', '1');
+  // Disable all generate buttons during processing
+  document.querySelectorAll('.btn-gen-row, #btnGenSel, #btnRegenSel').forEach(function(b) {
+    b.disabled = true;
+    b.textContent = '…';
+  });
+  fetch('{% url "generate_selected_nft_media" %}', { method: 'POST', body: body })
+    .then(function() { window.location.reload(); })
+    .catch(function(e) {
+      alert('Error: ' + e);
+      window.location.reload();
+    });
+}
+</script>
+{% endblock %}

@@ -2,10 +2,37 @@
 {% load static %}
 
 {% block content %}
+<script src="{% static 'js/iframe_video_kicker.js' %}"></script>
 <style>
     .hidden {
         display: none !important;
     }
+    /* Searchable select widget */
+    .ss-wrap { position: relative; display: block; }
+    .ss-trigger {
+        display: flex; justify-content: space-between; align-items: center;
+        text-align: left; cursor: pointer; background: #fff;
+        white-space: nowrap; overflow: hidden;
+    }
+    .ss-label { overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+    .ss-caret { margin-left: 6px; font-size: 0.7em; flex-shrink: 0; }
+    .ss-panel {
+        position: absolute; top: 100%; left: 0; right: 0; z-index: 1060;
+        background: #fff; border: 1px solid #ced4da; border-radius: 0.25rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15); min-width: 180px;
+    }
+    .ss-search {
+        display: block; width: 100%; padding: 6px 10px;
+        border: none; border-bottom: 1px solid #e9ecef;
+        outline: none; font-size: 0.85rem; box-sizing: border-box;
+    }
+    .ss-list { max-height: 220px; overflow-y: auto; background: #f5f5f5; }
+    .ss-item {
+        padding: 6px 10px; cursor: pointer; font-size: 0.875rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .ss-item:hover { background: #e2e8f0; }
+    .ss-item-active { background: #cce5ff; font-weight: 500; }
     .comp-field-narrow {
         max-width: 250px;
     }
@@ -45,8 +72,8 @@
         z-index: 30;
     }
     @keyframes overlaySpinContinuous {
-        from { transform: perspective(1000px) rotateY(0deg); }
-        to { transform: perspective(1000px) rotateY(360deg); }
+        from { transform: rotateY(0deg); }
+        to   { transform: rotateY(360deg); }
     }
     @keyframes overlaySpinFrontHalf {
         0%   { transform: perspective(1000px) rotateY(-90deg); }
@@ -88,14 +115,21 @@
                             <form method="POST" action="{% if edit_mode %}{% url 'composition-edit' composition.id %}{% else %}{% url 'composition-add' %}{% endif %}" enctype="multipart/form-data">
                                 {% csrf_token %}
                                 <input type="hidden" name="return_page" value="{{ return_page|default:'' }}">
-                                <div class="alert alert-light border mb-4">
-                                    Build a composition in three steps: choose a style, pick your sources, then configure playback and linking.
-                                </div>
+                                <input type="hidden" name="return_folder" value="{{ return_folder|default:'' }}">
+
                                 <input type="hidden" name="source_type" value="s3">
                                 <div class="row d-flex justify-content-start align-items-center text-left">
                                     <div class="col-md-6 d-flex justify-content-start align-items-center">
                                         <label class="fw-bold me-2 mb-0" for="compositionName">Name:</label>
                                         <input type="text" id="compositionName" name="name" class="form-control comp-field-narrow" placeholder="e.g. nutwater" value="{{ composition.name|default:'' }}" required>
+                                    </div>
+                                    <div class="col-md-6 d-flex justify-content-start align-items-center gap-2 mt-2 mt-md-0">
+                                        <label class="fw-bold mb-0" for="compositionGridId" title="Compositions sharing the same Grid ID render together as a 3×3 cell">Grid&nbsp;ID:</label>
+                                        <input type="text" id="compositionGridId" name="grid_id" class="form-control form-control-sm" style="max-width:160px;" placeholder="(none)" value="{{ composition.grid_id|default:'' }}" pattern="[A-Za-z0-9_\-]*" title="Letters, digits, _ or -">
+                                        <input type="number" id="compositionGridCellIndex" name="grid_cell_index" class="form-control form-control-sm" style="max-width:80px;" min="0" max="9" placeholder="cell" value="{{ composition.grid_cell_index|default:0 }}" title="Cell index (1–9). 0 = unassigned.">
+                                        {% if composition.grid_id %}
+                                        <a href="{% url 'composition_folder_view' composition.grid_id %}" class="btn btn-outline-success btn-sm" title="Open folder">📁 Folder</a>
+                                        {% endif %}
                                     </div>
                                 </div>
 
@@ -112,28 +146,28 @@
                                                 <option value="cylinder-room" {% if composition.type == 'cylinder-room' %}selected{% endif %}>Cylinder Room 3D</option>
                                                 <option value="triple-cylinder-room" {% if composition.type == 'triple-cylinder-room' %}selected{% endif %}>Triple Cylinder 3D</option>
                                             </optgroup>
-                                            <optgroup label="Classic &amp; Foreground">
+                                            <optgroup label="Classic &amp; Single">
+                                                <option value="classic" {% if composition.type == 'classic' %}selected{% endif %}>Classic</option>
+                                                <option value="single" {% if composition.type == 'single' or composition.type == 'morph' %}selected{% endif %}>Single</option>
+                                                <option value="quad" {% if composition.type == 'quad' %}selected{% endif %}>Quad</option>
+                                                <option value="left-to-right" {% if composition.type == 'left-to-right' %}selected{% endif %}>Left To Right</option>
+                                                <option value="top-and-bottom" {% if composition.type == 'top-and-bottom' %}selected{% endif %}>Top and Bottom</option>
+                                            </optgroup>
+                                            <optgroup label="Kaleido">
+                                                <option value="kaleido-quad" {% if composition.type == 'kaleido-quad' %}selected{% endif %}>Kaleido Quad</option>
+                                                <option value="kaleido-octa" {% if composition.type == 'kaleido-octa' %}selected{% endif %}>Kaleido Octa</option>
+                                                <option value="mirror-rotate" {% if composition.type == 'mirror-rotate' %}selected{% endif %}>Kaleido Mirror</option>
+                                                <option value="kaleidoscope" {% if composition.type == 'kaleidoscope' %}selected{% endif %}>Kaleidoscope</option>
+                                            </optgroup>
+                                            <optgroup label="Foreground">
                                                 <option value="bat-foreground" {% if composition.type == 'bat-foreground' %}selected{% endif %}>Bat Foreground</option>
                                                 <option value="bat-foreground-rotate" {% if composition.type == 'bat-foreground-rotate' %}selected{% endif %}>Bat Foreground (Rotate)</option>
-                                                <option value="circle-foreground" {% if composition.type == 'circle-foreground' %}selected{% endif %}>Circle Foreground</option>
-                                                <option value="circle-foreground-rotate" {% if composition.type == 'circle-foreground-rotate' %}selected{% endif %}>Circle Foreground (Rotate)</option>
-                                                <option value="circle-foreground-rotate-mirror" {% if composition.type == 'circle-foreground-rotate-mirror' %}selected{% endif %}>Circle Foreground (Rotate + Mirror)</option>
-                                                <option value="classic" {% if composition.type == 'classic' %}selected{% endif %}>Classic</option>
+                                                <option value="circle-foreground" {% if composition.type == 'circle-foreground' %}selected{% endif %}>Portal Foreground</option>
+                                                <option value="circle-foreground-rotate" {% if composition.type == 'circle-foreground-rotate' %}selected{% endif %}>Portal Foreground (Rotate)</option>
+                                                <option value="circle-foreground-rotate-mirror" {% if composition.type == 'circle-foreground-rotate-mirror' %}selected{% endif %}>Portal Foreground (Rotate + Mirror)</option>
                                                 <option value="cross-foreground" {% if composition.type == 'cross-foreground' %}selected{% endif %}>Cross Foreground</option>
                                                 <option value="cross-foreground-rotate" {% if composition.type == 'cross-foreground-rotate' %}selected{% endif %}>Cross Foreground (Rotate)</option>
                                                 <option value="cross-foreground-tunnel" {% if composition.type == 'cross-foreground-tunnel' %}selected{% endif %}>Cross Foreground (Tunnel Radiate)</option>
-                                                <option value="psychedelic-classic" {% if composition.type == 'psychedelic-classic' %}selected{% endif %}>Psychedelic Classic</option>
-                                                <option value="single" {% if composition.type == 'single' or composition.type == 'morph' %}selected{% endif %}>Single</option>
-                                                <option value="vibrate" {% if composition.type == 'vibrate' %}selected{% endif %}>Vibrate</option>
-                                            </optgroup>
-                                            <optgroup label="Distortion">
-                                                <option value="liquid-mirror" {% if composition.type == 'liquid-mirror' %}selected{% endif %}>Liquid Mirror</option>
-                                                <option value="liquid-mirror-extreme" {% if composition.type == 'liquid-mirror-extreme' %}selected{% endif %}>Liquid Mirror Extreme</option>
-                                                <option value="wax-melt" {% if composition.type == 'wax-melt' %}selected{% endif %}>Wax Melt</option>
-                                            </optgroup>
-                                            <optgroup label="Layout">
-                                                <option value="left-to-right" {% if composition.type == 'left-to-right' %}selected{% endif %}>Left To Right</option>
-                                                <option value="top-and-bottom" {% if composition.type == 'top-and-bottom' %}selected{% endif %}>Top and Bottom</option>
                                             </optgroup>
                                             <optgroup label="Mash &amp; Mosaic">
                                                 <option value="mash" {% if composition.type == 'mash' %}selected{% endif %}>Mash</option>
@@ -142,7 +176,6 @@
                                                 <option value="mash-fine-flux" {% if composition.type == 'mash-fine-flux' %}selected{% endif %}>Mash (fine flux)</option>
                                                 <option value="mash-superfine" {% if composition.type == 'mash-superfine' %}selected{% endif %}>Mash (super fine)</option>
                                                 <option value="mash-superfine-flux" {% if composition.type == 'mash-superfine-flux' %}selected{% endif %}>Mash (super fine flux)</option>
-                                                <option value="quad" {% if composition.type == 'quad' %}selected{% endif %}>Quad</option>
                                             </optgroup>
                                             <optgroup label="Mood">
                                                 <option value="anger-surge" {% if composition.type == 'anger-surge' %}selected{% endif %}>Anger Surge</option>
@@ -158,7 +191,7 @@
                                                 <option value="associations" {% if composition.type == 'associations' %}selected{% endif %}>Associations</option>
                                             </optgroup>
                                             <optgroup label="Psychedelic">
-                                                <option value="kaleidoscope" {% if composition.type == 'kaleidoscope' %}selected{% endif %}>Kaleidoscope</option>
+                                                <option value="psychedelic-classic" {% if composition.type == 'psychedelic-classic' %}selected{% endif %}>Psychedelic Classic</option>
                                                 <option value="psychedelic" {% if composition.type == 'psychedelic' %}selected{% endif %}>Psychedelic</option>
                                                 <option value="psychedelic-calm" {% if composition.type == 'psychedelic-calm' %}selected{% endif %}>Psychedelic Calm</option>
                                                 <option value="psychedelic-intense" {% if composition.type == 'psychedelic-intense' %}selected{% endif %}>Psychedelic Intense</option>
@@ -190,6 +223,11 @@
                                                 <option value="tunnel-burst" {% if composition.type == 'tunnel-burst' %}selected{% endif %}>Tunnel Burst (Explode)</option>
                                                 <option value="tunnel-double" {% if composition.type == 'tunnel-double' %}selected{% endif %}>Tunnel Double</option>
                                             </optgroup>
+                                            <optgroup label="Liquid &amp; Wax">
+                                                <option value="liquid-mirror" {% if composition.type == 'liquid-mirror' %}selected{% endif %}>Liquid Mirror</option>
+                                                <option value="liquid-mirror-extreme" {% if composition.type == 'liquid-mirror-extreme' %}selected{% endif %}>Liquid Mirror Extreme</option>
+                                                <option value="wax-melt" {% if composition.type == 'wax-melt' %}selected{% endif %}>Wax Melt</option>
+                                            </optgroup>
                                         </select>
                                         <small class="text-muted">Start here, then choose the image sources that feed this composition.</small>
                                     </div>
@@ -205,12 +243,6 @@
                                             <div class="card-body">
                                                 <div class="source-options">
                                                     <label>Sources:</label>
-                                                    <input
-                                                        type="text"
-                                                        id="bgSourceSearch"
-                                                        class="form-control form-control-sm mb-2"
-                                                        placeholder="Search background sources..."
-                                                        title="Search background sources">
                                                     <div class="row ">
 
                                                         <div class="col-md-3">
@@ -275,12 +307,6 @@
                                             <div class="card-body">
                                                 <div class="source-options">
                                                     <label>Sources:</label>
-                                                    <input
-                                                        type="text"
-                                                        id="fgSourceSearch"
-                                                        class="form-control form-control-sm mb-2"
-                                                        placeholder="Search foreground sources..."
-                                                        title="Search foreground sources">
                                                     <div class="row ">
 
                                                         <div class="col-md-3">
@@ -508,12 +534,6 @@
                                         <div class="row mt-3">
                                             <div class="col-md-6">
                                                 <label for="overlay_source_folder" class="form-label">Overlay Layer Folder</label>
-                                                <input
-                                                    type="text"
-                                                    id="overlaySourceSearch"
-                                                    class="form-control form-control-sm mb-2"
-                                                    placeholder="Search overlay sources..."
-                                                    title="Search overlay sources">
                                                 <select id="overlay_source_folder" name="overlay_source_folder" class="form-control" title="Overlay layer folder">
                                                     <option value="">None</option>
                                                     {% for bucket in buckets %}
@@ -548,17 +568,15 @@
                                                 <label for="overlay_effect" class="form-label">Overlay Effect</label>
                                                 <select id="overlay_effect" name="overlay_effect" class="form-control mb-2" title="Overlay effect mode">
                                                     <option value="none" {% if selected_overlay_effect|default:'none' == 'none' %}selected{% endif %}>None</option>
-                                                    <option value="rotate_3d" {% if selected_overlay_effect == 'rotate_3d' %}selected{% endif %}>3D rotate</option>
+                                                    <option value="rotate_3d" {% if selected_overlay_effect == 'rotate_3d' %}selected{% endif %}>Rotate</option>
                                                     <option value="circle_rotate" {% if selected_overlay_effect == 'circle_rotate' %}selected{% endif %}>Circle rotate</option>
                                                     <option value="circle_rotate_mirror" {% if selected_overlay_effect == 'circle_rotate_mirror' %}selected{% endif %}>Circle rotate mirror</option>
                                                     <option value="mash" {% if selected_overlay_effect == 'mash' %}selected{% endif %}>Mash</option>
                                                     <option value="orb" {% if selected_overlay_effect == 'orb' %}selected{% endif %}>Folder Orb</option>
+                                                    <option value="kaleido_quad" {% if selected_overlay_effect == 'kaleido_quad' %}selected{% endif %}>Kaleido quad</option>
+                                                    <option value="kaleido_octa" {% if selected_overlay_effect == 'kaleido_octa' %}selected{% endif %}>Kaleido octa</option>
+                                                    <option value="strobe" {% if selected_overlay_effect == 'strobe' %}selected{% endif %}>Strobe</option>
                                                 </select>
-                                                <div class="form-check mt-4">
-                                                    <input class="form-check-input" type="checkbox" id="overlay_rotate" name="overlay_rotate" {% if composition and composition.overlay_rotate %}checked{% endif %}>
-                                                    <label class="form-check-label" for="overlay_rotate">3D rotate overlay; change image at edge</label>
-                                                </div>
-                                                <small class="text-muted d-block">When enabled, each overlay spins one full turn, then the next asset loads.</small>
                                             </div>
                                         </div>
                                         <div class="row mt-2">
@@ -799,64 +817,311 @@
                                             </div>
                                         </div>
                                         {% if edit_mode %}
-                                        <div class="border rounded p-2 mt-3 bg-light">
-                                            <div class="d-flex flex-wrap align-items-center justify-content-between">
+                                        <!-- NFT Media Panel -->
+                                        <div class="border rounded mt-3" style="overflow:hidden;">
+                                            <div class="d-flex flex-wrap align-items-center justify-content-between px-3 py-2" style="background:#f8f9fa;border-bottom:1px solid #dee2e6;">
                                                 <div>
-                                                    <strong>NFT media</strong>
-                                                    {% if nft_media.stale %}
-                                                    <span class="badge badge-warning ml-1">stale</span>
-                                                    {% elif nft_media.ready %}
-                                                    <span class="badge badge-success ml-1">ready</span>
-                                                    {% else %}
-                                                    <span class="badge badge-secondary ml-1">missing</span>
-                                                    {% endif %}
-                                                    <div class="text-muted small">Poster still, 10s marketplace preview, and 45s collector video.</div>
+                                                    <strong>Generated Media</strong>
+                                                    {% if nft_media.stale %}<span class="badge badge-warning ml-1">stale</span>
+                                                    {% elif nft_media.ready %}<span class="badge badge-success ml-1">ready</span>
+                                                    {% else %}<span class="badge badge-secondary ml-1">missing</span>{% endif %}
                                                 </div>
-                                                <div>
-                                                    <button
-                                                        type="submit"
-                                                        class="btn btn-outline-primary btn-sm"
-                                                        formaction="{% url 'composition_generate_nft_media' composition.id %}"
-                                                        formmethod="post"
-                                                    >
-                                                        Generate NFT Media
+                                                <div class="d-flex gap-2">
+                                                    <button type="submit" class="btn btn-outline-primary btn-sm"
+                                                        formaction="{% url 'composition_generate_nft_media' composition.id %}" formmethod="post">
+                                                        Generate
                                                     </button>
-                                                    <button
-                                                        type="submit"
-                                                        class="btn btn-outline-dark btn-sm"
-                                                        name="force"
-                                                        value="1"
-                                                        formaction="{% url 'composition_generate_nft_media' composition.id %}"
-                                                        formmethod="post"
-                                                    >
-                                                        Regenerate
+                                                    <button type="submit" class="btn btn-outline-dark btn-sm" name="force" value="1"
+                                                        formaction="{% url 'composition_generate_nft_media' composition.id %}" formmethod="post">
+                                                        Force Regenerate
                                                     </button>
                                                 </div>
                                             </div>
-                                            <div class="mt-2 small">
-                                                {% for kind, row in nft_media.assets.items %}
-                                                <div>
-                                                    <strong>{{ row.label }}:</strong>
-                                                    {{ row.status }}
-                                                    {% if row.stale %}<span class="text-warning">stale</span>{% endif %}
-                                                    {% if row.url %}<a href="{{ row.url }}" target="_blank" rel="noopener">open</a>{% endif %}
-                                                    {% if row.error %}<span class="text-danger">{{ row.error }}</span>{% endif %}
+                                            <div class="d-flex" style="gap:0;">
+                                                <!-- Live composition -->
+                                                <div style="flex:1;border-right:1px solid #dee2e6;padding:10px;min-width:0;">
+                                                    <div class="text-muted small mb-1 font-weight-bold text-uppercase" style="font-size:0.7rem;letter-spacing:0.05em;">Live</div>
+                                                    <div style="position:relative;padding-bottom:100%;background:#000;border-radius:3px;overflow:hidden;">
+                                                        <iframe src="{% url 'composition_live_by_id' composition.id %}?muted=1"
+                                                            style="position:absolute;inset:0;width:100%;height:100%;border:none;"
+                                                            allow="autoplay" loading="eager"></iframe>
+                                                    </div>
                                                 </div>
-                                                {% endfor %}
+                                                <!-- Poster -->
+                                                {% with row=nft_media.assets.poster %}
+                                                <div style="flex:1;border-right:1px solid #dee2e6;padding:10px;min-width:0;">
+                                                    <div class="d-flex align-items-center justify-content-between mb-1">
+                                                        <span class="text-muted small font-weight-bold text-uppercase" style="font-size:0.7rem;letter-spacing:0.05em;">Poster</span>
+                                                        {% if row.stale %}<span class="badge badge-warning" style="font-size:0.6rem;">stale</span>
+                                                        {% elif row.ready %}<span class="badge badge-success" style="font-size:0.6rem;">ready</span>
+                                                        {% else %}<span class="badge badge-secondary" style="font-size:0.6rem;">{{ row.status }}</span>{% endif %}
+                                                    </div>
+                                                    <div style="position:relative;padding-bottom:100%;background:#111;border-radius:3px;overflow:hidden;">
+                                                        {% if row.url %}
+                                                        <a href="{{ row.url }}" target="_blank" rel="noopener" style="position:absolute;inset:0;">
+                                                            <img src="{{ row.url }}" alt="poster" style="width:100%;height:100%;object-fit:cover;">
+                                                        </a>
+                                                        {% else %}
+                                                        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+                                                            <button type="button" class="btn btn-outline-light btn-sm nft-media-regen-btn"
+                                                                data-url="{% url 'composition_generate_nft_media' composition.id %}" data-kind="poster" data-label="poster">↺</button>
+                                                        </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    {% if row.generated_at %}<div class="text-muted mt-1" style="font-size:0.65rem;">{{ row.generated_at|date:"d M Y H:i" }}</div>{% endif %}
+                                                    {% if row.error %}<div class="text-danger mt-1" style="font-size:0.65rem;">{{ row.error|truncatechars:60 }}</div>{% endif %}
+                                                    {% if row.url %}
+                                                    <div class="d-flex mt-1" style="gap:4px;">
+                                                        <a href="{{ row.url }}" download class="btn btn-outline-secondary btn-xs py-0 px-1" style="font-size:0.65rem;">↓</a>
+                                                        <button type="button" class="btn btn-outline-danger btn-xs py-0 px-1 nft-media-delete-btn" style="font-size:0.65rem;"
+                                                            data-url="{% url 'composition_nft_media_delete' composition.id 'poster' %}" data-label="poster">✕</button>
+                                                        <button type="button" class="btn btn-outline-primary btn-xs py-0 px-1 nft-media-regen-btn" style="font-size:0.65rem;"
+                                                            data-url="{% url 'composition_generate_nft_media' composition.id %}" data-kind="poster" data-label="poster">↺</button>
+                                                    </div>
+                                                    {% endif %}
+                                                    {% if row.archive %}
+                                                    <details class="mt-1" style="font-size:0.65rem;">
+                                                        <summary class="text-muted" style="cursor:pointer;">{{ row.archive|length }} archived</summary>
+                                                        {% for a in row.archive %}
+                                                        <div class="d-flex align-items-center mt-1" style="gap:4px;">
+                                                            <img src="{{ a.url }}" style="width:28px;height:28px;object-fit:cover;border-radius:2px;flex-shrink:0;" alt="">
+                                                            <span class="text-muted">{{ a.generated_at|slice:":10" }}</span>
+                                                            <a href="{{ a.url }}" download class="btn btn-outline-secondary btn-xs py-0 px-1">↓</a>
+                                                            <button type="button" class="btn btn-outline-success btn-xs py-0 px-1 nft-archive-reinstate-btn"
+                                                                data-url="{% url 'composition_nft_media_archive_reinstate' composition.id 'poster' %}" data-path="{{ a.path }}">↑</button>
+                                                            <button type="button" class="btn btn-outline-danger btn-xs py-0 px-1 nft-archive-delete-btn"
+                                                                data-url="{% url 'composition_nft_media_archive_delete' composition.id 'poster' %}" data-path="{{ a.path }}">✕</button>
+                                                        </div>
+                                                        {% endfor %}
+                                                    </details>
+                                                    {% endif %}
+                                                </div>
+                                                {% endwith %}
+                                                <!-- 10s preview -->
+                                                {% with row=nft_media.assets.preview_10s %}
+                                                <div style="flex:1;border-right:1px solid #dee2e6;padding:10px;min-width:0;">
+                                                    <div class="d-flex align-items-center justify-content-between mb-1">
+                                                        <span class="text-muted small font-weight-bold text-uppercase" style="font-size:0.7rem;letter-spacing:0.05em;">10s Preview</span>
+                                                        {% if row.stale %}<span class="badge badge-warning" style="font-size:0.6rem;">stale</span>
+                                                        {% elif row.ready %}<span class="badge badge-success" style="font-size:0.6rem;">ready</span>
+                                                        {% else %}<span class="badge badge-secondary" style="font-size:0.6rem;">{{ row.status }}</span>{% endif %}
+                                                    </div>
+                                                    <div style="position:relative;padding-bottom:100%;background:#111;border-radius:3px;overflow:hidden;">
+                                                        {% if row.url %}
+                                                        <video src="{{ row.url }}" muted loop autoplay playsinline
+                                                            style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"></video>
+                                                        {% else %}
+                                                        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+                                                            <button type="button" class="btn btn-outline-light btn-sm nft-media-regen-btn"
+                                                                data-url="{% url 'composition_generate_nft_media' composition.id %}" data-kind="preview_10s" data-label="10s preview">↺</button>
+                                                        </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    {% if row.generated_at %}<div class="text-muted mt-1" style="font-size:0.65rem;">{{ row.generated_at|date:"d M Y H:i" }}</div>{% endif %}
+                                                    {% if row.error %}<div class="text-danger mt-1" style="font-size:0.65rem;">{{ row.error|truncatechars:60 }}</div>{% endif %}
+                                                    {% if row.url %}
+                                                    <div class="d-flex mt-1" style="gap:4px;">
+                                                        <a href="{{ row.url }}" download class="btn btn-outline-secondary btn-xs py-0 px-1" style="font-size:0.65rem;">↓</a>
+                                                        <button type="button" class="btn btn-outline-danger btn-xs py-0 px-1 nft-media-delete-btn" style="font-size:0.65rem;"
+                                                            data-url="{% url 'composition_nft_media_delete' composition.id 'preview_10s' %}" data-label="10s preview">✕</button>
+                                                        <button type="button" class="btn btn-outline-primary btn-xs py-0 px-1 nft-media-regen-btn" style="font-size:0.65rem;"
+                                                            data-url="{% url 'composition_generate_nft_media' composition.id %}" data-kind="preview_10s" data-label="10s preview">↺</button>
+                                                    </div>
+                                                    {% endif %}
+                                                    {% if row.archive %}
+                                                    <details class="mt-1" style="font-size:0.65rem;">
+                                                        <summary class="text-muted" style="cursor:pointer;">{{ row.archive|length }} archived</summary>
+                                                        {% for a in row.archive %}
+                                                        <div class="d-flex align-items-center mt-1" style="gap:4px;">
+                                                            <video src="{{ a.url }}" muted style="width:28px;height:28px;object-fit:cover;border-radius:2px;flex-shrink:0;"></video>
+                                                            <span class="text-muted">{{ a.generated_at|slice:":10" }}</span>
+                                                            <a href="{{ a.url }}" download class="btn btn-outline-secondary btn-xs py-0 px-1">↓</a>
+                                                            <button type="button" class="btn btn-outline-success btn-xs py-0 px-1 nft-archive-reinstate-btn"
+                                                                data-url="{% url 'composition_nft_media_archive_reinstate' composition.id 'preview_10s' %}" data-path="{{ a.path }}">↑</button>
+                                                            <button type="button" class="btn btn-outline-danger btn-xs py-0 px-1 nft-archive-delete-btn"
+                                                                data-url="{% url 'composition_nft_media_archive_delete' composition.id 'preview_10s' %}" data-path="{{ a.path }}">✕</button>
+                                                        </div>
+                                                        {% endfor %}
+                                                    </details>
+                                                    {% endif %}
+                                                </div>
+                                                {% endwith %}
+                                                <!-- 45s collector -->
+                                                {% with row=nft_media.assets.collector_45s %}
+                                                <div style="flex:1;padding:10px;min-width:0;">
+                                                    <div class="d-flex align-items-center justify-content-between mb-1">
+                                                        <span class="text-muted small font-weight-bold text-uppercase" style="font-size:0.7rem;letter-spacing:0.05em;">45s Collector</span>
+                                                        {% if row.stale %}<span class="badge badge-warning" style="font-size:0.6rem;">stale</span>
+                                                        {% elif row.ready %}<span class="badge badge-success" style="font-size:0.6rem;">ready</span>
+                                                        {% else %}<span class="badge badge-secondary" style="font-size:0.6rem;">{{ row.status }}</span>{% endif %}
+                                                    </div>
+                                                    <div style="position:relative;padding-bottom:100%;background:#111;border-radius:3px;overflow:hidden;">
+                                                        {% if row.url %}
+                                                        <video src="{{ row.url }}" muted loop autoplay playsinline
+                                                            style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"></video>
+                                                        {% else %}
+                                                        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+                                                            <button type="button" class="btn btn-outline-light btn-sm nft-media-regen-btn"
+                                                                data-url="{% url 'composition_generate_nft_media' composition.id %}" data-kind="collector_45s" data-label="45s collector">↺</button>
+                                                        </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    {% if row.generated_at %}<div class="text-muted mt-1" style="font-size:0.65rem;">{{ row.generated_at|date:"d M Y H:i" }}</div>{% endif %}
+                                                    {% if row.error %}<div class="text-danger mt-1" style="font-size:0.65rem;">{{ row.error|truncatechars:60 }}</div>{% endif %}
+                                                    {% if row.url %}
+                                                    <div class="d-flex mt-1" style="gap:4px;">
+                                                        <a href="{{ row.url }}" download class="btn btn-outline-secondary btn-xs py-0 px-1" style="font-size:0.65rem;">↓</a>
+                                                        <button type="button" class="btn btn-outline-danger btn-xs py-0 px-1 nft-media-delete-btn" style="font-size:0.65rem;"
+                                                            data-url="{% url 'composition_nft_media_delete' composition.id 'collector_45s' %}" data-label="45s collector">✕</button>
+                                                        <button type="button" class="btn btn-outline-primary btn-xs py-0 px-1 nft-media-regen-btn" style="font-size:0.65rem;"
+                                                            data-url="{% url 'composition_generate_nft_media' composition.id %}" data-kind="collector_45s" data-label="45s collector">↺</button>
+                                                    </div>
+                                                    {% endif %}
+                                                    {% if row.archive %}
+                                                    <details class="mt-1" style="font-size:0.65rem;">
+                                                        <summary class="text-muted" style="cursor:pointer;">{{ row.archive|length }} archived</summary>
+                                                        {% for a in row.archive %}
+                                                        <div class="d-flex align-items-center mt-1" style="gap:4px;">
+                                                            <video src="{{ a.url }}" muted style="width:28px;height:28px;object-fit:cover;border-radius:2px;flex-shrink:0;"></video>
+                                                            <span class="text-muted">{{ a.generated_at|slice:":10" }}</span>
+                                                            <a href="{{ a.url }}" download class="btn btn-outline-secondary btn-xs py-0 px-1">↓</a>
+                                                            <button type="button" class="btn btn-outline-success btn-xs py-0 px-1 nft-archive-reinstate-btn"
+                                                                data-url="{% url 'composition_nft_media_archive_reinstate' composition.id 'collector_45s' %}" data-path="{{ a.path }}">↑</button>
+                                                            <button type="button" class="btn btn-outline-danger btn-xs py-0 px-1 nft-archive-delete-btn"
+                                                                data-url="{% url 'composition_nft_media_archive_delete' composition.id 'collector_45s' %}" data-path="{{ a.path }}">✕</button>
+                                                        </div>
+                                                        {% endfor %}
+                                                    </details>
+                                                    {% endif %}
+                                                </div>
+                                                {% endwith %}
                                             </div>
                                         </div>
-                                        <div class="d-flex align-items-center mt-2">
-                                            <a href="{% url 'composition_generate_nft' composition.id %}" class="btn btn-outline-primary btn-sm mr-2">Generate NFT Metadata</a>
-                                            <a href="{{ nft_metadata_url }}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm mr-2">Open Metadata JSON</a>
-                                            <a href="{% url 'composition_nft_image' composition.id %}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm mr-2">Open Square NFT Image</a>
-                                            <a href="{% url 'composition_nft_video' composition.id %}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm mr-2">Open Legacy 30s NFT Video</a>
-                                            {% if composition.url %}
-                                            <a href="{% url 'composition_collect_page' current_url_slug %}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm mr-2">Open NFT Front-End</a>
-                                            {% endif %}
-                                            {% if composition.nft_last_generated_at %}
-                                            <small class="text-muted">NFT metadata uses poster + 10s preview + 45s collector media. Last generated: {{ composition.nft_last_generated_at }}</small>
+
+                                        <!-- NFT Version History -->
+                                        {% if nft_versions %}
+                                        <div class="border rounded mt-2" style="overflow:hidden;">
+                                            <div class="px-3 py-2" style="background:#f8f9fa;border-bottom:1px solid #dee2e6;">
+                                                <strong>Version History</strong>
+                                                <span class="text-muted small ml-1">({{ nft_versions|length }} version{{ nft_versions|length|pluralize }})</span>
+                                            </div>
+                                            <div style="overflow-x:auto;">
+                                            <table class="table table-sm table-borderless mb-0" style="font-size:0.78rem;">
+                                                <thead style="background:#fafafa;">
+                                                    <tr>
+                                                        <th style="width:50px;">Ver.</th>
+                                                        <th>Status</th>
+                                                        <th>Date</th>
+                                                        <th>Poster</th>
+                                                        <th>10s</th>
+                                                        <th>45s</th>
+                                                        <th>Token</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                {% for v in nft_versions %}
+                                                <tr>
+                                                    <td class="font-weight-bold">v{{ v.version_number }}</td>
+                                                    <td>
+                                                        {% if v.status == "minted" %}<span class="badge badge-success">minted</span>
+                                                        {% elif v.status == "ready" %}<span class="badge badge-primary">ready</span>
+                                                        {% elif v.status == "rendering" %}<span class="badge badge-warning">rendering</span>
+                                                        {% elif v.status == "failed" %}<span class="badge badge-danger">failed</span>
+                                                        {% else %}<span class="badge badge-secondary">{{ v.status }}</span>{% endif %}
+                                                    </td>
+                                                    <td class="text-muted">{{ v.prepared_at|date:"d M Y"|default:v.created_at|date:"d M Y" }}</td>
+                                                    <td>
+                                                        {% if v.local_image_file %}
+                                                        <a href="{% url 'composition_nft_version_image' v.id %}" target="_blank" rel="noopener">
+                                                            <img src="{% url 'composition_nft_version_image' v.id %}" style="width:36px;height:36px;object-fit:cover;border-radius:2px;" alt="v{{ v.version_number }} poster">
+                                                        </a>
+                                                        {% else %}<span class="text-muted">—</span>{% endif %}
+                                                    </td>
+                                                    <td>
+                                                        {% if v.local_video_file %}
+                                                        <a href="{% url 'composition_nft_version_video' v.id %}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-xs py-0 px-1">▶ 10s</a>
+                                                        {% else %}<span class="text-muted">—</span>{% endif %}
+                                                    </td>
+                                                    <td>
+                                                        {% if v.local_collector_video_file %}
+                                                        <a href="{% url 'composition_nft_version_collector_video' v.id %}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-xs py-0 px-1">▶ 45s</a>
+                                                        {% else %}<span class="text-muted">—</span>{% endif %}
+                                                    </td>
+                                                    <td>
+                                                        {% if v.token_id %}<span class="text-monospace">#{{ v.token_id }}</span>
+                                                        {% elif v.tx_hash %}<span class="text-muted text-monospace" title="{{ v.tx_hash }}">tx…{{ v.tx_hash|slice:"-6:" }}</span>
+                                                        {% else %}<span class="text-muted">—</span>{% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                                </tbody>
+                                            </table>
+                                            </div>
+                                        </div>
+                                        {% endif %}
+
+                                        <!-- Lazy Mint Voucher Panel -->
+                                        <div class="border rounded mt-3" id="voucherPanel" style="overflow:hidden;">
+                                            <div class="d-flex align-items-center justify-content-between px-3 py-2" style="background:#f8f9fa;border-bottom:1px solid #dee2e6;">
+                                                <div>
+                                                    <strong>Mint Voucher</strong>
+                                                    {% if active_voucher %}
+                                                        <span class="badge badge-success ml-1">active</span>
+                                                    {% else %}
+                                                        <span class="badge badge-secondary ml-1">none</span>
+                                                    {% endif %}
+                                                </div>
+                                                <button type="button" class="btn btn-outline-primary btn-sm" id="voucherSignBtn"
+                                                    {% if not composition.url %}disabled title="Composition needs a URL before signing a voucher"{% endif %}>
+                                                    {% if active_voucher %}Replace Voucher{% else %}Sign Voucher{% endif %}
+                                                </button>
+                                            </div>
+                                            <div class="px-3 py-2" style="font-size:0.82rem;">
+                                            {% if active_voucher %}
+                                                <div class="d-flex flex-wrap" style="gap:8px 24px;">
+                                                    <div><span class="text-muted">Price:</span> <strong>{{ active_voucher.min_price_eth }} ETH</strong></div>
+                                                    <div><span class="text-muted">Nonce:</span> <span class="text-monospace">{{ active_voucher.nonce }}</span></div>
+                                                    <div><span class="text-muted">Signed by:</span> <span class="text-monospace">{{ active_voucher.signed_by|slice:":6" }}…{{ active_voucher.signed_by|slice:"-4:" }}</span></div>
+                                                    <div><span class="text-muted">URI:</span> <span class="text-monospace text-truncate" style="max-width:220px;display:inline-block;vertical-align:bottom;">{{ active_voucher.uri }}</span></div>
+                                                </div>
+                                                <div class="mt-2" style="font-size:0.75rem;">
+                                                    <span class="text-muted">Signature:</span>
+                                                    <span class="text-monospace text-muted">{{ active_voucher.signature|slice:":18" }}…</span>
+                                                    <button type="button" class="btn btn-outline-secondary btn-xs py-0 px-1 ml-1"
+                                                        onclick="navigator.clipboard.writeText('{{ active_voucher.signature }}')">copy</button>
+                                                </div>
                                             {% else %}
-                                            <small class="text-muted">Save first, then generate media and metadata.</small>
+                                                <p class="text-muted mb-1">No active voucher. Sign one to enable lazy minting for this composition.</p>
+                                                <p class="text-muted mb-0" style="font-size:0.75rem;">You'll need MetaMask connected as the authorized signer wallet.</p>
+                                            {% endif %}
+                                            </div>
+                                        </div>
+
+                                        <!-- Voucher signing form (hidden until button clicked) -->
+                                        <div id="voucherForm" class="border rounded mt-2 px-3 py-2" style="display:none;font-size:0.85rem;">
+                                            <div class="mb-2">
+                                                <label class="font-weight-bold">Metadata URI <span class="text-muted" style="font-weight:normal;">(ipfs://… or https://…)</span></label>
+                                                <input type="text" id="voucherUri" class="form-control form-control-sm"
+                                                    value="{{ composition.metadata_uri|default:'' }}"
+                                                    placeholder="ipfs://Qm…">
+                                            </div>
+                                            <div class="mb-2">
+                                                <label class="font-weight-bold">Min Price (ETH)</label>
+                                                <input type="number" id="voucherPrice" class="form-control form-control-sm" step="0.001" value="0.07">
+                                            </div>
+                                            <div class="d-flex" style="gap:8px;">
+                                                <button type="button" class="btn btn-primary btn-sm" id="voucherSignConfirmBtn">Sign with MetaMask</button>
+                                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('voucherForm').style.display='none'">Cancel</button>
+                                            </div>
+                                            <div id="voucherStatus" class="mt-2 text-muted" style="font-size:0.78rem;"></div>
+                                        </div>
+
+                                        <div class="d-flex flex-wrap align-items-center mt-2" style="gap:6px;">
+                                            <a href="{% url 'composition_generate_nft' composition.id %}" class="btn btn-outline-primary btn-sm">Generate NFT Metadata</a>
+                                            <a href="{{ nft_metadata_url }}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm">Metadata JSON</a>
+                                            {% if current_url_slug %}
+                                            <a href="{% url 'composition_collect_page' current_url_slug %}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm">Collect Page</a>
+                                            <a href="{% url 'mint_composition' current_url_slug %}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm">Mint Page</a>
                                             {% endif %}
                                         </div>
                                         {% endif %}
@@ -896,9 +1161,16 @@
                                         <small class="text-muted d-block mt-2">
                                             Renders the saved public composition page and stores the MP4 as this composition's final video.
                                         </small>
-                                            {% if composition.final_video %}
-                                        <a href="{{ composition.final_video.url }}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm mt-2">Open Latest Render</a>
-                                            {% endif %}
+                                        {% if composition.final_video %}
+                                        <div class="mt-3 border rounded" style="overflow:hidden;max-width:480px;">
+                                            <video src="{{ composition.final_video.url }}" controls muted loop
+                                                style="width:100%;display:block;background:#000;"></video>
+                                            <div class="d-flex align-items-center px-2 py-1" style="gap:8px;background:#f8f9fa;border-top:1px solid #dee2e6;">
+                                                <a href="{{ composition.final_video.url }}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-xs py-0 px-2" style="font-size:0.75rem;">open ↗</a>
+                                                <a href="{{ composition.final_video.url }}" download class="btn btn-outline-secondary btn-xs py-0 px-2" style="font-size:0.75rem;">↓ download</a>
+                                            </div>
+                                        </div>
+                                        {% endif %}
                                     </div>
                                 </div>
 
@@ -958,37 +1230,6 @@
                                     </div>
                                 </div>
 
-                                <div class="card mb-4 card-primary shadow-lg">
-                                    <div class="card-header">
-                                        <h3 class="card-title">Files Manager (Local Master)</h3>
-                                    </div>
-                                    <div class="card-body">
-                                        <div class="row">
-                                            <div class="col-md-6">
-                                                <input id="fileManagerSearch" type="text" class="form-control form-control-sm" placeholder="Search files...">
-                                            </div>
-                                            <div class="col-md-6 text-md-right mt-2 mt-md-0">
-                                                <button type="button" id="refreshFilesBtn" class="btn btn-outline-secondary btn-sm">Refresh Files</button>
-                                            </div>
-                                        </div>
-                                        <div id="fileManagerStatus" class="small text-muted mt-2">Loading files...</div>
-                                        <div class="table-responsive mt-2 file-manager-table-wrap">
-                                            <table class="table table-sm table-bordered">
-                                                <thead>
-                                                    <tr>
-                                                        <th>Include</th>
-                                                        <th>File</th>
-                                                        <th>Size</th>
-                                                        <th>Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody id="fileManagerBody">
-                                                    <tr><td colspan="4" class="text-muted">Loading...</td></tr>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
                                 {% endif %}
 
 
@@ -1103,64 +1344,74 @@
         const brightnessValue = document.getElementById("brightnessValue");
         const saturationValue = document.getElementById("saturationValue");
         const opacityValue = document.getElementById("opacityValue");
-        const bgSourceSearchInput = document.getElementById("bgSourceSearch");
-        const fgSourceSearchInput = document.getElementById("fgSourceSearch");
-        const overlaySourceSearchInput = document.getElementById("overlaySourceSearch");
-        const sourceOptionCache = new WeakMap();
-        const getSourceOptionSnapshot = (select) => {
-            if (!select) return [];
-            if (!sourceOptionCache.has(select)) {
-                const snapshot = Array.from(select.options).map((opt) => ({
-                    value: String(opt.value || ""),
-                    label: String(opt.textContent || ""),
-                }));
-                sourceOptionCache.set(select, snapshot);
-            }
-            return sourceOptionCache.get(select) || [];
-        };
-        const applySourceFilterToSelect = (select, rawQuery) => {
-            if (!select) return;
-            const currentValue = String(select.value || "");
-            const query = String(rawQuery || "").trim().toLowerCase();
-            const options = getSourceOptionSnapshot(select);
-            select.innerHTML = "";
-            let selectedRestored = false;
-            options.forEach((optData) => {
-                const labelLower = optData.label.toLowerCase();
-                const isPlaceholder = optData.value === "";
-                const shouldShow = !query || isPlaceholder || labelLower.includes(query) || optData.value === currentValue;
-                if (!shouldShow) return;
-                const opt = document.createElement("option");
-                opt.value = optData.value;
-                opt.textContent = optData.label;
-                if (optData.value === currentValue) {
-                    opt.selected = true;
-                    selectedRestored = true;
-                }
-                select.appendChild(opt);
-            });
-            if (currentValue && !selectedRestored) {
-                const fallback = document.createElement("option");
-                fallback.value = currentValue;
-                fallback.textContent = currentValue;
-                fallback.selected = true;
-                select.appendChild(fallback);
-            }
-        };
-        const bindSourceSearch = (inputEl, selectQuery) => {
-            if (!inputEl) return;
-            const selects = Array.from(document.querySelectorAll(selectQuery));
-            if (!selects.length) return;
-            const run = () => {
-                const q = inputEl.value || "";
-                selects.forEach((select) => applySourceFilterToSelect(select, q));
+        const makeSearchableSelect = (nativeSelect) => {
+            if (!nativeSelect) return;
+            const allOptions = Array.from(nativeSelect.options).map(o => ({ value: o.value, label: o.textContent.trim() }));
+            const wrap = document.createElement('div');
+            wrap.className = 'ss-wrap';
+            nativeSelect.parentNode.insertBefore(wrap, nativeSelect);
+            wrap.appendChild(nativeSelect);
+            nativeSelect.style.display = 'none';
+            const currentLabel = () => {
+                const sel = allOptions.find(o => o.value === nativeSelect.value);
+                return sel ? sel.label : (allOptions[0] ? allOptions[0].label : '—');
             };
-            inputEl.addEventListener("input", run);
-            run();
+            const trigger = document.createElement('button');
+            trigger.type = 'button';
+            trigger.className = 'ss-trigger form-control';
+            trigger.innerHTML = `<span class="ss-label">${currentLabel()}</span><span class="ss-caret">&#9660;</span>`;
+            wrap.insertBefore(trigger, nativeSelect);
+            const panel = document.createElement('div');
+            panel.className = 'ss-panel';
+            panel.hidden = true;
+            const searchInput = document.createElement('input');
+            searchInput.type = 'text';
+            searchInput.className = 'ss-search';
+            searchInput.placeholder = 'Search…';
+            const list = document.createElement('div');
+            list.className = 'ss-list';
+            panel.appendChild(searchInput);
+            panel.appendChild(list);
+            wrap.appendChild(panel);
+            const renderList = (q) => {
+                const query = (q || '').toLowerCase().trim();
+                list.innerHTML = '';
+                allOptions.forEach(opt => {
+                    if (query && opt.value && !opt.label.toLowerCase().includes(query)) return;
+                    const item = document.createElement('div');
+                    item.className = 'ss-item' + (opt.value === nativeSelect.value ? ' ss-item-active' : '');
+                    item.textContent = opt.label;
+                    item.addEventListener('mousedown', e => {
+                        e.preventDefault();
+                        nativeSelect.value = opt.value;
+                        trigger.querySelector('.ss-label').textContent = opt.label;
+                        panel.hidden = true;
+                        wrap.classList.remove('ss-open');
+                        nativeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                    });
+                    list.appendChild(item);
+                });
+            };
+            trigger.addEventListener('click', () => {
+                const opening = panel.hidden;
+                document.querySelectorAll('.ss-panel').forEach(p => { p.hidden = true; p.closest('.ss-wrap')?.classList.remove('ss-open'); });
+                if (opening) {
+                    panel.hidden = false;
+                    wrap.classList.add('ss-open');
+                    searchInput.value = '';
+                    renderList('');
+                    searchInput.focus();
+                }
+            });
+            searchInput.addEventListener('input', () => renderList(searchInput.value));
+            document.addEventListener('click', e => {
+                if (!wrap.contains(e.target)) {
+                    panel.hidden = true;
+                    wrap.classList.remove('ss-open');
+                }
+            }, true);
         };
-        bindSourceSearch(bgSourceSearchInput, 'select[name^="background_sources"]');
-        bindSourceSearch(fgSourceSearchInput, 'select[name^="foreground_sources"]');
-        bindSourceSearch(overlaySourceSearchInput, "#overlay_source_folder");
+        document.querySelectorAll('select[name^="background_sources"], select[name^="foreground_sources"], #overlay_source_folder').forEach(makeSearchableSelect);
 
         const syncPageLinkState = () => {
             if (!randomLinkEnabled || !pageLinkInput) return;
@@ -2082,6 +2333,11 @@
 
         const renderSinglePreview = () => {
             if (!filterPreviewMedia) return;
+            // Don't trample the live-page iframe used by kaleido / mirror modes.
+            if (previewLayoutMode === "live-iframe"
+                && filterPreviewMedia.querySelector("iframe[data-live-preview]")) {
+                return;
+            }
             filterPreviewMedia.innerHTML = "";
             const pool = previewBgAssets.length ? previewBgAssets : previewAssets;
             if (!pool.length) return;
@@ -2089,6 +2345,51 @@
             swapPaneAsset(filterPreviewMedia, asset);
             if (filterPreviewHint) filterPreviewHint.textContent = `Previewing: ${asset && asset.name ? asset.name : "asset"}`;
             updateFilterPreview();
+        };
+
+        // For composition types whose stages live entirely on the public page
+        // (kaleido-quad, kaleido-octa, mirror-rotate), embed the live page in
+        // an iframe so the preview is always identical to what visitors see.
+        const renderLiveIframePreview = (selectedType) => {
+            if (!filterPreviewMedia) return;
+            const cid = (typeof compositionId !== "undefined" && compositionId) ? compositionId : "";
+            if (!cid) {
+                filterPreviewMedia.innerHTML = "";
+                if (filterPreviewHint) {
+                    filterPreviewHint.textContent = "Save the composition once to enable the live preview for this type.";
+                }
+                return;
+            }
+            // Reuse an existing iframe if it's already pointing at this
+            // composition. Otherwise some other code path keeps wiping the
+            // preview area and rebuilding via renderSinglePreview, which makes
+            // the live preview flicker between the iframe and a static asset.
+            const existing = filterPreviewMedia.querySelector("iframe[data-live-preview]");
+            if (existing && existing.dataset.compId === String(cid)) {
+                if (filterPreviewHint) {
+                    filterPreviewHint.textContent = `Previewing ${selectedType} (live page)`;
+                }
+                return;
+            }
+            filterPreviewMedia.innerHTML = "";
+            const iframe = document.createElement("iframe");
+            iframe.dataset.livePreview = "1";
+            iframe.dataset.compId = String(cid);
+            iframe.src = `/composition-live/${cid}/?t=${Date.now()}`;
+            iframe.style.cssText = [
+                "position:absolute", "inset:0",
+                "width:100%", "height:100%",
+                "border:0", "background:#000", "display:block",
+            ].join(";");
+            iframe.setAttribute("allow", "autoplay; fullscreen");
+            iframe.setAttribute("loading", "lazy");
+            filterPreviewMedia.appendChild(iframe);
+            if (window.IframeVideoKicker) {
+                window.IframeVideoKicker.attachToIframe(iframe);
+            }
+            if (filterPreviewHint) {
+                filterPreviewHint.textContent = `Previewing ${selectedType} (live page)`;
+            }
         };
 
         const renderCenterShiftPreview = (stackedSquares = false) => {
@@ -5191,6 +5492,13 @@
                 mashFluxPreviewInterval = null;
             }
             const selectedType = (document.getElementById("stype") && document.getElementById("stype").value) || "classic";
+            // For saved compositions always use the live iframe — it is literally
+            // the same rendering path as the public page, so preview = real output.
+            if (!forceLegacy && (typeof compositionId !== "undefined") && compositionId) {
+                previewLayoutMode = "live-iframe";
+                renderLiveIframePreview(selectedType);
+                return;
+            }
             if (selectedType === "quad") previewLayoutMode = "quad";
             else if (selectedType === "mash") previewLayoutMode = "mash";
             else if (selectedType === "mash-fine") previewLayoutMode = "mash-fine";
@@ -5242,6 +5550,13 @@
             else if (selectedType === "morph-fast") previewLayoutMode = "morph-fast";
             else if (selectedType === "eye-morph") previewLayoutMode = "eye-morph";
             else if (selectedType === "single") previewLayoutMode = "single";
+            // mirror-rotate / kaleido-quad / kaleido-octa rely on CSS keyframe
+            // rotations applied to per-cell containers; the shared "single"
+            // renderer doesn't know about those stages. Reuse the public live
+            // page in an iframe so the preview matches what users actually see.
+            else if (selectedType === "mirror-rotate") previewLayoutMode = "live-iframe";
+            else if (selectedType === "kaleido-quad") previewLayoutMode = "live-iframe";
+            else if (selectedType === "kaleido-octa") previewLayoutMode = "live-iframe";
             else previewLayoutMode = "single";
 
             if (previewTicker) clearInterval(previewTicker);
@@ -5348,6 +5663,7 @@
                 else if (previewLayoutMode === "triple-cylinder-room") states = renderTripleCylinderRoomPreview() || [];
                 else if (previewLayoutMode === "morph-fast") states = renderMorphFastPreview() || [];
                 else if (previewLayoutMode === "eye-morph") states = renderMorphFastPreview(true) || [];
+                else if (previewLayoutMode === "live-iframe") { renderLiveIframePreview(selectedType); }
                 else { renderSinglePreview(); }
             } catch (err) {
                 console.warn("Preview mode failed, falling back to single preview:", previewLayoutMode, err);
@@ -5369,6 +5685,9 @@
                 }, 1100);
             }
 
+            // live-iframe owns its own playback — no need for the asset
+            // ticker, which would otherwise overwrite the iframe each tick.
+            if (previewLayoutMode === "live-iframe") return;
             if (previewAssets.length > 1 && !states.some((s) => s && s.shared)) {
                 previewTicker = setInterval(() => {
                     try {
@@ -5734,38 +6053,88 @@
             filterPreviewOverlay.innerHTML = "";
             if (!overlayPreviewAssets.length) return;
 
-            let idx = 0;
-            const mount = () => {
-                if (!overlayPreviewAssets.length || !filterPreviewOverlay) return;
-                const asset = overlayPreviewAssets[idx % overlayPreviewAssets.length];
-                idx += 1;
-                filterPreviewOverlay.innerHTML = "";
-                const node = buildOverlayPreviewMount(asset);
-                if (node) filterPreviewOverlay.appendChild(node);
-            };
-            if (overlayRotateInput && overlayRotateInput.checked) {
-                const halfTurnMs = Math.max(900, Math.floor(2600 / getOverlaySpeed()));
-                const playHalfTurn = () => {
-                    mount();
-                    const wrapper = filterPreviewOverlay.firstElementChild;
-                    const inner = wrapper && wrapper.firstElementChild;
-                    if (!inner) return;
-                    inner.style.transformOrigin = "50% 50%";
-                    inner.style.backfaceVisibility = "hidden";
-                    inner.style.animation = "none";
-                    void inner.offsetWidth;
-                    inner.style.animation = `overlaySpinFrontHalf ${halfTurnMs}ms linear 1`;
-                    inner.onanimationend = () => {
-                        if (!inner.isConnected) return;
-                        playHalfTurn();
-                    };
+            const isRotate3d = document.getElementById("overlay_effect")?.value === "rotate_3d";
+
+            if (isRotate3d) {
+                const stageW = filterPreviewMedia ? Math.max(100, filterPreviewMedia.clientWidth) : 400;
+                const stageH = filterPreviewMedia ? Math.max(60, filterPreviewMedia.clientHeight) : 300;
+                const sizePct = getOverlayPreviewPercentSize();
+                const wrapW = stageW * sizePct.widthPct / 100;
+                const wrapH = stageH * sizePct.heightPct / 100;
+
+                const wrapper = document.createElement("div");
+                wrapper.style.cssText = `position:absolute;left:50%;top:50%;width:${wrapW.toFixed(1)}px;height:${wrapH.toFixed(1)}px;transform:translate(-50%,-50%);pointer-events:none;`;
+
+                const inner = document.createElement("div");
+                inner.style.cssText = "width:100%;height:100%;position:relative;perspective:1600px;perspective-origin:50% 50%;";
+
+                const rotator = document.createElement("div");
+                rotator.style.cssText = "width:100%;height:100%;position:absolute;inset:0;transform-style:preserve-3d;";
+
+                const front = document.createElement("div");
+                front.style.cssText = "position:absolute;inset:0;backface-visibility:visible;";
+
+                const back = document.createElement("div");
+                back.style.cssText = "position:absolute;inset:0;transform:rotateY(180deg);backface-visibility:visible;";
+
+                rotator.appendChild(front);
+                rotator.appendChild(back);
+                inner.appendChild(rotator);
+                wrapper.appendChild(inner);
+                filterPreviewOverlay.appendChild(wrapper);
+
+                const fullTurnMs = Math.max(4000, Math.floor(16000 / Math.max(0.25, getOverlaySpeed())));
+
+                let prevPickIdx = -1;
+                const loadFaces = () => {
+                    if (!overlayPreviewAssets.length) return;
+                    let n = Math.floor(Math.random() * overlayPreviewAssets.length);
+                    if (n === prevPickIdx && overlayPreviewAssets.length > 1) n = (n + 1) % overlayPreviewAssets.length;
+                    prevPickIdx = n;
+                    const asset = overlayPreviewAssets[n];
+                    [front, back].forEach((face, faceIdx) => {
+                        face.innerHTML = "";
+                        let el;
+                        if (asset.kind === "video") {
+                            el = document.createElement("video");
+                            el.src = asset.url;
+                            el.autoplay = true; el.loop = true; el.muted = true; el.playsInline = true;
+                        } else {
+                            el = document.createElement("img");
+                            el.src = asset.preview_url || asset.url;
+                            el.alt = "";
+                        }
+                        el.style.cssText = "width:100%;height:100%;object-fit:contain;object-position:center;display:block;";
+                        if (faceIdx === 1) el.style.transform = "scaleX(-1)";
+                        face.appendChild(el);
+                    });
                 };
-                playHalfTurn();
-            } else if (overlayPreviewAssets.length > 1) {
-                mount();
-                overlayPreviewTicker = setInterval(mount, Math.max(120, Math.floor(880 / getOverlaySpeed())));
+
+                loadFaces();
+                rotator.style.animation = `overlaySpinContinuous ${fullTurnMs}ms linear infinite`;
+
+                if (overlayPreviewAssets.length > 1) {
+                    overlayPreviewTicker = setInterval(() => {
+                        if (!rotator.isConnected) { clearInterval(overlayPreviewTicker); overlayPreviewTicker = null; return; }
+                        loadFaces();
+                    }, fullTurnMs / 2);
+                }
             } else {
-                mount();
+                let idx = 0;
+                const mount = () => {
+                    if (!overlayPreviewAssets.length || !filterPreviewOverlay) return;
+                    const asset = overlayPreviewAssets[idx % overlayPreviewAssets.length];
+                    idx += 1;
+                    filterPreviewOverlay.innerHTML = "";
+                    const node = buildOverlayPreviewMount(asset);
+                    if (node) filterPreviewOverlay.appendChild(node);
+                };
+                if (overlayPreviewAssets.length > 1) {
+                    mount();
+                    overlayPreviewTicker = setInterval(mount, Math.max(120, Math.floor(880 / getOverlaySpeed())));
+                } else {
+                    mount();
+                }
             }
         };
 
@@ -6075,8 +6444,9 @@
                 startOverlayPreviewTicker();
             });
         }
-        if (overlayRotateInput) {
-            overlayRotateInput.addEventListener("change", startOverlayPreviewTicker);
+        const overlayEffectSelect = document.getElementById("overlay_effect");
+        if (overlayEffectSelect) {
+            overlayEffectSelect.addEventListener("change", startOverlayPreviewTicker);
         }
         const overlayFrameMarginInput = document.getElementById("overlay_frame_margin");
         const overlayFrameMarginValue = document.getElementById("overlayFrameMarginValue");
@@ -6616,5 +6986,175 @@
     });
 </script>
 
+<script>
+// Force-play all muted looping videos in the media panel as soon as the page loads.
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('video[autoplay][muted]').forEach(v => {
+        v.play().catch(() => {});
+    });
+});
+</script>
+
+<script>
+(function () {
+    const csrfToken = document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('csrftoken='))?.split('=')[1] || '';
+
+    // Page-level progress bar shown during slow operations (generate/regen)
+    const progressBar = document.createElement('div');
+    progressBar.style.cssText = 'position:fixed;top:0;left:0;width:0;height:3px;background:#e74c3c;z-index:99999;transition:width 0.4s ease;display:none;';
+    document.body.appendChild(progressBar);
+    let progressTimer = null;
+    function showProgress() {
+        progressBar.style.display = 'block';
+        progressBar.style.width = '0';
+        let pct = 0;
+        progressTimer = setInterval(() => {
+            pct = Math.min(pct + (Math.random() * 3), 90);
+            progressBar.style.width = pct + '%';
+        }, 400);
+    }
+    function hideProgress() {
+        clearInterval(progressTimer);
+        progressBar.style.width = '100%';
+        setTimeout(() => { progressBar.style.display = 'none'; progressBar.style.width = '0'; }, 400);
+    }
+
+    async function nftPost(url, body, { slow = false, btn = null } = {}) {
+        const origHtml = btn ? btn.innerHTML : null;
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = slow
+                ? '<span class="spinner-border spinner-border-sm" role="status"></span> Generating…'
+                : '<span class="spinner-border spinner-border-sm" role="status"></span>';
+        }
+        if (slow) showProgress();
+        const fd = new FormData();
+        fd.append('csrfmiddlewaretoken', csrfToken);
+        if (body) Object.entries(body).forEach(([k, v]) => fd.append(k, v));
+        try {
+            const r = await fetch(url, { method: 'POST', body: fd });
+            if (slow) hideProgress();
+            if (r.redirected) { location.href = r.url; return; }
+            location.reload();
+        } catch (err) {
+            if (slow) hideProgress();
+            if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
+            alert('Request failed: ' + err.message);
+        }
+    }
+
+    document.addEventListener('click', function (e) {
+        const delBtn = e.target.closest('.nft-media-delete-btn');
+        if (delBtn) { nftPost(delBtn.dataset.url, null, { btn: delBtn }); }
+        const archBtn = e.target.closest('.nft-archive-delete-btn');
+        if (archBtn) { nftPost(archBtn.dataset.url, { path: archBtn.dataset.path }, { btn: archBtn }); }
+        const reinstateBtn = e.target.closest('.nft-archive-reinstate-btn');
+        if (reinstateBtn) { nftPost(reinstateBtn.dataset.url, { path: reinstateBtn.dataset.path }, { btn: reinstateBtn }); }
+        const regenBtn = e.target.closest('.nft-media-regen-btn');
+        if (regenBtn) { nftPost(regenBtn.dataset.url, { force: '1', kind: regenBtn.dataset.kind }, { slow: true, btn: regenBtn }); }
+    });
+
+    // ---- Lazy-mint voucher signing ----
+    const voucherSignBtn = document.getElementById('voucherSignBtn');
+    const voucherForm    = document.getElementById('voucherForm');
+    const voucherSignConfirmBtn = document.getElementById('voucherSignConfirmBtn');
+    const voucherStatus  = document.getElementById('voucherStatus');
+
+    if (voucherSignBtn) {
+        voucherSignBtn.addEventListener('click', () => {
+            voucherForm.style.display = voucherForm.style.display === 'none' ? '' : 'none';
+        });
+    }
+
+    if (voucherSignConfirmBtn) {
+        voucherSignConfirmBtn.addEventListener('click', async () => {
+            const uri   = document.getElementById('voucherUri').value.trim();
+            const price = parseFloat(document.getElementById('voucherPrice').value);
+            if (!uri) { voucherStatus.textContent = 'URI is required.'; voucherStatus.style.color = '#dc3545'; return; }
+            if (isNaN(price) || price <= 0) { voucherStatus.textContent = 'Invalid price.'; voucherStatus.style.color = '#dc3545'; return; }
+
+            if (!window.ethereum) {
+                voucherStatus.textContent = 'MetaMask not detected.';
+                voucherStatus.style.color = '#dc3545';
+                return;
+            }
+
+            voucherStatus.style.color = '#6c757d';
+            voucherStatus.textContent = 'Requesting MetaMask…';
+            voucherSignConfirmBtn.disabled = true;
+
+            try {
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                const signer   = accounts[0];
+                const chainId  = parseInt(await window.ethereum.request({ method: 'eth_chainId' }), 16);
+
+                // Unique nonce: milliseconds timestamp
+                const nonce = Date.now();
+                // Convert ETH to wei (BigInt arithmetic)
+                const minPriceWei = BigInt(Math.round(price * 1e18));
+
+                const domain = {
+                    name: 'TheFeed',
+                    version: '1',
+                    chainId: chainId,
+                    // Replace with deployed contract address if known
+                    verifyingContract: '0x0000000000000000000000000000000000000000',
+                };
+
+                const types = {
+                    NFTVoucher: [
+                        { name: 'minPrice', type: 'uint256' },
+                        { name: 'uri',      type: 'string'  },
+                        { name: 'nonce',    type: 'uint256' },
+                    ],
+                };
+
+                const value = {
+                    minPrice: minPriceWei.toString(),
+                    uri:      uri,
+                    nonce:    nonce.toString(),
+                };
+
+                voucherStatus.textContent = 'Waiting for MetaMask signature…';
+
+                const signature = await window.ethereum.request({
+                    method: 'eth_signTypedData_v4',
+                    params: [signer, JSON.stringify({ domain, types, primaryType: 'NFTVoucher', message: value })],
+                });
+
+                voucherStatus.textContent = 'Saving voucher…';
+
+                const resp = await fetch("{% if composition.id %}{% url 'composition_voucher_sign' composition.id %}{% else %}#{% endif %}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '',
+                    },
+                    body: JSON.stringify({
+                        min_price_wei: minPriceWei.toString(),
+                        uri:           uri,
+                        nonce:         nonce,
+                        signature:     signature,
+                        signed_by:     signer,
+                    }),
+                });
+
+                const data = await resp.json();
+                if (data.ok) {
+                    voucherStatus.style.color = '#28a745';
+                    voucherStatus.textContent = `Voucher #${data.voucher_id} saved. Reload to see it.`;
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    throw new Error(data.error || 'Unknown error');
+                }
+            } catch (err) {
+                voucherStatus.style.color = '#dc3545';
+                voucherStatus.textContent = 'Error: ' + err.message;
+                voucherSignConfirmBtn.disabled = false;
+            }
+        });
+    }
+})();
+</script>
 
 {% endblock %}

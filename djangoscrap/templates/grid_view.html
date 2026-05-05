@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Grid {{ grid_id }}</title>
+<style>
+    html, body { margin: 0; padding: 0; background: #000; height: 100%; overflow: hidden; }
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        grid-template-rows: repeat(3, 1fr);
+        width: 100vw;
+        height: 100vh;
+        gap: 0;
+    }
+    .cell {
+        position: relative;
+        overflow: hidden;
+        background: #050505;
+    }
+    .cell iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        display: block;
+    }
+    .cell .label {
+        position: absolute;
+        top: 6px;
+        left: 8px;
+        color: rgba(255,255,255,0.45);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 11px;
+        pointer-events: none;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+        z-index: 2;
+    }
+    .empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #444;
+        font-family: monospace;
+        font-size: 12px;
+    }
+</style>
+</head>
+<body>
+    <div class="grid">
+        {% for cell in cells %}
+            <div class="cell">
+                <span class="label">{{ cell.grid_cell_index }} · {{ cell.name|truncatechars:38 }}</span>
+                <iframe src="{% url 'composition_live_by_id' cell.id %}" loading="lazy" allow="autoplay; fullscreen"></iframe>
+            </div>
+        {% endfor %}
+        {% for _ in cells|slice:"9:" %}{% endfor %}
+        {% with placeholders=9|add:cells|length|add:"-9" %}{% endwith %}
+    </div>
+<script src="{% static 'js/iframe_video_kicker.js' %}"></script>
+<script>window.IframeVideoKicker && window.IframeVideoKicker.attachAll(".grid iframe");</script>
+</body>
+</html>

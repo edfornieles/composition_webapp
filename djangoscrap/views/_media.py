@@ -162,13 +162,108 @@ def source_thumbnail_image(request, source_name, file_name):
     if ext not in LOCAL_SOURCE_VIDEO_EXTS:
         raise Http404("Unsupported thumbnail type")
 
+    # Serve from disk cache if thumbnail is newer than the source video.
+    cache_dir = Path(settings.MEDIA_ROOT) / "thumb_cache" / source_name
+    safe_stem = hashlib.md5(file_name.encode()).hexdigest()
+    cache_path = cache_dir / f"{safe_stem}.jpg"
+    if cache_path.exists():
+        try:
+            if cache_path.stat().st_mtime >= target.stat().st_mtime:
+                with open(cache_path, "rb") as fh:
+                    return HttpResponse(fh.read(), content_type="image/jpeg")
+        except OSError:
+            pass
+
     frame = _extract_video_frame_image(target)
     if frame is None:
         raise Http404("Unable to generate thumbnail")
-    output = io.BytesIO()
-    frame.convert("RGB").save(output, format="JPEG", quality=86)
-    return HttpResponse(output.getvalue(), content_type="image/jpeg")
+    jpeg_bytes = io.BytesIO()
+    frame.convert("RGB").save(jpeg_bytes, format="JPEG", quality=86)
+    jpeg_data = jpeg_bytes.getvalue()
 
+    # Write to cache for subsequent requests.
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        tmp = cache_path.with_suffix(".tmp")
+        tmp.write_bytes(jpeg_data)
+        tmp.replace(cache_path)
+    except OSError:
+        pass
+
+    return HttpResponse(jpeg_data, content_type="image/jpeg")
+
+
+
+# Stale lock timeout: if a warmup marker is older than this, treat it as abandoned.
+_WARM_LOCK_TTL_SECONDS = 3600
+
+
+def _thumb_warm_lock_path(source_name: str) -> Path:
+    lock_dir = Path(settings.MEDIA_ROOT) / "thumb_cache" / ".warming"
+    return lock_dir / hashlib.md5(source_name.encode()).hexdigest()
+
+
+def _thumb_warm_acquire(source_name: str) -> bool:
+    """Write a marker file. Returns True if this caller should do the warmup."""
+    lock_path = _thumb_warm_lock_path(source_name)
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        if lock_path.exists():
+            age = __import__("time").time() - lock_path.stat().st_mtime
+            if age < _WARM_LOCK_TTL_SECONDS:
+                return False
+        lock_path.write_text(str(__import__("os").getpid()))
+        return True
+    except OSError:
+        return False
+
+
+def _thumb_warm_release(source_name: str) -> None:
+    try:
+        _thumb_warm_lock_path(source_name).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _warm_video_thumbnails_bg(source_names: list[str]) -> None:
+    """Pre-generate on-disk thumbnail cache for video assets in the given sources."""
+    from ._source_utils import LOCAL_SOURCES_ROOT, LOCAL_SOURCE_VIDEO_EXTS, _local_source_dir_media_files
+    from ._source_utils import _extract_video_frame_image
+
+    for source_name in source_names:
+        source_dir = LOCAL_SOURCES_ROOT / source_name
+        if not source_dir.exists():
+            _thumb_warm_release(source_name)
+            continue
+        cache_dir = Path(settings.MEDIA_ROOT) / "thumb_cache" / source_name
+        try:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            _thumb_warm_release(source_name)
+            continue
+        for file in sorted(_local_source_dir_media_files(source_dir), key=lambda p: p.name.lower()):
+            if file.suffix.lower() not in LOCAL_SOURCE_VIDEO_EXTS:
+                continue
+            safe_stem = hashlib.md5(file.name.encode()).hexdigest()
+            cache_path = cache_dir / f"{safe_stem}.jpg"
+            if cache_path.exists():
+                try:
+                    if cache_path.stat().st_mtime >= file.stat().st_mtime:
+                        continue
+                except OSError:
+                    pass
+            try:
+                frame = _extract_video_frame_image(file)
+                if frame is None:
+                    continue
+                out = io.BytesIO()
+                frame.convert("RGB").save(out, format="JPEG", quality=86)
+                tmp = cache_path.with_suffix(".tmp")
+                tmp.write_bytes(out.getvalue())
+                tmp.replace(cache_path)
+            except Exception:
+                pass
+        _thumb_warm_release(source_name)
 
 
 def source_preview_assets(request):
@@ -199,6 +294,13 @@ def source_preview_assets(request):
             cursor += 1
     else:
         assets = collect_source_assets(source_names, landscape_only=landscape_only)[:max_items]
+
+    # Kick off background thumbnail pre-warming for sources not already being warmed.
+    import threading
+    to_warm = [name for name in source_names if _thumb_warm_acquire(name)]
+    if to_warm:
+        threading.Thread(target=_warm_video_thumbnails_bg, args=(to_warm,), daemon=True).start()
+
     return JsonResponse({"assets": assets})
 
 

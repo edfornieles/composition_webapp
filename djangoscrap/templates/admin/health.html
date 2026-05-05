@@ -1,0 +1,57 @@
+{% extends "layouts/admin.html" %}
+{% block content %}
+<section class="content-header"><div class="container-fluid">
+  <h1>System health</h1>
+</div></section>
+<section class="content"><div class="container-fluid">
+  <div class="row">
+    <div class="col-md-4"><div class="card">
+      <div class="card-header"><strong>Server process</strong></div>
+      <div class="card-body" id="proc-card"><pre id="proc">loading…</pre></div>
+    </div></div>
+    <div class="col-md-8"><div class="card">
+      <div class="card-header"><strong>Live pages</strong> <span id="live-count" class="badge bg-secondary"></span></div>
+      <div class="card-body" style="max-height:560px;overflow:auto">
+        <table class="table table-sm table-striped" id="beacons">
+          <thead><tr>
+            <th>tab</th><th>type</th><th>slug</th><th>fps</th><th>ram MB</th>
+            <th>videos</th><th>raf</th><th>uptime s</th><th>vis</th><th>age s</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div></div>
+  </div>
+  <p class="text-muted small">Auto-refreshes every 3s. Pages with <code>?perf=1</code> in their URL will display an on-page HUD; press <kbd>P</kbd> on any composition page to toggle it.</p>
+</div></section>
+<script>
+async function tick() {
+  try {
+    const res = await fetch("/api/health/", { cache: "no-store" });
+    const data = await res.json();
+    const p = data.process || {};
+    document.getElementById("proc").textContent =
+      `pid       ${p.pid}\nuptime    ${p.uptime_s}s\nrss       ${p.rss_mb} MB\nuser cpu  ${p.user_cpu_s}s\nsys cpu   ${p.sys_cpu_s}s\nfaults    ${p.page_faults}`;
+    document.getElementById("live-count").textContent = data.live_pages + " live";
+    const tbody = document.querySelector("#beacons tbody");
+    tbody.innerHTML = "";
+    const now = Date.now() / 1000;
+    (data.beacons || []).slice().reverse().forEach((b) => {
+      const tr = document.createElement("tr");
+      const age = Math.round(now - (b.server_received_at || now));
+      const cells = [
+        b.tab_id || "?", b.composition_type || "?", b.composition_slug || "—",
+        b.fps ?? "?", b.rss_mb ?? "?", b.video_count ?? "?",
+        b.raf_active ?? "?", b.uptime_s ?? "?",
+        b.visible ? "✓" : "·", age,
+      ];
+      cells.forEach((v) => { const td = document.createElement("td"); td.textContent = v; tr.appendChild(td); });
+      if (age > 30) tr.style.opacity = "0.45";
+      tbody.appendChild(tr);
+    });
+  } catch (_) { /* swallow */ }
+}
+tick();
+setInterval(tick, 3000);
+</script>
+{% endblock %}

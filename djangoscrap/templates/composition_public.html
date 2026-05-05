@@ -355,14 +355,14 @@
             will-change: transform;
         }
         @keyframes overlaySpinContinuous {
-            from { transform: perspective(1000px) rotateY(0deg); }
-            to { transform: perspective(1000px) rotateY(360deg); }
+            from { transform: rotateY(0deg); }
+            to   { transform: rotateY(360deg); }
         }
         @keyframes overlaySpinFrontHalf {
-            0%   { transform: perspective(1000px) rotateY(-90deg); }
-            22%  { transform: perspective(1000px) rotateY(0deg); }
-            72%  { transform: perspective(1000px) rotateY(0deg); }
-            100% { transform: perspective(1000px) rotateY(90deg); }
+            0%   { transform: perspective(1600px) rotateY(-90deg); }
+            22%  { transform: perspective(1600px) rotateY(0deg); }
+            72%  { transform: perspective(1600px) rotateY(0deg); }
+            100% { transform: perspective(1600px) rotateY(90deg); }
         }
         .hidden { display: none !important; }
         .tunnel-grid {
@@ -465,6 +465,187 @@
             overflow: hidden;
             background: radial-gradient(circle at 50% 50%, #140b2a 0%, #090414 48%, #000 100%);
         }
+        .mirror-rotate-stage {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        .mirror-rotate-stage .mr-circle {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 140vmax;
+            height: 140vmax;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            overflow: hidden;
+        }
+        .mirror-rotate-stage .mr-half {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+        }
+        .mirror-rotate-stage .mr-half.left  { clip-path: inset(0 50% 0 0); }
+        .mirror-rotate-stage .mr-half.right { clip-path: inset(0 0 0 50%); }
+        .mirror-rotate-stage .mr-cell {
+            position: absolute;
+            inset: 0;
+        }
+        .mirror-rotate-stage .mr-cell img,
+        .mirror-rotate-stage .mr-cell video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform-origin: 50% 50%;
+            will-change: transform;
+        }
+        /* Animate the persistent cell container, not the inner img/video.
+           This way the rotation phase keeps advancing across asset swaps
+           and the new media inherits the parent's current angle. */
+        .mirror-rotate-stage .mr-half.left .mr-cell {
+            animation: mr-spin-left var(--mr-duration, 12s) linear infinite;
+            transform-origin: 50% 50%;
+            will-change: transform;
+        }
+        .mirror-rotate-stage .mr-half.right .mr-cell {
+            animation: mr-spin-right var(--mr-duration, 12s) linear infinite;
+            transform-origin: 50% 50%;
+            will-change: transform;
+        }
+        @keyframes mr-spin-left {
+            from { transform: rotate(0deg) scale(1.04); }
+            to { transform: rotate(360deg) scale(1.04); }
+        }
+        @keyframes mr-spin-right {
+            from { transform: scaleX(-1) rotate(0deg) scale(1.04); }
+            to { transform: scaleX(-1) rotate(360deg) scale(1.04); }
+        }
+        .kaleido-quad-stage {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        .kaleido-quad-stage .kq-circle {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 140vmax;
+            height: 140vmax;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            overflow: hidden;
+        }
+        .kaleido-quad-stage .kq-quad {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+        }
+        .kaleido-quad-stage .kq-quad.tl { clip-path: inset(0 50% 50% 0); }
+        .kaleido-quad-stage .kq-quad.tr { clip-path: inset(0 0 50% 50%); }
+        .kaleido-quad-stage .kq-quad.bl { clip-path: inset(50% 50% 0 0); }
+        .kaleido-quad-stage .kq-quad.br { clip-path: inset(50% 0 0 50%); }
+        .kaleido-quad-stage .kq-cell {
+            position: absolute;
+            inset: 0;
+        }
+        .kaleido-quad-stage .kq-cell img,
+        .kaleido-quad-stage .kq-cell video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform-origin: 50% 50%;
+            will-change: transform;
+        }
+        .kaleido-quad-stage .kq-cell {
+            transform-origin: 50% 50%;
+            will-change: transform;
+        }
+        .kaleido-quad-stage .kq-quad.tl .kq-cell { animation: kq-spin-tl var(--kq-duration, 12s) linear infinite; }
+        .kaleido-quad-stage .kq-quad.tr .kq-cell { animation: kq-spin-tr var(--kq-duration, 12s) linear infinite; }
+        .kaleido-quad-stage .kq-quad.bl .kq-cell { animation: kq-spin-bl var(--kq-duration, 12s) linear infinite; }
+        .kaleido-quad-stage .kq-quad.br .kq-cell { animation: kq-spin-br var(--kq-duration, 12s) linear infinite; }
+        @keyframes kq-spin-tl {
+            from { transform: rotate(0deg) scale(1.04); }
+            to { transform: rotate(360deg) scale(1.04); }
+        }
+        @keyframes kq-spin-tr {
+            from { transform: scaleX(-1) rotate(0deg) scale(1.04); }
+            to { transform: scaleX(-1) rotate(360deg) scale(1.04); }
+        }
+        @keyframes kq-spin-bl {
+            from { transform: scaleY(-1) rotate(0deg) scale(1.04); }
+            to { transform: scaleY(-1) rotate(360deg) scale(1.04); }
+        }
+        @keyframes kq-spin-br {
+            from { transform: scale(-1, -1) rotate(0deg) scale(1.04); }
+            to { transform: scale(-1, -1) rotate(360deg) scale(1.04); }
+        }
+        .kaleido-octa-stage {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        .kaleido-octa-stage .ko-circle {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 140vmax;
+            height: 140vmax;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            overflow: hidden;
+        }
+        .kaleido-octa-stage .ko-wedge {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+        }
+        .kaleido-octa-stage .ko-wedge-0 { clip-path: polygon(50% 50%, 100% 50%, 100% 100%); }
+        .kaleido-octa-stage .ko-wedge-1 { clip-path: polygon(50% 50%, 100% 100%, 50% 100%); }
+        .kaleido-octa-stage .ko-wedge-2 { clip-path: polygon(50% 50%, 50% 100%, 0% 100%); }
+        .kaleido-octa-stage .ko-wedge-3 { clip-path: polygon(50% 50%, 0% 100%, 0% 50%); }
+        .kaleido-octa-stage .ko-wedge-4 { clip-path: polygon(50% 50%, 0% 50%, 0% 0%); }
+        .kaleido-octa-stage .ko-wedge-5 { clip-path: polygon(50% 50%, 0% 0%, 50% 0%); }
+        .kaleido-octa-stage .ko-wedge-6 { clip-path: polygon(50% 50%, 50% 0%, 100% 0%); }
+        .kaleido-octa-stage .ko-wedge-7 { clip-path: polygon(50% 50%, 100% 0%, 100% 50%); }
+        .kaleido-octa-stage .ko-cell {
+            position: absolute;
+            inset: 0;
+        }
+        .kaleido-octa-stage .ko-cell img,
+        .kaleido-octa-stage .ko-cell video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform-origin: 50% 50%;
+            will-change: transform;
+        }
+        .kaleido-octa-stage .ko-cell { transform-origin: 50% 50%; will-change: transform; }
+        .kaleido-octa-stage .ko-wedge-0 .ko-cell { animation: ko-spin-0 var(--ko-duration, 14s) linear infinite; }
+        .kaleido-octa-stage .ko-wedge-1 .ko-cell { animation: ko-spin-1 var(--ko-duration, 14s) linear infinite; }
+        .kaleido-octa-stage .ko-wedge-2 .ko-cell { animation: ko-spin-2 var(--ko-duration, 14s) linear infinite; }
+        .kaleido-octa-stage .ko-wedge-3 .ko-cell { animation: ko-spin-3 var(--ko-duration, 14s) linear infinite; }
+        .kaleido-octa-stage .ko-wedge-4 .ko-cell { animation: ko-spin-4 var(--ko-duration, 14s) linear infinite; }
+        .kaleido-octa-stage .ko-wedge-5 .ko-cell { animation: ko-spin-5 var(--ko-duration, 14s) linear infinite; }
+        .kaleido-octa-stage .ko-wedge-6 .ko-cell { animation: ko-spin-6 var(--ko-duration, 14s) linear infinite; }
+        .kaleido-octa-stage .ko-wedge-7 .ko-cell { animation: ko-spin-7 var(--ko-duration, 14s) linear infinite; }
+        @keyframes ko-spin-0 { from { transform: rotate(0deg) scale(1.04); } to { transform: rotate(360deg) scale(1.04); } }
+        @keyframes ko-spin-1 { from { transform: scaleX(-1) rotate(90deg) rotate(0deg) scale(1.04); } to { transform: scaleX(-1) rotate(90deg) rotate(360deg) scale(1.04); } }
+        @keyframes ko-spin-2 { from { transform: rotate(90deg) rotate(0deg) scale(1.04); } to { transform: rotate(90deg) rotate(360deg) scale(1.04); } }
+        @keyframes ko-spin-3 { from { transform: scaleX(-1) rotate(0deg) scale(1.04); } to { transform: scaleX(-1) rotate(360deg) scale(1.04); } }
+        @keyframes ko-spin-4 { from { transform: rotate(180deg) rotate(0deg) scale(1.04); } to { transform: rotate(180deg) rotate(360deg) scale(1.04); } }
+        @keyframes ko-spin-5 { from { transform: scaleX(-1) rotate(270deg) rotate(0deg) scale(1.04); } to { transform: scaleX(-1) rotate(270deg) rotate(360deg) scale(1.04); } }
+        @keyframes ko-spin-6 { from { transform: rotate(270deg) rotate(0deg) scale(1.04); } to { transform: rotate(270deg) rotate(360deg) scale(1.04); } }
+        @keyframes ko-spin-7 { from { transform: scaleY(-1) rotate(0deg) scale(1.04); } to { transform: scaleY(-1) rotate(360deg) scale(1.04); } }
         .associations-stage {
             position: absolute;
             inset: 0;
@@ -1143,9 +1324,26 @@
             transform-style: preserve-3d;
             will-change: transform;
         }
+        .comp-loading-cover {
+            position: fixed;
+            inset: 0;
+            z-index: 9998;
+            background: #000 center / cover no-repeat;
+            opacity: 1;
+            transition: opacity 0.7s ease;
+            pointer-events: none;
+        }
+        .comp-loading-cover.fade-out { opacity: 0; }
     </style>
 </head>
 <body>
+    {% if not request.GET.render %}
+        {% if poster_url %}
+        <div id="compLoadingCover" class="comp-loading-cover" style="background-image:url('{{ poster_url }}');"></div>
+        {% else %}
+        <div id="compLoadingCover" class="comp-loading-cover"></div>
+        {% endif %}
+    {% endif %}
     <div class="stage">
         <div class="layer background" id="backgroundLayer"></div>
         <div class="layer foreground" id="foregroundLayer"></div>
@@ -1165,6 +1363,32 @@
         </div>
         <div class="tunnel-stage hidden" id="tunnelStage"></div>
         <div class="swirl-stage hidden" id="swirlStage"></div>
+        <div class="mirror-rotate-stage hidden" id="mirrorRotateStage">
+            <div class="mr-circle">
+                <div class="mr-half left"><div class="mr-cell" id="mirrorRotateCell"></div></div>
+                <div class="mr-half right"><div class="mr-cell" id="mirrorRotateCellMirror"></div></div>
+            </div>
+        </div>
+        <div class="kaleido-quad-stage hidden" id="kaleidoQuadStage">
+            <div class="kq-circle">
+                <div class="kq-quad tl"><div class="kq-cell" id="kaleidoQuadCellTL"></div></div>
+                <div class="kq-quad tr"><div class="kq-cell" id="kaleidoQuadCellTR"></div></div>
+                <div class="kq-quad bl"><div class="kq-cell" id="kaleidoQuadCellBL"></div></div>
+                <div class="kq-quad br"><div class="kq-cell" id="kaleidoQuadCellBR"></div></div>
+            </div>
+        </div>
+        <div class="kaleido-octa-stage hidden" id="kaleidoOctaStage">
+            <div class="ko-circle">
+                <div class="ko-wedge ko-wedge-0"><div class="ko-cell" id="kaleidoOctaCell0"></div></div>
+                <div class="ko-wedge ko-wedge-1"><div class="ko-cell" id="kaleidoOctaCell1"></div></div>
+                <div class="ko-wedge ko-wedge-2"><div class="ko-cell" id="kaleidoOctaCell2"></div></div>
+                <div class="ko-wedge ko-wedge-3"><div class="ko-cell" id="kaleidoOctaCell3"></div></div>
+                <div class="ko-wedge ko-wedge-4"><div class="ko-cell" id="kaleidoOctaCell4"></div></div>
+                <div class="ko-wedge ko-wedge-5"><div class="ko-cell" id="kaleidoOctaCell5"></div></div>
+                <div class="ko-wedge ko-wedge-6"><div class="ko-cell" id="kaleidoOctaCell6"></div></div>
+                <div class="ko-wedge ko-wedge-7"><div class="ko-cell" id="kaleidoOctaCell7"></div></div>
+            </div>
+        </div>
         <div class="psychedelic-stage hidden" id="psychedelicStage">
             <div class="psy-layer one" id="psyLayer0"></div>
             <div class="psy-layer two" id="psyLayer1"></div>
@@ -1210,7 +1434,7 @@
         <a class="click-through hidden" id="clickThroughLink" href="javascript:void(0)" aria-label="Linked composition destination">Linked composition destination</a>
     </div>
 
-    {% if composition.audio_file %}
+    {% if composition.audio_file and not muted %}
     <audio id="compositionAudio" class="composition-audio-hidden" src="{{ composition.audio_file.url }}" autoplay loop preload="auto"></audio>
     {% endif %}
 
@@ -1257,6 +1481,13 @@
         }
         const compositionTypeRaw = JSON.parse(document.getElementById("composition-type").textContent || "\"classic\"");
         const compositionType = compositionTypeRaw === "morph" ? "single" : compositionTypeRaw;
+        // Stash on window so the perf installer (which runs later in this script)
+        // can read it. We can't write to window.__compPerf directly here because
+        // the installer hasn't created it yet.
+        window.__compPerfMeta = {
+            compositionType: compositionType,
+            compositionSlug: (location.pathname.match(/^\/([^\/]+)\/?$/) || [])[1] || null,
+        };
         const compositionTransition = JSON.parse(document.getElementById("composition-transition").textContent || "\"none\"");
         const compositionBackgroundTransition = JSON.parse(document.getElementById("composition-background-transition").textContent || "\"none\"");
         const compositionForegroundTransition = JSON.parse(document.getElementById("composition-foreground-transition").textContent || "\"none\"");
@@ -1350,8 +1581,182 @@
                 }
             };
             document.addEventListener("visibilitychange", () => {
+                // When running inside an iframe (admin live previews, folder grids,
+                // standalone grid_view), the parent tab's visibility already governs
+                // whether the user sees us. Self-pausing here causes the iframe to
+                // stop decoding any time the inner document reports hidden — which
+                // happens in headless preview tooling and some Chromium states even
+                // while the parent is fully visible. Let the parent + the iframe
+                // video kicker drive playback in that case.
+                const inIframe = window !== window.top;
+                if (inIframe) {
+                    if (document.visibilityState === "visible") setStageActivity(true);
+                    return;
+                }
                 setStageActivity(document.visibilityState === "visible");
             });
+        }
+        // Per-page performance probe. Installed once; surfaces FPS, RSS, video
+        // decoder count, timer counts via window.__compPerf so the operator can
+        // assess any tab from devtools or a screenshot. Also POSTs a beacon to
+        // /api/page_beacon/ every 10s so the server-side dashboard sees live tabs.
+        if (!window.__compPerfInstalled) {
+            window.__compPerfInstalled = true;
+            const perf = window.__compPerf = {
+                tabId: Math.random().toString(36).slice(2, 10),
+                startedAt: Date.now(),
+                fps: 0,
+                frames: 0,
+                lastFpsAt: performance.now(),
+                rafActive: 0,
+                intervalActive: 0,
+                videoCount: 0,
+                rssMb: null,
+                pageUrl: location.pathname,
+                compositionType: null,
+                compositionSlug: null,
+                lastBeaconAt: 0,
+                lastBeaconStatus: "pending",
+                memoryCeilingMb: 1500,
+                memoryHits: 0,
+                hudVisible: false,
+            };
+            // Patch RAF/CAF to count active loops.
+            const _rafQueue = new Map();
+            const _origRAF = window.requestAnimationFrame.bind(window);
+            const _origCAF = window.cancelAnimationFrame.bind(window);
+            window.requestAnimationFrame = function (cb) {
+                const id = _origRAF((t) => {
+                    _rafQueue.delete(id);
+                    perf.rafActive = _rafQueue.size;
+                    cb(t);
+                });
+                _rafQueue.set(id, true);
+                perf.rafActive = _rafQueue.size;
+                return id;
+            };
+            window.cancelAnimationFrame = function (id) {
+                _rafQueue.delete(id);
+                perf.rafActive = _rafQueue.size;
+                return _origCAF(id);
+            };
+            // FPS sampler runs at most every 500ms.
+            const fpsTick = () => {
+                perf.frames += 1;
+                const now = performance.now();
+                const dt = now - perf.lastFpsAt;
+                if (dt >= 500) {
+                    perf.fps = Math.round((perf.frames / dt) * 1000);
+                    perf.frames = 0;
+                    perf.lastFpsAt = now;
+                }
+                _origRAF(fpsTick);
+            };
+            _origRAF(fpsTick);
+            // Periodic snapshot: count videos + memory + tracker sizes.
+            const trackerRef = window.__compositionIntervalTrackerInstalled
+                ? window.__overlayRuntimeState : null;
+            const sample = () => {
+                perf.videoCount = document.querySelectorAll("video").length;
+                if (window.performance && performance.memory) {
+                    perf.rssMb = Math.round(performance.memory.usedJSHeapSize / (1024 * 1024));
+                }
+                // Pick up composition metadata once it's been stashed by the
+                // earlier script block that resolves it from JSON.
+                if (window.__compPerfMeta) {
+                    perf.compositionType = window.__compPerfMeta.compositionType;
+                    perf.compositionSlug = window.__compPerfMeta.compositionSlug;
+                }
+                // Memory ceiling: if we exceed the configured cap, force-reload to
+                // recover. Skip on tabs without performance.memory (Safari).
+                if (perf.rssMb && perf.rssMb > perf.memoryCeilingMb) {
+                    perf.memoryHits += 1;
+                    if (perf.memoryHits >= 3) {
+                        try { console.warn("[compPerf] memory ceiling hit, reloading", perf.rssMb); } catch (_) {}
+                        location.reload();
+                        return;
+                    }
+                } else {
+                    perf.memoryHits = 0;
+                }
+                renderHud();
+            };
+            setInterval(sample, 1000);
+            // HUD overlay — toggleable via 'P' key. Always inserted so screenshots
+            // can capture it without an interactive step.
+            const hud = document.createElement("div");
+            hud.id = "__compPerfHud";
+            hud.style.cssText = [
+                "position:fixed", "right:8px", "top:8px", "z-index:2147483647",
+                "background:rgba(0,0,0,0.78)", "color:#0f0", "font:11px/1.3 ui-monospace,Menlo,monospace",
+                "padding:6px 8px", "border-radius:6px", "pointer-events:none",
+                "white-space:pre", "letter-spacing:0.02em",
+                "box-shadow:0 1px 4px rgba(0,0,0,0.5)",
+                "display:none",
+            ].join(";");
+            const renderHud = () => {
+                if (!hud.isConnected) return;
+                hud.textContent = [
+                    `tab ${perf.tabId} ${perf.compositionType || "?"}`,
+                    `fps ${perf.fps}  ram ${perf.rssMb ?? "?"}MB`,
+                    `videos ${perf.videoCount}  raf ${perf.rafActive}`,
+                    `up ${Math.round((Date.now() - perf.startedAt) / 1000)}s  beacon ${perf.lastBeaconStatus}`,
+                ].join("\n");
+            };
+            const attachHud = () => {
+                if (document.body && !hud.isConnected) document.body.appendChild(hud);
+            };
+            if (document.body) attachHud();
+            else document.addEventListener("DOMContentLoaded", attachHud, { once: true });
+            window.addEventListener("keydown", (e) => {
+                if (e.key === "p" || e.key === "P") {
+                    perf.hudVisible = !perf.hudVisible;
+                    hud.style.display = perf.hudVisible ? "block" : "none";
+                    renderHud();
+                }
+            });
+            // URL ?perf=1 forces the HUD on so screenshots in headless mode see it.
+            if (location.search && location.search.indexOf("perf=1") >= 0) {
+                perf.hudVisible = true;
+                hud.style.display = "block";
+            }
+            // Beacon every 10s. Use sendBeacon when available so it survives
+            // page-unload, fall back to fetch with keepalive.
+            const beacon = () => {
+                const body = JSON.stringify({
+                    tab_id: perf.tabId,
+                    page_url: perf.pageUrl,
+                    composition_type: perf.compositionType,
+                    composition_slug: perf.compositionSlug,
+                    fps: perf.fps,
+                    rss_mb: perf.rssMb,
+                    video_count: perf.videoCount,
+                    raf_active: perf.rafActive,
+                    uptime_s: Math.round((Date.now() - perf.startedAt) / 1000),
+                    visible: document.visibilityState === "visible",
+                    user_agent: navigator.userAgent.slice(0, 200),
+                });
+                try {
+                    if (navigator.sendBeacon) {
+                        const blob = new Blob([body], { type: "application/json" });
+                        navigator.sendBeacon("/api/page_beacon/", blob);
+                    } else {
+                        fetch("/api/page_beacon/", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body, keepalive: true,
+                        }).catch(() => {});
+                    }
+                    perf.lastBeaconAt = Date.now();
+                    perf.lastBeaconStatus = "ok";
+                } catch (e) {
+                    perf.lastBeaconStatus = "err";
+                }
+            };
+            setInterval(beacon, 10000);
+            window.addEventListener("pagehide", beacon);
+            // Defer first beacon so compositionType has been set.
+            setTimeout(beacon, 1500);
         }
         // Limit concurrent video-heavy mounts (tunnel-burst, strobe, etc.) so Chrome
         // does not overload HW video decode + compositing — avoids black frames and
@@ -2959,18 +3364,25 @@
             setupPaneMash(rightPane, rightPool);
         }
 
+        const ALL_COMP_STAGE_IDS = [
+            "backgroundLayer", "foregroundLayer", "tunnelGrid", "tunnelStage",
+            "splitScreen", "splitScreenHorizontal", "psychedelicStage",
+            "kaleidoStage", "scrollStage", "strobeStage", "swirlStage",
+            "prismStage", "sleepStage", "waveStage", "angerStage",
+            "anxietyStage", "boxStage", "centerShiftStage", "associationsStage",
+            "liquidMirrorStage", "liquidMirrorExtremeStage", "waxMeltStage",
+            "mirrorRotateStage", "kaleidoQuadStage", "kaleidoOctaStage",
+        ];
+        function hideAllCompStages(exceptId) {
+            for (const id of ALL_COMP_STAGE_IDS) {
+                if (id === exceptId) continue;
+                const el = document.getElementById(id);
+                if (el) el.classList.add("hidden");
+            }
+        }
+
         function setupLiquidMirrorMode() {
-            // Hide everything except the liquid-mirror stage and overlay layer.
-            document.getElementById("backgroundLayer").classList.add("hidden");
-            document.getElementById("foregroundLayer").classList.add("hidden");
-            document.getElementById("tunnelGrid").classList.add("hidden");
-            document.getElementById("splitScreen").classList.add("hidden");
-            document.getElementById("splitScreenHorizontal").classList.add("hidden");
-            document.getElementById("psychedelicStage").classList.add("hidden");
-            document.getElementById("kaleidoStage").classList.add("hidden");
-            document.getElementById("scrollStage").classList.add("hidden");
-            document.getElementById("strobeStage").classList.add("hidden");
-            document.getElementById("tunnelStage").classList.add("hidden");
+            hideAllCompStages("liquidMirrorStage");
             const stage = document.getElementById("liquidMirrorStage");
             stage.classList.remove("hidden");
             stage.innerHTML = "";
@@ -3037,18 +3449,7 @@
         }
 
         function setupLiquidMirrorExtremeMode() {
-            document.getElementById("backgroundLayer").classList.add("hidden");
-            document.getElementById("foregroundLayer").classList.add("hidden");
-            document.getElementById("tunnelGrid").classList.add("hidden");
-            document.getElementById("splitScreen").classList.add("hidden");
-            document.getElementById("splitScreenHorizontal").classList.add("hidden");
-            document.getElementById("psychedelicStage").classList.add("hidden");
-            document.getElementById("kaleidoStage").classList.add("hidden");
-            document.getElementById("scrollStage").classList.add("hidden");
-            document.getElementById("strobeStage").classList.add("hidden");
-            document.getElementById("tunnelStage").classList.add("hidden");
-            const liquid = document.getElementById("liquidMirrorStage");
-            if (liquid) liquid.classList.add("hidden");
+            hideAllCompStages("liquidMirrorExtremeStage");
             const stage = document.getElementById("liquidMirrorExtremeStage");
             stage.classList.remove("hidden");
             stage.innerHTML = "";
@@ -3119,18 +3520,7 @@
         }
 
         function setupWaxMeltMode() {
-            document.getElementById("backgroundLayer").classList.add("hidden");
-            document.getElementById("foregroundLayer").classList.add("hidden");
-            document.getElementById("tunnelGrid").classList.add("hidden");
-            document.getElementById("splitScreen").classList.add("hidden");
-            document.getElementById("splitScreenHorizontal").classList.add("hidden");
-            document.getElementById("psychedelicStage").classList.add("hidden");
-            document.getElementById("kaleidoStage").classList.add("hidden");
-            document.getElementById("scrollStage").classList.add("hidden");
-            document.getElementById("strobeStage").classList.add("hidden");
-            document.getElementById("tunnelStage").classList.add("hidden");
-            const liquid = document.getElementById("liquidMirrorStage");
-            if (liquid) liquid.classList.add("hidden");
+            hideAllCompStages("waxMeltStage");
             const stage = document.getElementById("waxMeltStage");
             stage.classList.remove("hidden");
             stage.innerHTML = "";
@@ -3384,6 +3774,169 @@
             spawnSwirlLayer();
             spawnSwirlLayer();
             setInterval(spawnSwirlLayer, spawnMs);
+        }
+
+        function setupMirrorRotateMode() {
+            hideAllCompStages("mirrorRotateStage");
+            const stage = document.getElementById("mirrorRotateStage");
+            stage.classList.remove("hidden");
+            const left = document.getElementById("mirrorRotateCell");
+            const mirror = document.getElementById("mirrorRotateCellMirror");
+            if (!left || !mirror) return;
+            const speed = Math.max(0.1, compositionSpeed || 1);
+            const durationSec = Math.max(2, 12 / speed);
+            stage.style.setProperty("--mr-duration", `${durationSec.toFixed(2)}s`);
+            if (!bgAssets.length) return;
+
+            let cursor = 0;
+            const pickAsset = () => {
+                if (compositionSourcePlaybackMode === "random" && bgAssets.length > 1) {
+                    let next = Math.floor(Math.random() * bgAssets.length);
+                    if (next === cursor) next = (next + 1) % bgAssets.length;
+                    cursor = next;
+                } else {
+                    cursor = cursor % bgAssets.length;
+                }
+                const asset = bgAssets[cursor];
+                if (compositionSourcePlaybackMode !== "random" || bgAssets.length <= 1) cursor += 1;
+                return asset;
+            };
+
+            const swap = () => {
+                const asset = pickAsset();
+                mountKaleidoCell(left, asset);
+                mountKaleidoCell(mirror, asset);
+            };
+            swap();
+            if (bgAssets.length > 1) {
+                const intervalMs = Math.max(1200, Math.floor(3500 / speed));
+                setInterval(swap, intervalMs);
+            }
+        }
+
+        function mountKaleidoCell(container, asset) {
+            if (!container) return;
+            container.querySelectorAll("video").forEach((v) => {
+                try { v.pause(); } catch (_) {}
+                try { v.removeAttribute("src"); v.load(); } catch (_) {}
+            });
+            container.innerHTML = "";
+            if (!asset) return;
+            const renderAsset = (typeof resolveRenderableAsset === "function")
+                ? resolveRenderableAsset(asset) : asset;
+            if (!renderAsset || !renderAsset.url) return;
+            if (renderAsset.kind === "video") {
+                const v = document.createElement("video");
+                v.src = renderAsset.url;
+                v.autoplay = true;
+                v.loop = true;
+                v.muted = true;
+                v.defaultMuted = true;
+                v.playsInline = true;
+                v.preload = "auto";
+                v.setAttribute("playsinline", "");
+                v.setAttribute("muted", "");
+                v.setAttribute("webkit-playsinline", "");
+                v.controls = false;
+                container.appendChild(v);
+                v.play().catch(() => {});
+                v.addEventListener("error", () => {
+                    const fb = (typeof toVideoFallbackAsset === "function")
+                        ? toVideoFallbackAsset(renderAsset) : null;
+                    if (fb && fb.kind === "image" && fb.url && fb !== renderAsset) {
+                        container.innerHTML = "";
+                        const img = document.createElement("img");
+                        img.src = fb.url;
+                        container.appendChild(img);
+                    }
+                }, { once: true });
+            } else {
+                const img = document.createElement("img");
+                img.src = renderAsset.url;
+                img.alt = renderAsset.name || "";
+                container.appendChild(img);
+            }
+        }
+
+        function setupKaleidoQuadMode() {
+            hideAllCompStages("kaleidoQuadStage");
+            const stage = document.getElementById("kaleidoQuadStage");
+            stage.classList.remove("hidden");
+            const cells = [
+                document.getElementById("kaleidoQuadCellTL"),
+                document.getElementById("kaleidoQuadCellTR"),
+                document.getElementById("kaleidoQuadCellBL"),
+                document.getElementById("kaleidoQuadCellBR"),
+            ];
+            if (cells.some((c) => !c)) return;
+            const speed = Math.max(0.1, compositionSpeed || 1);
+            const durationSec = Math.max(2, 12 / speed);
+            stage.style.setProperty("--kq-duration", `${durationSec.toFixed(2)}s`);
+            if (!bgAssets.length) return;
+
+            let cursor = 0;
+            const pickAsset = () => {
+                if (compositionSourcePlaybackMode === "random" && bgAssets.length > 1) {
+                    let next = Math.floor(Math.random() * bgAssets.length);
+                    if (next === cursor) next = (next + 1) % bgAssets.length;
+                    cursor = next;
+                } else {
+                    cursor = cursor % bgAssets.length;
+                }
+                const asset = bgAssets[cursor];
+                if (compositionSourcePlaybackMode !== "random" || bgAssets.length <= 1) cursor += 1;
+                return asset;
+            };
+
+            const swap = () => {
+                const asset = pickAsset();
+                cells.forEach((c) => mountKaleidoCell(c, asset));
+            };
+            swap();
+            if (bgAssets.length > 1) {
+                const intervalMs = Math.max(1200, Math.floor(3500 / speed));
+                setInterval(swap, intervalMs);
+            }
+        }
+
+        function setupKaleidoOctaMode() {
+            hideAllCompStages("kaleidoOctaStage");
+            const stage = document.getElementById("kaleidoOctaStage");
+            stage.classList.remove("hidden");
+            const cells = [];
+            for (let i = 0; i < 8; i++) {
+                const c = document.getElementById("kaleidoOctaCell" + i);
+                if (!c) return;
+                cells.push(c);
+            }
+            const speed = Math.max(0.1, compositionSpeed || 1);
+            const durationSec = Math.max(2, 14 / speed);
+            stage.style.setProperty("--ko-duration", `${durationSec.toFixed(2)}s`);
+            if (!bgAssets.length) return;
+
+            let cursor = 0;
+            const pickAsset = () => {
+                if (compositionSourcePlaybackMode === "random" && bgAssets.length > 1) {
+                    let next = Math.floor(Math.random() * bgAssets.length);
+                    if (next === cursor) next = (next + 1) % bgAssets.length;
+                    cursor = next;
+                } else {
+                    cursor = cursor % bgAssets.length;
+                }
+                const asset = bgAssets[cursor];
+                if (compositionSourcePlaybackMode !== "random" || bgAssets.length <= 1) cursor += 1;
+                return asset;
+            };
+
+            const swap = () => {
+                const asset = pickAsset();
+                cells.forEach((c) => mountKaleidoCell(c, asset));
+            };
+            swap();
+            if (bgAssets.length > 1) {
+                const intervalMs = Math.max(1200, Math.floor(3500 / speed));
+                setInterval(swap, intervalMs);
+            }
         }
 
         function setVibrateMode(enabled) {
@@ -4525,15 +5078,16 @@
             const spawnCard = () => {
                 const card = document.createElement("div");
                 card.className = "scroll-card";
-                card.style.zIndex = String(Date.now());
+                const depthFactor = 0.55 + Math.random() * 0.9;
+                card.style.zIndex = String(Math.round(depthFactor * 100));
                 const driftX = (-5 + Math.random() * 10).toFixed(2);
                 const driftTilt = (-2.4 + Math.random() * 4.8).toFixed(2);
-                const driftScale = (0.985 + Math.random() * 0.05).toFixed(3);
+                const driftScale = ((0.985 + Math.random() * 0.05) * depthFactor).toFixed(3);
                 card.style.transform = `translateX(${driftX}%) rotate(${driftTilt}deg) scale(${driftScale})`;
-                card.style.opacity = (0.88 + Math.random() * 0.12).toFixed(3);
+                card.style.opacity = (Math.min(1, 0.7 + depthFactor * 0.22)).toFixed(3);
                 const blendModes = ["normal", "screen", "lighten", "color-dodge"];
                 card.style.mixBlendMode = blendModes[Math.floor(Math.random() * blendModes.length)];
-                const durationSec = Math.max(0.65, 4.8 / Math.pow(compositionSpeed, 1.85));
+                const durationSec = Math.max(0.65, (4.8 / Math.pow(compositionSpeed, 1.85)) / depthFactor);
                 card.style.animationDuration = `${durationSec.toFixed(2)}s`;
                 stage.appendChild(card);
                 const asset = nextAsset();
@@ -4967,16 +5521,17 @@
             const spawnCard = () => {
                 const card = document.createElement("div");
                 card.className = "scroll-card";
-                card.style.zIndex = String(Date.now());
-                const durationSec = Math.max(0.58, 3.15 / Math.pow(compositionSpeed, 1.28));
+                const depthFactor = 0.55 + Math.random() * 0.9;
+                card.style.zIndex = String(Math.round(depthFactor * 100));
+                const durationSec = Math.max(0.58, (3.15 / Math.pow(compositionSpeed, 1.28)) / depthFactor);
                 const driftX = (-12 + Math.random() * 24).toFixed(2);
                 const driftTilt = (-6.5 + Math.random() * 13).toFixed(2);
-                const driftScale = (0.95 + Math.random() * 0.12).toFixed(3);
+                const driftScale = ((0.95 + Math.random() * 0.12) * depthFactor).toFixed(3);
                 const hue = (-18 + Math.random() * 36).toFixed(1);
                 const contrast = (1.12 + Math.random() * 0.34).toFixed(3);
                 const sat = (1.05 + Math.random() * 0.85).toFixed(3);
                 card.style.transform = `translateX(${driftX}%) rotate(${driftTilt}deg) scale(${driftScale})`;
-                card.style.opacity = (0.72 + Math.random() * 0.28).toFixed(3);
+                card.style.opacity = (Math.min(1, 0.55 + depthFactor * 0.38)).toFixed(3);
                 card.style.filter = `contrast(${contrast}) saturate(${sat}) hue-rotate(${hue}deg)`;
                 const blendModes = ["screen", "lighten", "difference", "color-dodge", "hard-light"];
                 card.style.mixBlendMode = blendModes[Math.floor(Math.random() * blendModes.length)];
@@ -5738,11 +6293,11 @@
             stage.appendChild(room);
 
             const wallSpecs = [
-                { key: "ceiling", phase: 0.0, z: 20, clip: "polygon(0% 0%, 100% 0%, 80% 18%, 20% 18%)" },
-                { key: "left", phase: 0.8, z: 24, clip: "polygon(0% 0%, 20% 18%, 20% 74%, 0% 100%)" },
-                { key: "right", phase: 1.6, z: 24, clip: "polygon(100% 0%, 80% 18%, 80% 74%, 100% 100%)" },
-                { key: "floor", phase: 2.4, z: 21, clip: "polygon(20% 74%, 80% 74%, 100% 100%, 0% 100%)" },
-                { key: "back", phase: 3.2, z: 30, clip: "polygon(20% 18%, 80% 18%, 80% 74%, 20% 74%)" },
+                { key: "ceiling", phase: 0.0, z: 20, clip: "polygon(0% 0%, 100% 0%, 78% 22%, 22% 22%)" },
+                { key: "left", phase: 0.8, z: 24, clip: "polygon(0% 0%, 22% 22%, 22% 78%, 0% 100%)" },
+                { key: "right", phase: 1.6, z: 24, clip: "polygon(100% 0%, 78% 22%, 78% 78%, 100% 100%)" },
+                { key: "floor", phase: 2.4, z: 21, clip: "polygon(22% 78%, 78% 78%, 100% 100%, 0% 100%)" },
+                { key: "back", phase: 3.2, z: 30, clip: "polygon(22% 22%, 78% 22%, 78% 78%, 22% 78%)" },
             ];
 
             const walls = wallSpecs.map((spec) => {
@@ -6067,6 +6622,15 @@
                 if (lenient) return true;
                 return el.videoWidth > 0 && el.videoHeight > 0;
             };
+            // Split types mount the second pane with a delay — both must have content.
+            if (compositionType === "left-to-right" || compositionType === "top-and-bottom") {
+                const aId = compositionType === "top-and-bottom" ? "splitTop"    : "splitLeft";
+                const bId = compositionType === "top-and-bottom" ? "splitBottom" : "splitRight";
+                const aEl = document.getElementById(aId);
+                const bEl = document.getElementById(bId);
+                if (!aEl || !bEl) return false;
+                if (!aEl.querySelector("img,video") || !bEl.querySelector("img,video")) return false;
+            }
             if (compositionType === "quad") {
                 const need = Math.min(4, bgAssets.length);
                 if (need === 0) return true;
@@ -6139,6 +6703,9 @@
                 if (compact === "circlerotatemirror" || compact === "circlemirror") return "circle_rotate_mirror";
                 if (compact === "mash" || compact === "glitchmash" || compact === "overlaymash") return "mash";
                 if (compact === "orb" || compact === "folderorb" || compact === "orbsphere" || compact === "sphere") return "orb";
+                if (compact === "kaleidoquad" || compact === "kaleido4") return "kaleido_quad";
+                if (compact === "kaleidoocta" || compact === "kaleido8") return "kaleido_octa";
+                if (compact === "strobe") return "strobe";
                 return "none";
             };
             const resolvedOverlayEffect = (() => {
@@ -6210,7 +6777,9 @@
                 const isCircleOverlayEffect =
                     resolvedOverlayEffect === "circle_rotate" ||
                     resolvedOverlayEffect === "circle_rotate_mirror" ||
-                    resolvedOverlayEffect === "orb";
+                    resolvedOverlayEffect === "orb" ||
+                    resolvedOverlayEffect === "kaleido_quad" ||
+                    resolvedOverlayEffect === "kaleido_octa";
                 const isMashOverlayEffect = resolvedOverlayEffect === "mash";
                 const isConstrainedFit =
                     overlayFit === "framed" ||
@@ -6293,13 +6862,15 @@
                 let mashTimer = null;
                 const shell = buildOverlayShell();
                 overlayLayer.appendChild(shell.wrapper);
-                shell.inner.style.position = "relative";
-                shell.inner.style.overflow = "hidden";
+                shell.inner.style.cssText += ";position:relative;overflow:hidden;contain:layout paint;";
                 const speed = Math.max(0.25, overlaySpeed);
                 const transitionMs = Math.max(260, Math.floor(520 / speed));
                 const holdMs = Math.max(260, Math.floor(900 / speed));
-                const cols = Math.max(8, Math.min(24, Math.round(11 + (speed * 3))));
+                // Cap cols at 16 (256 tiles max) — visual quality unchanged, DOM cost halved vs old 24-cap
+                const cols = Math.max(8, Math.min(16, Math.round(10 + (speed * 2))));
                 const rows = cols;
+                const keepChance = 0.32;
+
                 const pickOverlayRenderable = (asset) => {
                     const renderAsset = resolveRenderableAsset(asset);
                     if (!renderAsset) return null;
@@ -6309,69 +6880,80 @@
                     }
                     return renderAsset;
                 };
-                const buildMashLayer = (asset) => {
-                    const renderAsset = pickOverlayRenderable(asset);
-                    if (!renderAsset || !renderAsset.url) return null;
+
+                // Build a reusable tile pool once — never recreated, only background-image updated.
+                const buildMashPool = () => {
                     const layer = document.createElement("div");
-                    layer.style.position = "absolute";
-                    layer.style.inset = "0";
-                    layer.style.display = "grid";
-                    layer.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
-                    layer.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
-                    layer.style.opacity = "0";
-                    layer.style.transition = `opacity ${transitionMs}ms ease-in-out`;
-                    layer.style.willChange = "opacity, transform, filter";
-                    const keepChance = 0.32;
+                    layer.style.cssText = `position:absolute;inset:0;display:grid;grid-template-columns:repeat(${cols},minmax(0,1fr));grid-template-rows:repeat(${rows},minmax(0,1fr));opacity:0;transition:opacity ${transitionMs}ms ease-in-out;will-change:opacity,transform,filter;`;
                     for (let r = 0; r < rows; r++) {
                         for (let c = 0; c < cols; c++) {
                             const tile = document.createElement("div");
-                            tile.style.position = "relative";
-                            tile.style.overflow = "hidden";
+                            tile.style.cssText = "position:relative;overflow:hidden;";
                             if (Math.random() > keepChance) {
                                 tile.style.visibility = "hidden";
                                 layer.appendChild(tile);
                                 continue;
                             }
                             const px = document.createElement("div");
-                            px.style.position = "absolute";
-                            px.style.inset = "0";
-                            px.style.backgroundImage = `url("${renderAsset.url}")`;
-                            px.style.backgroundRepeat = "no-repeat";
-                            px.style.backgroundSize = `${cols * 100}% ${rows * 100}%`;
-                            px.style.backgroundPosition = `${(c / Math.max(1, cols - 1)) * 100}% ${(r / Math.max(1, rows - 1)) * 100}%`;
                             const dx = (-9 + Math.random() * 18).toFixed(2);
                             const dy = (-9 + Math.random() * 18).toFixed(2);
                             const rt = (-10 + Math.random() * 20).toFixed(2);
                             const sc = (0.88 + Math.random() * 0.28).toFixed(3);
-                            px.style.transform = `translate(${dx}%, ${dy}%) rotate(${rt}deg) scale(${sc})`;
-                            px.style.filter = `contrast(${(1 + Math.random() * 0.9).toFixed(3)}) saturate(${(0.9 + Math.random() * 1.4).toFixed(3)})`;
+                            px.style.cssText = `position:absolute;inset:0;background-repeat:no-repeat;background-size:${cols * 100}% ${rows * 100}%;background-position:${(c / Math.max(1, cols - 1)) * 100}% ${(r / Math.max(1, rows - 1)) * 100}%;transform:translate(${dx}%,${dy}%) rotate(${rt}deg) scale(${sc});filter:contrast(${(1 + Math.random() * 0.9).toFixed(3)}) saturate(${(0.9 + Math.random() * 1.4).toFixed(3)});`;
                             tile.appendChild(px);
                             layer.appendChild(tile);
                         }
                     }
+                    shell.inner.appendChild(layer);
                     return layer;
                 };
+
+                // Two permanent layers — alternate between them (dual-buffer crossfade).
+                const layerA = buildMashPool();
+                const layerB = buildMashPool();
                 let activeLayer = null;
+
+                // Stamp a new image URL onto every visible tile in a layer.
+                const applyUrlToPool = (layer, url) => {
+                    const pxNodes = layer.querySelectorAll("div > div");
+                    for (let i = 0; i < pxNodes.length; i++) {
+                        pxNodes[i].style.backgroundImage = `url("${url}")`;
+                    }
+                    layer.style.transform = `scale(${(0.97 + Math.random() * 0.09).toFixed(3)})`;
+                    layer.style.filter = `hue-rotate(${(-24 + Math.random() * 48).toFixed(1)}deg)`;
+                };
+
+                const swapToUrl = (url) => {
+                    if (!shell.inner.isConnected) return;
+                    const incoming = activeLayer === layerA ? layerB : layerA;
+                    applyUrlToPool(incoming, url);
+                    requestAnimationFrame(() => {
+                        incoming.style.opacity = "1";
+                        if (activeLayer) activeLayer.style.opacity = "0";
+                        activeLayer = incoming;
+                    });
+                };
+
+                // Preload next image during the hold period so tiles never wait on a network fetch.
+                const _mashPreloadCache = new Set();
+                const preloadUrl = (url) => {
+                    if (_mashPreloadCache.has(url)) return Promise.resolve();
+                    return new Promise((resolve) => {
+                        const img = new Image();
+                        img.onload = img.onerror = () => { _mashPreloadCache.add(url); resolve(); };
+                        img.src = url;
+                    });
+                };
+
                 const mountNextMash = () => {
                     if (!shell.inner.isConnected || !overlayAssets.length) return;
                     const asset = pickRandomOverlayAsset();
                     if (!asset) return;
-                    const incoming = buildMashLayer(asset);
-                    if (!incoming) return;
-                    shell.inner.appendChild(incoming);
-                    requestAnimationFrame(() => {
-                        incoming.style.opacity = "1";
-                        incoming.style.transform = `scale(${(0.97 + Math.random() * 0.09).toFixed(3)})`;
-                        incoming.style.filter = `hue-rotate(${(-24 + Math.random() * 48).toFixed(1)}deg)`;
-                        if (activeLayer) {
-                            activeLayer.style.opacity = "0";
-                            setTimeout(() => {
-                                if (activeLayer && activeLayer.parentElement === shell.inner) activeLayer.remove();
-                            }, transitionMs + 40);
-                        }
-                        activeLayer = incoming;
-                    });
+                    const renderAsset = pickOverlayRenderable(asset);
+                    if (!renderAsset || !renderAsset.url) return;
+                    preloadUrl(renderAsset.url).then(() => swapToUrl(renderAsset.url));
                 };
+
                 mountNextMash();
                 mashTimer = trackOverlayInterval(setInterval(() => {
                     if (!shell.inner.isConnected) {
@@ -6381,6 +6963,72 @@
                     }
                     mountNextMash();
                 }, transitionMs + holdMs));
+                return;
+            }
+            if (resolvedOverlayEffect === "strobe") {
+                const shell = buildOverlayShell();
+                shell.inner.style.position = "relative";
+                shell.inner.style.overflow = "hidden";
+                overlayLayer.appendChild(shell.wrapper);
+                const strobeMs = Math.max(42, Math.floor(82 / Math.max(0.25, overlaySpeed)));
+                let idx = 0;
+                const tick = () => {
+                    if (!shell.inner.isConnected) return;
+                    const asset = pickRandomOverlayAsset();
+                    if (asset) mountKaleidoCell(shell.inner, asset);
+                };
+                tick();
+                trackOverlayInterval(setInterval(tick, strobeMs));
+                return;
+            }
+            if (resolvedOverlayEffect === "kaleido_quad" || resolvedOverlayEffect === "kaleido_octa") {
+                const isOcta = resolvedOverlayEffect === "kaleido_octa";
+                const speed = Math.max(0.1, overlaySpeed || 1);
+                const durationSec = (isOcta ? Math.max(2, 14 / speed) : Math.max(2, 12 / speed)).toFixed(2);
+                const shell = buildOverlayShell();
+                shell.inner.style.position = "relative";
+                overlayLayer.appendChild(shell.wrapper);
+                const asset = pickRandomOverlayAsset();
+                const mountCell = (cell) => mountKaleidoCell(cell, asset);
+                if (!isOcta) {
+                    const quads = [
+                        { clip: "inset(0 50% 50% 0)",  anim: `kq-spin-tl ${durationSec}s linear infinite` },
+                        { clip: "inset(0 0 50% 50%)",   anim: `kq-spin-tr ${durationSec}s linear infinite` },
+                        { clip: "inset(50% 50% 0 0)",   anim: `kq-spin-bl ${durationSec}s linear infinite` },
+                        { clip: "inset(50% 0 0 50%)",   anim: `kq-spin-br ${durationSec}s linear infinite` },
+                    ];
+                    quads.forEach(({ clip, anim }) => {
+                        const quad = document.createElement("div");
+                        quad.style.cssText = `position:absolute;inset:0;overflow:hidden;clip-path:${clip};`;
+                        const cell = document.createElement("div");
+                        cell.style.cssText = "position:absolute;inset:0;transform-origin:50% 50%;will-change:transform;";
+                        cell.style.animation = anim;
+                        quad.appendChild(cell);
+                        shell.inner.appendChild(quad);
+                        mountCell(cell);
+                    });
+                } else {
+                    const wedgeClips = [
+                        "polygon(50% 50%, 100% 50%, 100% 100%)",
+                        "polygon(50% 50%, 100% 100%, 50% 100%)",
+                        "polygon(50% 50%, 50% 100%, 0% 100%)",
+                        "polygon(50% 50%, 0% 100%, 0% 50%)",
+                        "polygon(50% 50%, 0% 50%, 0% 0%)",
+                        "polygon(50% 50%, 0% 0%, 50% 0%)",
+                        "polygon(50% 50%, 50% 0%, 100% 0%)",
+                        "polygon(50% 50%, 100% 0%, 100% 50%)",
+                    ];
+                    wedgeClips.forEach((clip, i) => {
+                        const wedge = document.createElement("div");
+                        wedge.style.cssText = `position:absolute;inset:0;overflow:hidden;clip-path:${clip};`;
+                        const cell = document.createElement("div");
+                        cell.style.cssText = "position:absolute;inset:0;transform-origin:50% 50%;will-change:transform;";
+                        cell.style.animation = `ko-spin-${i} ${durationSec}s linear infinite`;
+                        wedge.appendChild(cell);
+                        shell.inner.appendChild(wedge);
+                        mountCell(cell);
+                    });
+                }
                 return;
             }
             const applyOverlayMotionEffect = (host, media) => {
@@ -6652,6 +7300,13 @@
                 };
                 const render = () => {
                     if (!canvas.isConnected) return;
+                    // Skip CPU-heavy per-pixel sphere render when tab is hidden.
+                    // Reschedule with a setTimeout so we resume immediately when
+                    // visibility returns without burning RAF cycles in the meantime.
+                    if (document.visibilityState !== "visible") {
+                        setTimeout(() => requestAnimationFrame(render), 250);
+                        return;
+                    }
                     const curReady = drawSourceTo(backCtx, currentImg, currentVideo);
                     if (!curReady) {
                         requestAnimationFrame(render);
@@ -6738,24 +7393,46 @@
             if (resolvedOverlayEffect === "rotate_3d") {
                 const shell = buildOverlayShell();
                 overlayLayer.appendChild(shell.wrapper);
-                const halfTurnMs = Math.max(900, Math.floor(2600 / Math.max(0.25, overlaySpeed)));
-                const playHalfTurn = () => {
-                    const asset = pickRandomOverlayAsset();
+                // Perspective on inner so 3D context is established; rotator spins inside it
+                shell.inner.style.perspective = "1600px";
+                shell.inner.style.perspectiveOrigin = "50% 50%";
+                shell.inner.style.position = "relative";
+
+                const rotator = document.createElement("div");
+                rotator.style.cssText = "width:100%;height:100%;position:absolute;inset:0;transform-style:preserve-3d;";
+                shell.inner.appendChild(rotator);
+
+                const front = document.createElement("div");
+                front.style.cssText = "position:absolute;inset:0;overflow:hidden;backface-visibility:visible;";
+
+                const back = document.createElement("div");
+                // rotateY(180deg) makes it face rearward; scaleX(-1) on the media mirrors it so it reads correctly
+                back.style.cssText = "position:absolute;inset:0;overflow:hidden;backface-visibility:visible;transform:rotateY(180deg);";
+
+                rotator.appendChild(front);
+                rotator.appendChild(back);
+
+                const fullTurnMs = Math.max(4000, Math.floor(16000 / Math.max(0.25, overlaySpeed)));
+
+                const loadFaces = (asset) => {
                     if (!asset) return;
-                    mountAsset(shell.inner, asset, false);
-                    applyMountedMediaFit(shell.inner);
-                    shell.inner.style.transformOrigin = "50% 50%";
-                    shell.inner.style.backfaceVisibility = "hidden";
-                    shell.inner.style.animation = "none";
-                    // Force reflow so each cycle restarts from edge-on.
-                    void shell.inner.offsetWidth;
-                    shell.inner.style.animation = `overlaySpinFrontHalf ${halfTurnMs}ms linear 1`;
-                    shell.inner.onanimationend = () => {
-                        if (!shell.inner.isConnected) return;
-                        playHalfTurn();
-                    };
+                    mountAsset(front, asset, false);
+                    applyMountedMediaFit(front);
+                    mountAsset(back, asset, false);
+                    applyMountedMediaFit(back);
+                    const backMedia = back.querySelector("img,video");
+                    if (backMedia) backMedia.style.transform = (backMedia.style.transform || "") + " scaleX(-1)";
                 };
-                playHalfTurn();
+
+                loadFaces(pickRandomOverlayAsset());
+                rotator.style.animation = `overlaySpinContinuous ${fullTurnMs}ms linear infinite`;
+
+                if (overlayAssets.length > 1) {
+                    trackOverlayInterval(setInterval(() => {
+                        if (!rotator.isConnected) return;
+                        loadFaces(pickRandomOverlayAsset());
+                    }, fullTurnMs / 2));
+                }
                 return;
             }
             const mount = () => {
@@ -6902,120 +7579,116 @@
                 },
             })
             : null;
-        if (compositionType === "quad") {
-            setupQuadMode();
-        } else if (compositionType === "mash") {
-            setupMashMode();
-        } else if (compositionType === "mash-fine") {
-            setupMashFineMode();
-        } else if (compositionType === "mash-fine-double") {
-            setupMashFineDoubleMode();
-        } else if (compositionType === "mash-fine-flux") {
-            setupMashFineFluxMode();
-        } else if (compositionType === "mash-superfine") {
-            setupMashSuperfineMode();
-        } else if (compositionType === "mash-superfine-flux") {
-            setupMashSuperfineFluxMode();
-        } else if (compositionType === "vertical-stripes") {
-            setupVerticalStripesMode();
-        } else if (compositionType === "horizontal-stripes") {
-            setupHorizontalStripesMode();
-        } else if (compositionType === "vertical-stripes-thick") {
-            setupVerticalStripesThickMode();
-        } else if (compositionType === "horizontal-stripes-thick") {
-            setupHorizontalStripesThickMode();
-        } else if (compositionType === "single") {
-            if (_sharedCoreRunner) _sharedCoreRunner.start("single");
-            else setupSingleMode();
-        } else if (compositionType === "associations") {
-            setupAssociationsMode();
-        } else if (compositionType === "vibrate") {
-            if (_sharedCoreRunner) _sharedCoreRunner.start("vibrate");
-            else setupVibrateMode();
-        } else if (compositionType === "circle-foreground" || compositionType === "circle-foreground-rotate" || compositionType === "circle-foreground-rotate-mirror") {
+        // Dispatch table: each comp type maps to a thunk that runs its setup.
+        // Types that have a shared-core-runner path use sharedOr(name, fallback).
+        const sharedOr = (name, fallback) => () => {
+            if (_sharedCoreRunner) _sharedCoreRunner.start(name);
+            else fallback();
+        };
+        const passthroughShared = (fallback) => () => {
             if (_sharedCoreRunner) _sharedCoreRunner.start(compositionType);
-            else setupClassicMode();
-        } else if (compositionType === "cross-foreground" || compositionType === "cross-foreground-rotate" || compositionType === "cross-foreground-tunnel") {
-            if (_sharedCoreRunner) _sharedCoreRunner.start(compositionType);
-            else setupClassicMode();
-        } else if (compositionType === "bat-foreground" || compositionType === "bat-foreground-rotate") {
-            if (_sharedCoreRunner) _sharedCoreRunner.start(compositionType);
-            else setupClassicMode();
-        } else if (compositionType === "morph-fast") {
-            setupMorphFastMode();
-        } else if (compositionType === "eye-morph") {
-            setupEyeMorphMode();
-        } else if (compositionType === "tunnel") {
-            if (_sharedCoreRunner) _sharedCoreRunner.start("tunnel");
-            else setupTunnelMode();
-        } else if (compositionType === "psychedelic-tunnel") {
-            setupTunnelMode("psychedelic");
-        } else if (compositionType === "tunnel-double") {
-            setupTunnelDoubleMode();
-        } else if (compositionType === "tunnel-burst") {
-            setupTunnelBurstMode();
-        } else if (compositionType === "liquid-mirror") {
-            setupLiquidMirrorMode();
-        } else if (compositionType === "liquid-mirror-extreme") {
-            setupLiquidMirrorExtremeMode();
-        } else if (compositionType === "wax-melt") {
-            setupWaxMeltMode();
-        } else if (compositionType === "swirl") {
-            setupSwirlMode();
-        } else if (compositionType === "psychedelic") {
-            setupPsychedelicMode("default");
-        } else if (compositionType === "psychedelic-calm") {
-            setupPsychedelicMode("calm");
-        } else if (compositionType === "psychedelic-intense") {
-            setupPsychedelicMode("intense");
-        } else if (compositionType === "kaleidoscope") {
-            setupKaleidoscopeMode();
-        } else if (compositionType === "dirty-scroll" || compositionType === "social-scroll") {
-            if (_sharedCoreRunner) _sharedCoreRunner.start("social-scroll");
-            else setupSocialScrollMode();
-        } else if (compositionType === "scrollhole") {
-            if (_sharedCoreRunner) _sharedCoreRunner.start("scrollhole");
-            else setupScrollholeMode();
-        } else if (compositionType === "strobe") {
-            if (_sharedCoreRunner) _sharedCoreRunner.start("strobe");
-            else setupStrobeMode();
-        } else if (compositionType === "strobe-double") {
-            setupStrobeDoubleMode();
-        } else if (compositionType === "center-shift") {
-            setupCenterShiftMode(false);
-        } else if (compositionType === "star-shift") {
-            setupCenterShiftMode(true);
-        } else if (compositionType === "prism-burst") {
-            setupPrismBurstMode("constructivist");
-        } else if (compositionType === "prism-burst-neon") {
-            setupPrismBurstMode("neon");
-        } else if (compositionType === "sleep-drift") {
-            setupSleepDriftMode();
-        } else if (compositionType === "calm-wave") {
-            setupCalmWaveMode();
-        } else if (compositionType === "anger-surge") {
-            setupAngerSurgeMode();
-        } else if (compositionType === "anxiety-loop") {
-            setupAnxietyLoopMode();
-        } else if (compositionType === "box-room") {
-            setupBoxRoomMode();
-        } else if (compositionType === "cylinder-room") {
-            setupCylinderRoomMode();
-        } else if (compositionType === "triple-cylinder-room") {
-            setupTripleCylinderRoomMode();
-        } else if (compositionType === "left-to-right") {
-            if (_sharedCoreRunner) _sharedCoreRunner.start("split-lr");
-            else setupSplitMode();
-        } else if (compositionType === "top-and-bottom") {
-            if (_sharedCoreRunner) _sharedCoreRunner.start("split-tb");
-            else setupTopBottomMode();
-        } else if (compositionType === "psychedelic-classic") {
-            setupPsychedelicClassicMode();
-        } else {
-            if (_sharedCoreRunner) _sharedCoreRunner.start("classic");
-            else setupClassicMode();
+            else fallback();
+        };
+        const compTypeHandlers = {
+            "quad": () => setupQuadMode(),
+            "mash": () => setupMashMode(),
+            "mash-fine": () => setupMashFineMode(),
+            "mash-fine-double": () => setupMashFineDoubleMode(),
+            "mash-fine-flux": () => setupMashFineFluxMode(),
+            "mash-superfine": () => setupMashSuperfineMode(),
+            "mash-superfine-flux": () => setupMashSuperfineFluxMode(),
+            "vertical-stripes": () => setupVerticalStripesMode(),
+            "horizontal-stripes": () => setupHorizontalStripesMode(),
+            "vertical-stripes-thick": () => setupVerticalStripesThickMode(),
+            "horizontal-stripes-thick": () => setupHorizontalStripesThickMode(),
+            "single": sharedOr("single", () => setupSingleMode()),
+            "associations": () => setupAssociationsMode(),
+            "vibrate": sharedOr("vibrate", () => setupVibrateMode()),
+            "circle-foreground": passthroughShared(() => setupClassicMode()),
+            "circle-foreground-rotate": passthroughShared(() => setupClassicMode()),
+            "circle-foreground-rotate-mirror": passthroughShared(() => setupClassicMode()),
+            "cross-foreground": passthroughShared(() => setupClassicMode()),
+            "cross-foreground-rotate": passthroughShared(() => setupClassicMode()),
+            "cross-foreground-tunnel": passthroughShared(() => setupClassicMode()),
+            "bat-foreground": passthroughShared(() => setupClassicMode()),
+            "bat-foreground-rotate": passthroughShared(() => setupClassicMode()),
+            "morph-fast": () => setupMorphFastMode(),
+            "eye-morph": () => setupEyeMorphMode(),
+            "tunnel": sharedOr("tunnel", () => setupTunnelMode()),
+            "psychedelic-tunnel": () => setupTunnelMode("psychedelic"),
+            "tunnel-double": () => setupTunnelDoubleMode(),
+            "tunnel-burst": () => setupTunnelBurstMode(),
+            "liquid-mirror": () => setupLiquidMirrorMode(),
+            "liquid-mirror-extreme": () => setupLiquidMirrorExtremeMode(),
+            "wax-melt": () => setupWaxMeltMode(),
+            "mirror-rotate": () => setupMirrorRotateMode(),
+            "kaleido-quad": () => setupKaleidoQuadMode(),
+            "kaleido-octa": () => setupKaleidoOctaMode(),
+            "swirl": () => setupSwirlMode(),
+            "psychedelic": () => setupPsychedelicMode("default"),
+            "psychedelic-calm": () => setupPsychedelicMode("calm"),
+            "psychedelic-intense": () => setupPsychedelicMode("intense"),
+            "kaleidoscope": () => setupKaleidoscopeMode(),
+            "dirty-scroll": sharedOr("social-scroll", () => setupSocialScrollMode()),
+            "social-scroll": sharedOr("social-scroll", () => setupSocialScrollMode()),
+            "scrollhole": sharedOr("scrollhole", () => setupScrollholeMode()),
+            "strobe": sharedOr("strobe", () => setupStrobeMode()),
+            "strobe-double": () => setupStrobeDoubleMode(),
+            "center-shift": () => setupCenterShiftMode(false),
+            "star-shift": () => setupCenterShiftMode(true),
+            "prism-burst": () => setupPrismBurstMode("constructivist"),
+            "prism-burst-neon": () => setupPrismBurstMode("neon"),
+            "sleep-drift": () => setupSleepDriftMode(),
+            "calm-wave": () => setupCalmWaveMode(),
+            "anger-surge": () => setupAngerSurgeMode(),
+            "anxiety-loop": () => setupAnxietyLoopMode(),
+            "box-room": () => setupBoxRoomMode(),
+            "cylinder-room": () => setupCylinderRoomMode(),
+            "triple-cylinder-room": () => setupTripleCylinderRoomMode(),
+            "left-to-right": sharedOr("split-lr", () => setupSplitMode()),
+            "top-and-bottom": sharedOr("split-tb", () => setupTopBottomMode()),
+            "psychedelic-classic": () => setupPsychedelicClassicMode(),
+        };
+        const compTypeFallback = sharedOr("classic", () => setupClassicMode());
+        try {
+            (compTypeHandlers[compositionType] || compTypeFallback)();
+        } catch (e) {
+            console.error("[comp-type setup failed]", compositionType, e);
+            try { setupClassicMode(); } catch (_) {}
         }
-        setupOverlayLayer();
+        try { setupOverlayLayer(); } catch (e) { console.error("[setupOverlayLayer failed]", e); }
+
+        // Fade out loading cover once composition has real pixels (non-render mode)
+        if (!renderMode) {
+            (function () {
+                const cover = document.getElementById("compLoadingCover");
+                if (!cover) return;
+                let cleared = false;
+                const dismiss = () => {
+                    if (cleared) return;
+                    cleared = true;
+                    cover.classList.add("fade-out");
+                    setTimeout(() => { try { cover.remove(); } catch (_) {} }, 750);
+                };
+                const patchworkTypes = new Set([
+                    "horizontal-stripes", "vertical-stripes",
+                    "horizontal-stripes-thick", "vertical-stripes-thick",
+                    "mash", "mash-fine", "mash-superfine",
+                    "mash-fine-flux", "mash-superfine-flux",
+                ]);
+                if (!patchworkTypes.has(compositionType)) {
+                    setTimeout(dismiss, 600);
+                    return;
+                }
+                // For heavy patchwork types poll readiness, cap at 18s
+                const poll = setInterval(() => {
+                    try { if (isCompositionReadyForCapture()) { clearInterval(poll); dismiss(); } }
+                    catch (_) { clearInterval(poll); dismiss(); }
+                }, 250);
+                setTimeout(() => { clearInterval(poll); dismiss(); }, 18000);
+            })();
+        }
+
         // On back/forward navigation, browser BFCache can restore stale timers/media.
         // Reload to guarantee layers and animations remount cleanly.
         window.addEventListener("pageshow", (event) => {
@@ -7023,25 +7696,38 @@
         });
 
         if (renderMode) {
+            // Black overlay covers the stage until both panes are loaded so that
+            // blackdetect trim can reliably cut the initial loading frames.
+            const _renderCover = document.createElement("div");
+            _renderCover.id = "renderLoadingCover";
+            _renderCover.style.cssText = "position:fixed;inset:0;z-index:9999;background:#000;pointer-events:none;";
+            document.body.appendChild(_renderCover);
+
             window.__compositionCaptureReady = false;
             window.__compositionCaptureLenientVideo = false;
             setTimeout(() => {
                 window.__compositionCaptureLenientVideo = true;
             }, 15000);
+            const _removeCover = () => {
+                try { _renderCover.remove(); } catch (_) {}
+            };
             const poll = setInterval(() => {
                 try {
                     if (isCompositionReadyForCapture()) {
-                        window.__compositionCaptureReady = true;
                         clearInterval(poll);
+                        _removeCover();
+                        window.__compositionCaptureReady = true;
                     }
                 } catch (e) {
-                    window.__compositionCaptureReady = true;
                     clearInterval(poll);
+                    _removeCover();
+                    window.__compositionCaptureReady = true;
                 }
             }, 150);
             setTimeout(() => {
-                window.__compositionCaptureReady = true;
                 clearInterval(poll);
+                _removeCover();
+                window.__compositionCaptureReady = true;
             }, 90000);
         }
 

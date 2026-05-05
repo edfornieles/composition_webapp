@@ -246,6 +246,22 @@ def _resolve_composition_relative_media_path(relative_path: str) -> tuple[str, P
     return source_name, source_dir, target
 
 
+def _trigger_poster_generation(composition_id: int) -> None:
+    """Spawn a daemon thread to generate/refresh the poster for a composition."""
+    def _run(cid):
+        try:
+            from ..nft_media import generate_composition_media_assets
+            from ..models import Composition as _Comp
+            comp = _Comp.objects.prefetch_related("media_assets").get(id=cid)
+            if not comp.url:
+                return
+            generate_composition_media_assets(comp, kinds=["poster"])
+        except Exception:
+            pass
+    t = threading.Thread(target=_run, args=(composition_id,), daemon=True)
+    t.start()
+
+
 def add_composition(request, composition_id=None):
     # Define paths for downloaded images & videos 
     TEMP_BG_FOLDER = "media/temp_s3_back_files"
@@ -272,8 +288,12 @@ def add_composition(request, composition_id=None):
     return_page = str(return_page).strip()
     if not return_page.isdigit():
         return_page = ""
+    return_folder = (request.POST.get("return_folder") if request.method == "POST" else request.GET.get("return_folder")) or ""
+    return_folder = re.sub(r"[^A-Za-z0-9_\-]", "", str(return_folder).strip())[:32]
 
     def redirect_to_composition_view_with_page(preserve_page: bool = True):
+        if return_folder:
+            return redirect("composition_folder_view", grid_id=return_folder)
         if preserve_page and return_page:
             return redirect(f"{reverse('composition-view')}?page={return_page}")
         return redirect("composition-view")
@@ -365,7 +385,7 @@ def add_composition(request, composition_id=None):
         url_slug = request.POST.get("url_slug", "").strip().strip("/")
         requested_name = (request.POST.get("name") or "").strip()
         if not url_slug and requested_name:
-            url_slug = slugify(requested_name)
+            url_slug = slugify(requested_name.replace(" ", "_"))
         full_url = f"{base_url}/{url_slug}" if base_url and url_slug else None
         page_link = normalize_page_link(request.POST.get("page_link"), request)
         selected_series = None
@@ -399,6 +419,12 @@ def add_composition(request, composition_id=None):
             overlay_effect = "orb"
         elif overlay_effect_alias in {"rotate3d", "spin3d", "rotate"}:
             overlay_effect = "rotate_3d"
+        elif overlay_effect_alias in {"kaleidoquad", "kaleido4"}:
+            overlay_effect = "kaleido_quad"
+        elif overlay_effect_alias in {"kaleidoocta", "kaleido8"}:
+            overlay_effect = "kaleido_octa"
+        elif overlay_effect_alias == "strobe":
+            overlay_effect = "strobe"
         elif overlay_effect_alias in {"none", ""}:
             overlay_effect = "none"
         else:
@@ -533,6 +559,8 @@ def add_composition(request, composition_id=None):
             "nft_name": (request.POST.get("nft_name") or "").strip(),
             "nft_description": (request.POST.get("nft_description") or "").strip(),
             "nft_external_url": (request.POST.get("nft_external_url") or "").strip(),
+            "grid_id": re.sub(r"[^A-Za-z0-9_\-]", "", (request.POST.get("grid_id") or "").strip())[:32],
+            "grid_cell_index": max(0, min(9, parse_positive_int(request.POST.get("grid_cell_index"), 0))),
         }
         if not series_submitted:
             create_kwargs.pop("series", None)
@@ -563,6 +591,7 @@ def add_composition(request, composition_id=None):
             composition.allowed_personas.set(
                 MonologuePersona.objects.filter(id__in=allowed_persona_ids)
             )
+            _trigger_poster_generation(composition.id)
             messages.success(request, "Composition updated successfully.")
             return redirect_to_composition_view_with_page(preserve_page=True)
         else:
@@ -570,6 +599,7 @@ def add_composition(request, composition_id=None):
             new_comp.allowed_personas.set(
                 MonologuePersona.objects.filter(id__in=allowed_persona_ids)
             )
+            _trigger_poster_generation(new_comp.id)
             messages.success(request, "Composition created successfully.")
             return redirect_to_composition_view_with_page(preserve_page=False)
 
@@ -1166,7 +1196,10 @@ def add_composition(request, composition_id=None):
             else ""
         ),
         "nft_media": _composition_media_context(request, composition) if composition else None,
+        "nft_versions": list(composition.nft_versions.order_by("-version_number")[:10]) if composition else [],
+        "active_voucher": composition.mint_vouchers.filter(redeemed=False).order_by("-created_at").first() if composition else None,
         "return_page": return_page,
+        "return_folder": return_folder,
     })
 
 
@@ -1430,10 +1463,18 @@ def composition_file_action(request, composition_id):
 
 def _composition_list_thumbnail_src(comp: Composition) -> str:
     """
-    URL for the composition list thumbnail. Prefer the saved ImageField only when
-    the file exists on storage; otherwise use the dynamic preview endpoint so we
-    do not emit <img src> to missing paths (broken icons on /composition-view/).
+    URL for the composition list thumbnail. Prefer the generated poster asset
+    (CompositionMediaAsset kind='poster') when available; fall back to the saved
+    ImageField, then to the dynamic preview endpoint.
     """
+    try:
+        for asset in comp.media_assets.all():
+            if asset.kind == "poster" and asset.status == "ready" and asset.file:
+                name = str(asset.file.name or "").strip()
+                if name and default_storage.exists(name):
+                    return default_storage.url(name)
+    except Exception:
+        pass
     try:
         if comp.img:
             name = comp.img.name
@@ -1447,7 +1488,12 @@ def _composition_list_thumbnail_src(comp: Composition) -> str:
 
 def composition_view(request):
     search_query = (request.GET.get("q") or "").strip()
-    compositions_list = Composition.objects.all().prefetch_related("media_assets")
+    # Only folder roots in the main library — generated grid children
+    # (cell_index 2..9) live inside their folder page, not in this list.
+    compositions_list = (
+        Composition.objects.filter(grid_cell_index__lte=1)
+        .prefetch_related("media_assets")
+    )
     if (request.GET.get("ready") or "").strip() == "1":
         compositions_list = compositions_list.filter(ready_for_deployment=True)
     if search_query:
@@ -1464,10 +1510,20 @@ def composition_view(request):
     for comp in compositions:
         comp.preview_url = f"/composition-preview/{comp.id}/"
         comp.list_thumbnail_src = _composition_list_thumbnail_src(comp)
-        comp.nft_online_video_ready = any(
-            asset.kind == "preview_15s" and asset.status == "ready" and bool(getattr(asset, "file", None))
-            for asset in comp.media_assets.all()
-        )
+        comp.preview_video_url = None
+        comp.nft_online_video_ready = False
+        comp.media_status = {"poster": "none", "clip": "none"}
+        for asset in comp.media_assets.all():
+            if asset.kind == "poster":
+                comp.media_status["poster"] = asset.status
+            if asset.kind == "preview_10s":
+                comp.media_status["clip"] = asset.status
+                if asset.status == "ready" and asset.file:
+                    try:
+                        comp.preview_video_url = default_storage.url(asset.file.name)
+                    except Exception:
+                        pass
+                    comp.nft_online_video_ready = True
     return render(
         request,
         "admin/composition-view.html",
@@ -1517,6 +1573,211 @@ def composition_duplicate(request, composition_id):
     if return_page:
         return redirect(f"{reverse('composition-edit', kwargs={'composition_id': clone.id})}?return_page={return_page}")
     return redirect("composition-edit", composition_id=clone.id)
+
+
+# Pool of comp types for "vary type" mode. Constrained to types that visually
+# tile well in a 3x3 gallery and only need a background source pool.
+_GRID_VARY_TYPE_POOL = (
+    "classic", "psychedelic-classic", "tunnel", "psychedelic-tunnel",
+    "tunnel-burst", "swirl", "kaleidoscope", "liquid-mirror", "wax-melt",
+)
+
+
+def composition_generate_grid(request, composition_id):
+    """Clone the source composition into 9 cells linked by a shared grid_id.
+
+    POST params:
+      basis:    "overlay" → keep overlay fixed, rotate background per cell.
+                "composition" → clone exactly, all 9 cells start identical
+                                (user edits each later).
+      vary_type: "1" → each cell picks a different comp type from the pool.
+                 anything else → all cells keep the source's type.
+    """
+    if request.method != "POST":
+        return redirect("composition-edit", composition_id=composition_id)
+    source = get_object_or_404(Composition, id=composition_id)
+    vary_type = (request.POST.get("vary_type") or "").strip() == "1"
+    # Default: clone the source exactly into all 9 cells. The user edits each
+    # cell individually inside the folder afterwards.
+    basis = (request.POST.get("basis") or "composition").strip().lower()
+    if basis not in {"overlay", "composition"}:
+        basis = "composition"
+
+    # Build the bg pool: prefer the source's selected bg sources, then top up
+    # from local source folders so we have at least 9 distinct candidates.
+    bg_pool: list[str] = [s for s in (source.background_sources or []) if s]
+    seen = set(bg_pool)
+    for path in get_local_sources():
+        name = path.name
+        if name not in seen:
+            bg_pool.append(name)
+            seen.add(name)
+        if len(bg_pool) >= 24:
+            break
+    if not bg_pool:
+        messages.error(request, "Cannot generate grid: no background sources available.")
+        return redirect("composition-edit", composition_id=composition_id)
+
+    # Each composition is its own folder (auto-assigned grid_id at save).
+    # Generate Grid populates siblings into that folder, replacing any existing
+    # cells 2..9 so re-running gives a clean regenerated grid.
+    if not source.grid_id:
+        source.grid_id = uuid.uuid4().hex[:10]
+    if not source.grid_cell_index:
+        source.grid_cell_index = 1
+    source.save(update_fields=["grid_id", "grid_cell_index"])
+    grid_id = source.grid_id
+    base_name = (source.name or "composition").strip() or "composition"
+    source_slug = ""
+    if source.url:
+        parts = [p for p in urlparse(source.url).path.split("/") if p]
+        if parts:
+            source_slug = parts[-1].lower()
+    if not source_slug:
+        source_slug = slugify(base_name) or f"comp{source.id}"
+
+    # Fill missing cells only — never overwrite hand-edited siblings.
+    occupied = set(
+        Composition.objects.filter(grid_id=grid_id)
+        .values_list("grid_cell_index", flat=True)
+    )
+
+    type_pool = list(_GRID_VARY_TYPE_POOL)
+    random.shuffle(type_pool)
+
+    for cell in range(2, 10):
+        if cell in occupied:
+            continue
+        clone = Composition.objects.get(id=source.id)
+        clone.pk = None
+        clone.id = None
+        clone.name = f"{base_name} · grid {grid_id} · cell {cell}"
+        clone.url = f"/{source_slug}grid{grid_id}cell{cell}/"
+        clone.page_url = None
+        clone.status = "pending"
+        clone.created_at = timezone.now()
+        clone.grid_id = grid_id
+        clone.grid_cell_index = cell
+        if basis == "overlay":
+            # Rotate bg pool so each cell starts with a different background.
+            rotated = bg_pool[(cell - 1) :] + bg_pool[: (cell - 1)]
+            clone.background_sources = rotated[:4]
+        # basis=="composition": clone keeps source.background_sources verbatim.
+        if vary_type:
+            clone.type = type_pool[(cell - 1) % len(type_pool)]
+        clone.save()
+        clone.allowed_personas.set(source.allowed_personas.all())
+
+    messages.success(
+        request,
+        f'Folder "{grid_id}" filled — {9 - len(occupied)} new cells added.',
+    )
+    return redirect("composition_folder_view", grid_id=grid_id)
+
+
+def composition_folder_reset(request, composition_id):
+    """Wipe cells 2..9 in this folder and re-clone the source into all of them.
+
+    Destructive — discards hand edits on the cell siblings. Cell 1 (the source)
+    is never touched.
+    """
+    if request.method != "POST":
+        return redirect("composition-edit", composition_id=composition_id)
+    source = get_object_or_404(Composition, id=composition_id)
+    if not source.grid_id:
+        messages.error(request, "Source has no folder yet.")
+        return redirect("composition-edit", composition_id=composition_id)
+    grid_id = source.grid_id
+    Composition.objects.filter(grid_id=grid_id).exclude(id=source.id).delete()
+    base_name = (source.name or "composition").strip() or "composition"
+    source_slug = ""
+    if source.url:
+        parts = [p for p in urlparse(source.url).path.split("/") if p]
+        if parts:
+            source_slug = parts[-1].lower()
+    if not source_slug:
+        source_slug = slugify(base_name) or f"comp{source.id}"
+    for cell in range(2, 10):
+        clone = Composition.objects.get(id=source.id)
+        clone.pk = None
+        clone.id = None
+        clone.name = f"{base_name} · grid {grid_id} · cell {cell}"
+        clone.url = f"/{source_slug}grid{grid_id}cell{cell}/"
+        clone.page_url = None
+        clone.status = "pending"
+        clone.created_at = timezone.now()
+        clone.grid_id = grid_id
+        clone.grid_cell_index = cell
+        clone.save()
+        clone.allowed_personas.set(source.allowed_personas.all())
+    messages.success(request, f'Folder "{grid_id}" reset — 8 fresh clones of "{base_name}".')
+    return redirect("composition_folder_view", grid_id=grid_id)
+
+
+def composition_folder_view(request, grid_id):
+    """Folder page: lists every composition in this folder + 'generate more'.
+
+    Replaces the older grid-only view. Shows a 3×3 preview of cells 1..9 plus
+    any extras as a flat list, with controls to generate missing cells, render
+    the 3×3 in standalone mode, and edit each cell.
+    """
+    cells = list(
+        Composition.objects.filter(grid_id=grid_id)
+        .prefetch_related("media_assets")
+        .order_by("grid_cell_index", "id")
+    )
+    if not cells:
+        messages.error(request, f'No folder found with id "{grid_id}".')
+        return redirect("composition-view")
+    source = cells[0]
+    source_slug = ""
+    if source.url:
+        parts = [p for p in urlparse(source.url).path.split("/") if p]
+        if parts:
+            source_slug = parts[-1].lower()
+    if not source_slug:
+        source_slug = slugify(source.name or "composition") or f"comp{source.id}"
+    for cell in cells:
+        if cell.id != source.id and not cell.url:
+            cell.url = f"/{source_slug}grid{grid_id}cell{cell.grid_cell_index}/"
+            cell.save(update_fields=["url"])
+    for cell in cells:
+        cell.list_thumbnail_src = _composition_list_thumbnail_src(cell)
+        cell.nft_online_video_ready = any(
+            asset.kind == "preview_10s" and asset.status == "ready" and bool(getattr(asset, "file", None))
+            for asset in cell.media_assets.all()
+        )
+    cells_by_slot: list = [None] * 9
+    for cell in cells:
+        idx = cell.grid_cell_index
+        if 1 <= idx <= 9 and cells_by_slot[idx - 1] is None:
+            cells_by_slot[idx - 1] = cell
+    return render(
+        request,
+        "composition_folder.html",
+        {
+            "grid_id": grid_id,
+            "source": source,
+            "cells": cells,
+            "cells_by_slot": cells_by_slot,
+            "missing_count": sum(1 for c in cells_by_slot if c is None),
+        },
+    )
+
+
+def composition_grid_view(request, grid_id):
+    """Render a bare 3×3 layout (for the gallery wall, no chrome)."""
+    cells = list(
+        Composition.objects.filter(grid_id=grid_id).order_by("grid_cell_index", "id")
+    )
+    if not cells:
+        messages.error(request, f'No grid found with id "{grid_id}".')
+        return redirect("dashboard")
+    return render(
+        request,
+        "grid_view.html",
+        {"grid_id": grid_id, "cells": cells[:9]},
+    )
 
 
 # --- Character composition seeding -----------------------------------------
@@ -1597,6 +1858,9 @@ _COMPOSITION_RECIPES: list[dict] = [
     {"type": "liquid-mirror", "needs": ("bg",), "overlay": "maybe"},
     {"type": "liquid-mirror-extreme", "needs": ("bg",), "overlay": "maybe"},
     {"type": "wax-melt", "needs": ("bg",), "overlay": "maybe"},
+    {"type": "mirror-rotate", "needs": ("bg",), "overlay": "maybe"},
+    {"type": "kaleido-quad", "needs": ("bg",), "overlay": "maybe"},
+    {"type": "kaleido-octa", "needs": ("bg",), "overlay": "maybe"},
     {"type": "strobe", "needs": ("bg",), "overlay": "no"},
     {"type": "strobe-double", "needs": ("bg", "fg"), "overlay": "no"},
     {"type": "mash-fine-flux", "needs": ("bg",), "overlay": "no"},
@@ -1808,6 +2072,11 @@ def set_composition_ready(request, composition_id):
     is_ready = request.POST.get("ready_for_deployment") == "on"
     composition.ready_for_deployment = is_ready
     composition.save(update_fields=["ready_for_deployment"])
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JsonResponse({"ok": True, "ready": is_ready})
+    return_folder = request.POST.get("return_folder")
+    if return_folder:
+        return redirect("composition_folder_view", grid_id=return_folder)
     return redirect("composition-view")
 
 
@@ -1895,6 +2164,7 @@ def series_detail(request, series_id):
 
 
 
+@xframe_options_sameorigin
 def composition_detail(request, composition_id):
     composition = get_object_or_404(Composition, id=composition_id)
     if request.method == "POST":
@@ -2302,12 +2572,34 @@ def _fallback_redirect_for_public_slug(page_slug: str):
 @xframe_options_sameorigin
 
 def composition_public_page(request, page_slug):
+    try:
+        from ._masks import resolve_mask_slug, mask_public_view
+        mask = resolve_mask_slug(page_slug)
+        if mask is not None:
+            return mask_public_view(request, mask)
+    except Exception:
+        pass
     matched = _find_composition_by_slug(page_slug)
     if not matched:
         fallback_redirect = _fallback_redirect_for_public_slug(page_slug)
         if fallback_redirect:
             return fallback_redirect
         raise Http404("Composition page not found")
+    return _render_composition_public(request, matched)
+
+
+@xframe_options_sameorigin
+def composition_live_by_id(request, composition_id):
+    """Render the live public composition page by numeric id.
+
+    Lets us iframe-embed any composition (including grid children that have
+    no published `url` slug yet).
+    """
+    matched = get_object_or_404(Composition, id=composition_id)
+    return _render_composition_public(request, matched)
+
+
+def _render_composition_public(request, matched):
     candidates = Composition.objects.exclude(url__isnull=True).exclude(url__exact="").exclude(id=matched.id)
     random_links = [comp.url for comp in candidates if comp.url]
     layer_transitions = ((matched.filter_settings or {}).get("layer_transitions") or {})
@@ -2321,6 +2613,7 @@ def composition_public_page(request, page_slug):
         "composition": matched,
         "composition_mood_rating": (matched.mood_rating or "mid").lower(),
         "render_mode": request.GET.get("render") == "1",
+        "muted": request.GET.get("muted") == "1",
         "composition_type": (matched.type or "").lower(),
         "composition_transition": (matched.transition or "none").lower(),
         "composition_background_transition": (layer_transitions.get("background") or fallback_transition).lower(),
@@ -2365,6 +2658,7 @@ def composition_public_page(request, page_slug):
             landscape_only=bool(getattr(matched, "landscape_only", False)),
         ),
     }
+    context["poster_url"] = _composition_list_thumbnail_src(matched)
     return render(request, "composition_public.html", context)
 
 
@@ -2402,4 +2696,149 @@ import asyncio
 from django.http import HttpResponseNotAllowed
 from django.utils.log import log_response
 from ._utils import _load_first_source_image
+
+
+# ---------------------------------------------------------------------------
+# Lazy minting — voucher signing endpoint
+# ---------------------------------------------------------------------------
+
+def composition_voucher_sign(request, composition_id):
+    """
+    POST  — store a signed EIP-712 NFTVoucher for a composition.
+
+    Expected JSON body:
+        {
+            "min_price_wei": 70000000000000000,
+            "uri": "ipfs://...",
+            "nonce": 1234567890,
+            "signature": "0x...",
+            "signed_by": "0x..."
+        }
+
+    GET   — return the active (unredeemed) voucher for this composition, if any.
+    """
+    from ..models import NFTMintVoucher
+    import json
+    from django.utils.timezone import now as tz_now
+
+    comp = get_object_or_404(Composition, pk=composition_id)
+
+    if request.method == "GET":
+        voucher = comp.mint_vouchers.filter(redeemed=False).order_by("-created_at").first()
+        if not voucher:
+            return JsonResponse({"voucher": None})
+        return JsonResponse({
+            "voucher": {
+                "id": voucher.pk,
+                "min_price_wei": voucher.min_price_wei,
+                "min_price_eth": float(voucher.min_price_eth),
+                "uri": voucher.uri,
+                "nonce": voucher.nonce,
+                "signature": voucher.signature,
+                "signed_by": voucher.signed_by,
+                "signed_at": voucher.signed_at.isoformat() if voucher.signed_at else None,
+            }
+        })
+
+    if request.method == "POST":
+        if not request.user.is_authenticated:
+            return JsonResponse({"error": "authentication required"}, status=403)
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            return JsonResponse({"error": "invalid JSON"}, status=400)
+
+        required = ["min_price_wei", "uri", "nonce", "signature", "signed_by"]
+        missing = [f for f in required if not data.get(f)]
+        if missing:
+            return JsonResponse({"error": f"missing fields: {', '.join(missing)}"}, status=400)
+
+        nonce = int(data["nonce"])
+        if NFTMintVoucher.objects.filter(nonce=nonce).exists():
+            return JsonResponse({"error": "nonce already used"}, status=400)
+
+        voucher = NFTMintVoucher.objects.create(
+            composition=comp,
+            min_price_wei=int(data["min_price_wei"]),
+            uri=data["uri"],
+            nonce=nonce,
+            signature=data["signature"],
+            signed_by=data["signed_by"].lower(),
+            signed_at=tz_now(),
+        )
+        return JsonResponse({"ok": True, "voucher_id": voucher.pk})
+
+    return JsonResponse({"error": "method not allowed"}, status=405)
+
+
+def composition_voucher_record_redeem(request, composition_id):
+    """
+    POST — mark a voucher as redeemed after the on-chain tx succeeds.
+
+    Expected JSON body:
+        { "nonce": 1234567890, "tx_hash": "0x...", "token_id": "42", "wallet": "0x..." }
+    """
+    from ..models import NFTMintVoucher
+    import json
+
+    if request.method != "POST":
+        return JsonResponse({"error": "method not allowed"}, status=405)
+
+    comp = get_object_or_404(Composition, pk=composition_id)
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"error": "invalid JSON"}, status=400)
+
+    nonce = int(data.get("nonce", 0))
+    voucher = comp.mint_vouchers.filter(nonce=nonce, redeemed=False).first()
+    if not voucher:
+        return JsonResponse({"error": "voucher not found or already redeemed"}, status=404)
+
+    from django.utils.timezone import now as tz_now
+    voucher.redeemed = True
+    voucher.redeemed_tx = data.get("tx_hash", "")
+    voucher.redeemed_token_id = str(data.get("token_id", ""))
+    voucher.redeemed_by = (data.get("wallet", "") or "").lower()
+    voucher.redeemed_at = tz_now()
+    voucher.save()
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+@csrf_exempt
+def composition_generate_media_single(request, composition_id):
+    from ..nft_media import generate_composition_media_assets
+    import threading
+
+    comp = get_object_or_404(Composition, id=composition_id)
+    kinds_param = (request.POST.get("kinds") or "poster,preview_10s").strip()
+    kinds = [k.strip() for k in kinds_param.split(",") if k.strip() in ("poster", "preview_10s", "collector_45s")]
+    if not kinds:
+        return JsonResponse({"error": "No valid kinds specified."}, status=400)
+    force = request.POST.get("force") == "1"
+
+    def _run():
+        try:
+            generate_composition_media_assets(comp, force=force, kinds=kinds)
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, daemon=True).start()
+    return JsonResponse({"queued": True, "composition_id": composition_id, "kinds": kinds})
+
+
+def composition_media_status(request, composition_id):
+    comp = get_object_or_404(Composition, id=composition_id)
+    assets = {a.kind: a for a in comp.media_assets.all()}
+    result = {}
+    for kind, label in [("poster", "poster"), ("preview_10s", "clip")]:
+        asset = assets.get(kind)
+        if asset:
+            result[label] = {"status": asset.status, "error": asset.error_message or ""}
+        else:
+            result[label] = {"status": "none"}
+    return JsonResponse({"composition_id": composition_id, "assets": result})
+
+
 __all__ = [n for n in list(vars().keys()) if not n.startswith('__')]

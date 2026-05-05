@@ -15,7 +15,7 @@ from django.utils import timezone
 
 MEDIA_KINDS = {
     "poster": {"duration": 0, "extension": "jpg", "content_type": "image/jpeg"},
-    "preview_15s": {
+    "preview_10s": {
         "duration": 10,
         "extension": "mp4",
         "content_type": "video/mp4",
@@ -26,6 +26,7 @@ MEDIA_KINDS = {
         "bufsize": "1400k",
         "include_audio": True,
         "audio_bitrate": "64k",
+        "trim_start_seconds": 2.0,
     },
     "collector_45s": {
         "duration": 45,
@@ -215,7 +216,8 @@ def _store_file(local_path: Path, storage_path: str) -> str:
     return storage_path
 
 
-def capture_composition_still(composition, *, storage_path: str | None = None, size: int = 1080) -> str:
+def capture_composition_still(composition, *, storage_path: str | None = None, size: int = 1080, random_offset: bool = True) -> str:
+    import random as _random
     from playwright.sync_api import sync_playwright
 
     storage_path = storage_path or f"nft/generated/composition_{int(composition.id)}/poster_square.jpg"
@@ -228,8 +230,11 @@ def capture_composition_still(composition, *, storage_path: str | None = None, s
             browser = _launch_chromium(playwright)
             context = browser.new_context(viewport={"width": size, "height": size})
             page = context.new_page()
-            page.goto(capture_url_for_composition(composition), wait_until="load", timeout=120000)
+            page.goto(capture_url_for_composition(composition), wait_until="domcontentloaded", timeout=60000)
             _wait_for_render_ready(page)
+            if random_offset:
+                offset_ms = _random.randint(3000, 20000)
+                page.wait_for_timeout(offset_ms)
             page.screenshot(path=str(tmp_path), type="jpeg", quality=92)
             context.close()
             browser.close()
@@ -289,7 +294,7 @@ def capture_composition_video(
                 record_video_size={"width": size[0], "height": size[1]},
             )
             page = context.new_page()
-            page.goto(capture_url_for_composition(composition), wait_until="load", timeout=120000)
+            page.goto(capture_url_for_composition(composition), wait_until="domcontentloaded", timeout=60000)
             _wait_for_render_ready(page)
             page.wait_for_timeout(max(1000, int((duration_seconds + trim_start_seconds) * 1000)))
             page_video = page.video
@@ -336,8 +341,47 @@ def capture_composition_video(
             ffmpeg_cmd += ["-map", "1:a:0", "-c:a", "aac", "-b:a", audio_bitrate]
         else:
             ffmpeg_cmd += ["-an"]
-        if trim_start_seconds:
-            ffmpeg_cmd += ["-ss", f"{trim_start_seconds:.3f}"]
+        # Auto-detect end of leading black section. Crop the bottom quarter so
+        # this works for compositions that load top-to-bottom (e.g.
+        # horizontal-stripes), where the top rows have content but the rest of
+        # the frame is still black during the loading phase.
+        effective_trim = float(trim_start_seconds or 0)
+        try:
+            # Get actual recording duration so the trim cap is based on real length.
+            dur_probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", str(capture_path)],
+                capture_output=True, text=True, timeout=30,
+            )
+            total_rec_duration = float((dur_probe.stdout or "").strip() or "0") or (duration_seconds + effective_trim + 30)
+        except Exception:
+            total_rec_duration = duration_seconds + effective_trim + 30
+
+        try:
+            probe = subprocess.run(
+                ["ffmpeg", "-i", str(capture_path),
+                 "-vf", "crop=iw:ih/4:0:ih*3/4,blackdetect=d=0.1:pix_th=0.10",
+                 "-f", "null", "-"],
+                capture_output=True, text=True, timeout=90,
+            )
+            last_black_end = 0.0
+            for line in (probe.stderr or "").splitlines():
+                if "black_end:" in line:
+                    for part in line.split():
+                        if part.startswith("black_end:"):
+                            try:
+                                last_black_end = max(last_black_end, float(part.split(":")[1]))
+                            except (ValueError, IndexError):
+                                pass
+            if last_black_end > effective_trim:
+                # Allow trimming up to (total_rec_duration - duration_seconds) so
+                # there's still at least duration_seconds of content left.
+                max_auto_trim = max(effective_trim, total_rec_duration - duration_seconds - 0.5)
+                effective_trim = min(last_black_end + 0.15, max_auto_trim)
+        except Exception:
+            pass
+        if effective_trim:
+            ffmpeg_cmd += ["-ss", f"{effective_trim:.3f}"]
         ffmpeg_cmd += ["-t", str(duration_seconds), str(output_path)]
         result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
         if result.returncode != 0:
@@ -363,7 +407,7 @@ def capture_composition_video(
 def generate_composition_media_assets(composition, *, force: bool = False, kinds: list[str] | None = None) -> dict:
     from .models import CompositionMediaAsset
 
-    kinds = kinds or ["poster", "preview_15s", "collector_45s"]
+    kinds = kinds or ["poster", "preview_10s", "collector_45s"]
     signature = composition_source_signature(composition)
     results = {}
     for kind in kinds:
@@ -386,9 +430,30 @@ def generate_composition_media_assets(composition, *, force: bool = False, kinds
             continue
 
         asset._nft_media_skipped = False
+
+        # Archive the existing file before overwriting
+        if asset.file and asset.file.name and asset.status == "ready":
+            try:
+                old_name = asset.file.name
+                if default_storage.exists(old_name):
+                    ts = timezone.now().strftime("%Y%m%d_%H%M%S")
+                    ext = Path(old_name).suffix
+                    archive_path = f"nft/generated/composition_{int(composition.id)}/archive/{kind}_{ts}{ext}"
+                    with default_storage.open(old_name, "rb") as src:
+                        default_storage.save(archive_path, ContentFile(src.read()))
+                    archive = list(asset.archive or [])
+                    archive.append({
+                        "path": archive_path,
+                        "generated_at": (asset.generated_at or asset.updated_at).isoformat() if (asset.generated_at or asset.updated_at) else "",
+                        "size": default_storage.size(archive_path),
+                    })
+                    asset.archive = archive
+            except Exception:
+                pass
+
         asset.status = "rendering"
         asset.error_message = ""
-        asset.save(update_fields=["duration_seconds", "aspect_preset", "status", "error_message", "updated_at"])
+        asset.save(update_fields=["duration_seconds", "aspect_preset", "status", "error_message", "archive", "updated_at"])
         try:
             ext = spec["extension"]
             storage_path = f"nft/generated/composition_{int(composition.id)}/{kind}.{ext}"
@@ -407,6 +472,7 @@ def generate_composition_media_assets(composition, *, force: bool = False, kinds
                     maxrate=spec.get("maxrate"),
                     bufsize=spec.get("bufsize"),
                     audio_bitrate=str(spec.get("audio_bitrate") or "128k"),
+                    trim_start_seconds=float(spec.get("trim_start_seconds") or 0.7),
                 )
             asset.file.name = rel_path
             asset.source_signature = signature

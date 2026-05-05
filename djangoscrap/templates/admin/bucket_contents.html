@@ -63,6 +63,68 @@
         max-height: 70vh;
         background: #000;
     }
+    /* Tile view */
+    #sourceTileGrid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 10px;
+    }
+    .source-tile {
+        position: relative;
+        border-radius: 5px;
+        overflow: hidden;
+        background: #111;
+        cursor: pointer;
+        border: 2px solid transparent;
+        transition: border-color 0.12s;
+    }
+    .source-tile.tile-selected { border-color: #0d6efd; }
+    .source-tile-thumb {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1/1;
+        object-fit: cover;
+    }
+    .source-tile-play {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        color: rgba(255,255,255,0.85);
+        text-shadow: 0 1px 4px rgba(0,0,0,0.7);
+        pointer-events: none;
+    }
+    .source-tile-cb {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        width: 1.2rem;
+        height: 1.2rem;
+        cursor: pointer;
+        z-index: 2;
+    }
+    .source-tile-stock {
+        position: absolute;
+        top: 5px;
+        left: 5px;
+        background: rgba(255,193,7,0.9);
+        color: #000;
+        font-size: 0.6rem;
+        padding: 1px 4px;
+        border-radius: 3px;
+        font-weight: bold;
+    }
+    .source-tile-name {
+        font-size: 0.65rem;
+        color: #ccc;
+        padding: 3px 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        background: #1a1a1a;
+    }
 </style>
 
 <div class="content-wrapper">
@@ -71,7 +133,8 @@
             <div class="row">
                 <div class="col-md-12">
                     <div class="card shadow-lg">
-                        <div class="card-header text-white">
+                        <div class="card-header text-white d-flex align-items-center justify-content-between">
+                            <div>
                             <h3 class="card-title mb-1">Source: {{ bucket_name }}</h3>
                             <p class="mb-0 small font-weight-normal">
                                 <span class="font-weight-bold">{{ media_file_count }}</span> media file{% if media_file_count != 1 %}s{% endif %}
@@ -81,9 +144,22 @@
                                 · Folder updated time unavailable
                                 {% endif %}
                             </p>
+                            </div>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="View toggle">
+                                <button type="button" id="srcViewList" class="btn btn-outline-light" title="List view">☰</button>
+                                <button type="button" id="srcViewTile" class="btn btn-outline-light active" title="Tile view">⊞</button>
+                            </div>
                         </div>
 
                         <div class="card-body">
+                            {% if messages %}
+                            {% for message in messages %}
+                            <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show mb-3" role="alert">
+                                {{ message }}
+                                <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                            </div>
+                            {% endfor %}
+                            {% endif %}
                             {% if stray_count %}
                             <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
                                 <span>This folder contains {{ stray_count }} file(s) that are not allowed source media (e.g. .txt, .json, .zip).</span>
@@ -114,19 +190,11 @@
                                 <div class="mb-3 d-flex gap-2 flex-wrap align-items-center source-action-row">
                                     <button type="button" class="btn btn-sm btn-outline-secondary" id="selectAllBtn">Select all</button>
                                     <button type="button" class="btn btn-sm btn-outline-secondary" id="clearSelectionBtn">Clear</button>
-                                    <button type="button" class="btn btn-sm btn-outline-danger" id="selectStockBtn">Select stock candidates</button>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" id="selectStockBtn">Stock select</button>
                                     <button type="submit" formaction="{% url 'download_source_files' bucket_name %}" class="btn btn-sm btn-success">Download selected</button>
                                     <button type="submit" formaction="{% url 'delete_source_files' bucket_name %}" class="btn btn-sm btn-danger" id="deleteSelectedBtn">Delete selected</button>
                                     <button type="submit" formaction="{% url 'delete_duplicate_source_images' bucket_name %}" class="btn btn-sm btn-warning" id="deleteDuplicatesBtn">Delete duplicate images</button>
-                                    <button type="submit" formaction="{% url 'trim_source_borders' bucket_name %}" class="btn btn-sm btn-outline-dark" id="trimBordersBtn">Auto-trim black/white borders</button>
-                                    <div class="ms-auto d-flex align-items-center gap-2">
-                                        <label for="sizeSortSelect" class="mb-0 small text-muted">Organize by size</label>
-                                        <select id="sizeSortSelect" class="form-control form-control-sm" title="Organize files by size">
-                                            <option value="none">Default order</option>
-                                            <option value="largest">Largest first</option>
-                                            <option value="smallest">Smallest first</option>
-                                        </select>
-                                    </div>
+                                    <button type="submit" formaction="{% url 'trim_source_borders' bucket_name %}" class="btn btn-sm btn-outline-dark" id="trimBordersBtn">Trim borders</button>
                                 </div>
                                 <div class="mb-3 d-flex gap-2 flex-wrap align-items-center border rounded p-2 bg-light source-size-row">
                                     <span class="small text-muted">Select images by size:</span>
@@ -140,7 +208,65 @@
                                     <button type="button" class="btn btn-sm btn-outline-primary" id="selectImageAboveBtn">Select images &ge; size</button>
                                     <span class="small text-muted" id="selectionStatus" aria-live="polite">No files selected</span>
                                 </div>
-                                <div class="table-responsive">
+                                {% if page_obj.paginator.num_pages > 1 %}
+                                <nav class="d-flex justify-content-center align-items-center gap-1 flex-wrap mb-2" aria-label="Source page navigation">
+                                    {% if page_obj.has_previous %}
+                                    <a href="?page={{ page_obj.previous_page_number }}" class="btn btn-sm btn-outline-secondary">&laquo; Prev</a>
+                                    {% else %}
+                                    <span class="btn btn-sm btn-outline-secondary disabled">&laquo; Prev</span>
+                                    {% endif %}
+                                    {% for p in page_obj.paginator.page_range %}
+                                    {% if p == page_obj.number %}
+                                    <span class="btn btn-sm btn-secondary">{{ p }}</span>
+                                    {% else %}
+                                    <a href="?page={{ p }}" class="btn btn-sm btn-outline-secondary">{{ p }}</a>
+                                    {% endif %}
+                                    {% endfor %}
+                                    {% if page_obj.has_next %}
+                                    <a href="?page={{ page_obj.next_page_number }}" class="btn btn-sm btn-outline-secondary">Next &raquo;</a>
+                                    {% else %}
+                                    <span class="btn btn-sm btn-outline-secondary disabled">Next &raquo;</span>
+                                    {% endif %}
+                                </nav>
+                                {% endif %}
+                                <!-- Tile view -->
+                                <div id="sourceTileGrid">
+                                    {% for obj in objects %}
+                                    <div class="source-tile{% if obj.is_stray %} border border-warning{% endif %}"
+                                         data-filename="{{ obj.Key }}"
+                                         data-size="{{ obj.Size }}"
+                                         data-kind="{% if obj.is_image %}image{% elif obj.is_video %}video{% else %}other{% endif %}"
+                                         data-stock-candidate="{% if obj.is_stock_candidate %}1{% else %}0{% endif %}"
+                                         {% if obj.is_video %}data-video-src="{{ obj.preview_url }}"{% endif %}>
+                                        {% if obj.is_video %}
+                                        <img src="{{ obj.thumbnail_url }}" alt="{{ obj.Key }}" loading="lazy" class="source-tile-thumb">
+                                        <div class="source-tile-play">&#9658;</div>
+                                        {% elif obj.thumbnail_url %}
+                                        <img src="{{ obj.thumbnail_url }}" alt="{{ obj.Key }}" loading="lazy" class="source-tile-thumb">
+                                        {% elif obj.is_stray %}
+                                        <div class="source-tile-thumb d-flex align-items-center justify-content-center" style="background:#2a2000;aspect-ratio:1/1;">
+                                            <span class="text-warning small">not allowed</span>
+                                        </div>
+                                        {% else %}
+                                        <div class="source-tile-thumb d-flex align-items-center justify-content-center" style="aspect-ratio:1/1;">
+                                            <span class="text-muted small">no preview</span>
+                                        </div>
+                                        {% endif %}
+                                        {% if obj.is_stock_candidate %}<div class="source-tile-stock">stock?</div>{% endif %}
+                                        <input type="checkbox" class="source-tile-cb file-select"
+                                               name="selected_files" value="{{ obj.Key }}"
+                                               data-size="{{ obj.Size }}"
+                                               data-kind="{% if obj.is_image %}image{% elif obj.is_video %}video{% else %}other{% endif %}"
+                                               data-stock-candidate="{% if obj.is_stock_candidate %}1{% else %}0{% endif %}"
+                                               title="Select {{ obj.Key }}">
+                                        <div class="source-tile-name" title="{{ obj.Key }}">{{ obj.Key }}</div>
+                                    </div>
+                                    {% empty %}
+                                    <p class="text-muted">No files in this source.</p>
+                                    {% endfor %}
+                                </div>
+
+                                <div class="table-responsive" id="sourceTableWrap">
                                     <table id="bucketContentsTable" class="table table-striped table-bordered">
                                     <thead class="table-primary">
                                         <tr>
@@ -149,7 +275,7 @@
                                             <th>File Name</th>
                                             <th>Size (Bytes)</th>
                                             <th>Last Modified</th>
-                                            <th>Download</th>
+                                            <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -193,9 +319,14 @@
                                             </td>
                                             <td data-order="{{ obj.Size }}">{{ obj.Size }}</td>
                                             <td>{{ obj.LastModified }}</td>
-                                            <td>
-                                                <a href="{% url 'bucket_contents' bucket_name %}?download={{ obj.Key|urlencode }}" 
+                                            <td class="text-nowrap">
+                                                <a href="{% url 'bucket_contents' bucket_name %}?download={{ obj.Key|urlencode }}"
                                                    class="btn btn-sm btn-success" target="_blank">Download</a>
+                                                <form method="POST" action="{% url 'delete_source_files' bucket_name %}" class="d-inline">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="selected_files" value="{{ obj.Key }}">
+                                                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                                </form>
                                             </td>
                                         </tr>
                                         {% empty %}
@@ -205,7 +336,28 @@
                                         {% endfor %}
                                     </tbody>
                                     </table>
-                                </div>
+                                </div><!-- /sourceTableWrap -->
+                                {% if page_obj.paginator.num_pages > 1 %}
+                                <nav class="d-flex justify-content-center align-items-center gap-1 flex-wrap mt-2" aria-label="Source page navigation">
+                                    {% if page_obj.has_previous %}
+                                    <a href="?page={{ page_obj.previous_page_number }}" class="btn btn-sm btn-outline-secondary">&laquo; Prev</a>
+                                    {% else %}
+                                    <span class="btn btn-sm btn-outline-secondary disabled">&laquo; Prev</span>
+                                    {% endif %}
+                                    {% for p in page_obj.paginator.page_range %}
+                                    {% if p == page_obj.number %}
+                                    <span class="btn btn-sm btn-secondary">{{ p }}</span>
+                                    {% else %}
+                                    <a href="?page={{ p }}" class="btn btn-sm btn-outline-secondary">{{ p }}</a>
+                                    {% endif %}
+                                    {% endfor %}
+                                    {% if page_obj.has_next %}
+                                    <a href="?page={{ page_obj.next_page_number }}" class="btn btn-sm btn-outline-secondary">Next &raquo;</a>
+                                    {% else %}
+                                    <span class="btn btn-sm btn-outline-secondary disabled">Next &raquo;</span>
+                                    {% endif %}
+                                </nav>
+                                {% endif %}
                             </form>
                         </div>
 
@@ -295,7 +447,7 @@
         let storedPageLen = parseInt(localStorage.getItem(lengthStorageKey) || '', 10);
         if (![25, 50, 100, 250].includes(storedPageLen)) storedPageLen = 100;
         const table = $('#bucketContentsTable').DataTable({
-            "paging": true,
+            "paging": false,
             "searching": true,
             "ordering": true,
             "info": true,
@@ -517,16 +669,7 @@
             const submitter = event.submitter;
             if (!submitter) return;
 
-            if (submitter === deleteDuplicatesBtn) {
-                if (!confirm('Delete exact duplicate images in this source?')) {
-                    event.preventDefault();
-                }
-                return;
-            }
-            if (submitter === trimBordersBtn) {
-                if (!confirm('Auto-trim black/white borders in this folder? This overwrites original media files in place.')) {
-                    event.preventDefault();
-                }
+            if (submitter === deleteDuplicatesBtn || submitter === trimBordersBtn) {
                 return;
             }
 
@@ -537,9 +680,6 @@
                 return;
             }
             syncDetachedSelections();
-            if ((submitter === deleteSelectedBtn || submitter === deleteSelectedBottomBtn) && !confirm(`Delete ${selected.length} selected file(s)?`)) {
-                event.preventDefault();
-            }
         });
 
         // Inline video playback via Bootstrap modal.
@@ -567,6 +707,77 @@
                 videoPlayer.load();
             });
         }
+
+        // ---- View toggle: list / tile ----
+        const tileGrid = document.getElementById('sourceTileGrid');
+        const tableWrapEl = document.getElementById('sourceTableWrap');
+        const btnList = document.getElementById('srcViewList');
+        const btnTile = document.getElementById('srcViewTile');
+        const SRC_VIEW_KEY = 'sourceViewMode:{{ bucket_name|escapejs }}';
+
+        const setSourceView = (mode) => {
+            const isTile = mode === 'tile';
+            if (tileGrid) tileGrid.style.display = isTile ? 'grid' : 'none';
+            if (tableWrapEl) tableWrapEl.style.display = isTile ? 'none' : '';
+            if (btnList) btnList.classList.toggle('active', !isTile);
+            if (btnTile) btnTile.classList.toggle('active', isTile);
+            try { localStorage.setItem(SRC_VIEW_KEY, mode); } catch(e) {}
+            if (isTile) syncTileCheckboxes();
+        };
+
+        const syncTileCheckboxes = () => {
+            document.querySelectorAll('#sourceTileGrid .source-tile-cb').forEach(cb => {
+                cb.checked = selectedFiles.has(cb.value);
+                const tile = cb.closest('.source-tile');
+                if (tile) tile.classList.toggle('tile-selected', cb.checked);
+            });
+        };
+
+        // Tile checkbox interaction
+        document.addEventListener('change', (e) => {
+            const cb = e.target.closest('#sourceTileGrid .source-tile-cb');
+            if (!cb) return;
+            if (cb.checked) { selectedFiles.add(cb.value); } else { selectedFiles.delete(cb.value); }
+            const tile = cb.closest('.source-tile');
+            if (tile) tile.classList.toggle('tile-selected', cb.checked);
+            updateSelectionStatus();
+        });
+
+        // Tile click (not on checkbox) → toggle select; video tiles → open modal
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('#sourceTileGrid .source-tile-cb')) return;
+            const tile = e.target.closest('#sourceTileGrid .source-tile');
+            if (!tile) return;
+            const src = tile.getAttribute('data-video-src');
+            if (src && videoModalEl && videoPlayer && window.jQuery) {
+                if (videoLabel) videoLabel.textContent = tile.getAttribute('data-filename') || 'Video preview';
+                videoPlayer.src = src;
+                videoPlayer.currentTime = 0;
+                window.jQuery(videoModalEl).modal('show');
+                return;
+            }
+            const cb = tile.querySelector('.source-tile-cb');
+            if (cb) {
+                cb.checked = !cb.checked;
+                if (cb.checked) { selectedFiles.add(cb.value); } else { selectedFiles.delete(cb.value); }
+                tile.classList.toggle('tile-selected', cb.checked);
+                updateSelectionStatus();
+            }
+        });
+
+        if (btnList) btnList.addEventListener('click', () => setSourceView('list'));
+        if (btnTile) btnTile.addEventListener('click', () => setSourceView('tile'));
+
+        // Also sync tile when any table checkbox changes
+        const origUpdateSelectedRows = updateSelectedRows;
+        const patchedUpdateSelectedRows = () => { origUpdateSelectedRows(); syncTileCheckboxes(); };
+        table.on('draw', syncTileCheckboxes);
+
+        // Default to tile view
+        try {
+            const saved = localStorage.getItem(SRC_VIEW_KEY);
+            setSourceView(saved === 'list' ? 'list' : 'tile');
+        } catch(e) { setSourceView('tile'); }
     });
     })();
 </script>
