@@ -230,25 +230,67 @@ def _generate_op_body(seed_text: str, variant_key: str, rng: random.Random) -> s
     return seed_text
 
 
-def _strip_parent_echo(text: str, parent_body: str) -> str:
-    """If the reply contains a verbatim block of the parent body, strip it.
-    The model sometimes copies the parent into its reply as part of the
-    quote-back gesture; we keep `>>postno` but drop the bulk echo."""
-    if not text or not parent_body:
+def _strip_thread_echo(text: str, prior_bodies: list[str]) -> str:
+    """Drop any line that verbatim-matches a line from any prior post in the
+    thread (parent OR sibling reply). The earlier `_strip_parent_echo` only
+    looked at the immediate parent, which let phrases like 'You're already
+    bulking. Adding more mass is cutting' propagate across 4+ siblings."""
+    if not text or not prior_bodies:
         return text
-    parent_lines = {l.strip().lower() for l in parent_body.splitlines() if l.strip()}
+    prior_lines: set[str] = set()
+    for body in prior_bodies:
+        for l in (body or "").splitlines():
+            s = l.strip().lower()
+            if s and not s.startswith(">>"):
+                prior_lines.add(s)
     kept = []
     for line in text.splitlines():
         s = line.strip().lower()
-        # Allow >>NNN reply refs and short greentext quotes through
         if s.startswith(">>") or len(s) < 8:
             kept.append(line)
             continue
-        # Drop lines that are a verbatim parent line
-        if s in parent_lines:
+        if s in prior_lines:
             continue
         kept.append(line)
     return "\n".join(kept).strip()
+
+
+_STRAY_POSTNO_RE = re.compile(r"(?:(?<=^)|(?<=[\s.,!?]))(?<!>)(?<!>>)\b\d{7,10}\b")
+
+
+def _strip_stray_postnos(text: str) -> str:
+    """Strip bare 7-10 digit runs that aren't preceded by `>>`. The model
+    sometimes leaks raw post numbers into the body (e.g. '77256186 yeah but
+    it's not creatine')."""
+    if not text:
+        return text
+    out_lines = []
+    for line in text.splitlines():
+        # Preserve lines that are proper >>NNN refs
+        if line.lstrip().startswith(">>"):
+            out_lines.append(line)
+            continue
+        out_lines.append(_STRAY_POSTNO_RE.sub("", line).strip())
+    return "\n".join(l for l in out_lines if l).strip()
+
+
+def _has_tail_echo(text: str, prior_bodies: list[str]) -> bool:
+    """Reject if the reply's last word matches a prior reply's last word
+    AND that word is one of the high-parrot tail tokens ('Kek', 'lol',
+    'based', 'cope', 'ngmi'). Catches 'Kek!' propagating across siblings."""
+    if not text or not prior_bodies:
+        return False
+    parrot_tails = {"kek", "kek!", "lol", "lmao", "based", "cope", "ngmi", "dyel"}
+    def last_token(s: str) -> str:
+        toks = re.findall(r"[A-Za-z!]+", s)
+        return toks[-1].lower() if toks else ""
+    mine = last_token(text)
+    if mine not in parrot_tails:
+        return False
+    for body in prior_bodies[-3:]:  # only check last 3 siblings
+        if last_token(body) == mine:
+            return True
+    return False
 
 
 def _has_yeah_loop(text: str) -> bool:
@@ -273,16 +315,23 @@ def _has_yeah_loop(text: str) -> bool:
 
 
 def _generate_reply_body(parent_post: BoardPost, op: BoardPost, variant_key: str,
-                         rng: random.Random) -> str:
-    """Generate a reply that references the parent post by number + cadence."""
+                         rng: random.Random,
+                         siblings: Optional[list[BoardPost]] = None) -> str:
+    """Generate a reply that references the parent post by number + cadence.
+
+    `siblings` is the (most-recent-last) list of prior replies in the thread —
+    passed into the prompt so the model sees the conversation, and used as
+    echo-suppression context so the reply can't parrot prior siblings."""
     from ..imageboard_ingestion import anon_zoo, local_fit_model, output_validator
 
+    siblings = siblings or []
     variant = anon_zoo.get(variant_key)
     persona_system = (
         "You are FitAnon replying in a /fit/ thread. Produce ONE short reply, "
         "1-3 lines. Begin with `>>NNNNNNNN` referencing the post you reply to. "
         "Then optionally ONE `>quoted phrase` (3-8 words from the parent), then "
         "a 1-2 line response of YOUR OWN. Do NOT copy the parent body verbatim. "
+        "Do NOT repeat anything other anons in this thread already said. "
         "Do NOT repeat the same word/phrase 3+ times. Stay in /fit/ voice. "
         "No therapy register, no motivational coaching, no AI disclosures."
     )
@@ -290,13 +339,26 @@ def _generate_reply_body(parent_post: BoardPost, op: BoardPost, variant_key: str
         persona_system += "\n\n" + variant.system_card_addendum
 
     parent_excerpt = parent_post.body[:200].strip()
+    # Sibling context: last 3 replies in the thread (excluding the parent).
+    sib_block = ""
+    sib_recent = [s for s in siblings if s.post_no != parent_post.post_no][-3:]
+    if sib_recent:
+        lines = []
+        for s in sib_recent:
+            excerpt = (s.body or "").strip().replace("\n", " ")[:160]
+            lines.append(f"  >>{s.post_no}: {excerpt}")
+        sib_block = "RECENT_REPLIES_IN_THREAD (do NOT repeat these):\n" + "\n".join(lines) + "\n\n"
     user_prompt = (
         "BOARD: /fit/\n"
         "MODE: thread_reply\n"
+        f"OP_POST_NO: {op.post_no}\n"
+        f"OP_BODY:\n  {(op.body or '').strip()[:200]}\n\n"
+        f"{sib_block}"
         f"PARENT_POST_NO: {parent_post.post_no}\n"
         f"PARENT_POST_BODY:\n  {parent_excerpt}\n\n"
         f"Reply as anon. Begin with >>{parent_post.post_no}. 1-3 short lines. "
-        "Acknowledge / mock / correct the parent. Do not echo it verbatim."
+        "Acknowledge / mock / correct the parent. Do not echo it verbatim. "
+        "Say something none of the recent replies already said."
     )
     msgs = [
         {"role": "system", "content": persona_system},
@@ -313,8 +375,11 @@ def _generate_reply_body(parent_post: BoardPost, op: BoardPost, variant_key: str
     # Strip HTML / role labels / scaffolding leakage
     text = re.sub(r"<[^>]+>", "", text)
     text = re.sub(r"^(?:user|anon|assistant|board|mode|task)\s*:\s*", "", text, flags=re.I | re.M)
-    # Strip parent-body echoes
-    text = _strip_parent_echo(text, parent_post.body)
+    # Strip stray bare post-numbers (e.g. "77256186 yeah but...")
+    text = _strip_stray_postnos(text)
+    # Strip echoes of any prior post in the thread (parent + siblings)
+    prior_bodies = [op.body, parent_post.body] + [s.body for s in siblings]
+    text = _strip_thread_echo(text, prior_bodies)
     # Cap to 4 lines
     lines = [l.strip() for l in text.splitlines() if l.strip()][:4]
     text = "\n".join(lines).strip()
@@ -323,7 +388,10 @@ def _generate_reply_body(parent_post: BoardPost, op: BoardPost, variant_key: str
     # Within-output loop check (catches "Yeah in 2019 Yeah in 2023...")
     if _has_yeah_loop(text):
         return ""
-    v = output_validator.validate(text, recent_outputs=[op.body, parent_post.body])
+    # Tail-token parrot check (catches "Kek!" propagating across siblings)
+    if _has_tail_echo(text, [s.body for s in siblings]):
+        return ""
+    v = output_validator.validate(text, recent_outputs=prior_bodies)
     if not v.get("ok") and v.get("severity") == "hard":
         return ""
     return v.get("repaired_text") or text
@@ -371,7 +439,8 @@ def _add_reply(thread: BoardThread, rng: random.Random) -> Optional[BoardPost]:
     target = rng.choices(posts, weights=weights, k=1)[0]
     used_variants = {p.anon_variant for p in posts}
     variant_key = _pick_reply_variant(rng, exclude=used_variants)
-    body = _generate_reply_body(target, thread.op, variant_key, rng)
+    body = _generate_reply_body(target, thread.op, variant_key, rng,
+                                siblings=list(thread.replies))
     if not body:
         return None
     # Make sure body starts with >>NNN (the model is supposed to prepend; if it

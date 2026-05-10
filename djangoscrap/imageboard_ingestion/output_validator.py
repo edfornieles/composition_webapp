@@ -113,7 +113,12 @@ _CHATBOT_PHRASE_RE = re.compile(
     r"we gotta(?:\s+keep)?|gotta keep|gotta stay|"
     r"one step at a time|we can get through|you can get through|"
     r"progress not perfection|your journey|be kind to yourself|"
-    r"hang in there|small wins add up|trust the process)\b",
+    r"hang in there|small wins add up|trust the process|"
+    # board-simulator coach-phrase additions (Pass 3 observed leaks)
+    r"you'?re doing (?:fine|great|well|good|alright)|"
+    r"keep it up|keep lifting|keep at it|keep going|"
+    r"you'?ve been improving|you'?re improving|"
+    r"you'?ll get there|you got this|you'?re on the right)\b",
     re.I,
 )
 
