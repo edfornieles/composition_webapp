@@ -141,3 +141,85 @@ def test_eval_jsonl_records_runtime_meta(tmp_path, monkeypatch):
         assert "backend" in meta
         assert "profile" in meta
         assert "temperature" in meta
+
+
+def test_debug_prompts_writes_per_row_files(tmp_path, monkeypatch):
+    """When --debug-prompts is on, per-row debug files land in <out>/debug/."""
+    monkeypatch.setenv("IMAGEBOARD_LM_BACKEND", "template")
+
+    from djangoscrap.imageboard_ingestion import eval_fit_voice
+
+    out_dir = tmp_path / "evals" / "dbg"
+    summary = eval_fit_voice.run_eval(
+        out_dir=out_dir,
+        backends_filter=["template"],
+        skip_chat=True,
+        debug_prompts=True,
+    )
+
+    debug_dir = Path(summary["debug_dir"])
+    assert debug_dir.exists()
+    debug_files = list(debug_dir.glob("*.json"))
+    assert debug_files, "expected per-row debug files"
+
+    # Each debug file should contain the system prompt + first user prompt
+    sample = json.loads(debug_files[0].read_text(encoding="utf-8"))
+    # Thought-mode debug carries top-level keys; chat-mode debug carries {"turns":[...]}
+    if "turns" in sample:
+        assert sample["turns"], "chat debug must list turns"
+        first = sample["turns"][0]
+        assert "system_prompt" in first
+        assert "first_user_prompt" in first
+    else:
+        assert "system_prompt" in sample
+        assert "first_user_prompt" in sample
+        assert "fragments" in sample
+
+
+def test_diagnosis_md_written(tmp_path, monkeypatch):
+    monkeypatch.setenv("IMAGEBOARD_LM_BACKEND", "template")
+    from djangoscrap.imageboard_ingestion import eval_fit_voice
+    out_dir = tmp_path / "evals" / "diag"
+    summary = eval_fit_voice.run_eval(
+        out_dir=out_dir, backends_filter=["template"], skip_chat=True,
+    )
+    diag = Path(summary["diagnosis_path"])
+    assert diag.exists()
+    txt = diag.read_text(encoding="utf-8")
+    assert "## Auto-diagnosis" in txt
+    assert "## Most likely cause" in txt
+    assert "## Smallest recommended next step" in txt
+
+
+def test_collapse_metrics_in_summary(tmp_path, monkeypatch):
+    monkeypatch.setenv("IMAGEBOARD_LM_BACKEND", "template")
+    from djangoscrap.imageboard_ingestion import eval_fit_voice
+    out_dir = tmp_path / "evals" / "metrics"
+    summary = eval_fit_voice.run_eval(
+        out_dir=out_dir, backends_filter=["template"], skip_chat=True,
+    )
+    metrics = summary.get("mode_collapse_metrics") or {}
+    assert "per_backend" in metrics
+    assert "template" in metrics["per_backend"]
+    pb = metrics["per_backend"]["template"]
+    for key in ("row_count", "unique_outputs", "duplicate_outputs",
+                "near_duplicate_pairs", "cross_case_identical_outputs",
+                "fragment_total_uses", "fragment_unique_count"):
+        assert key in pb, f"missing metric {key}"
+
+
+def test_mlx_no_adapter_label_resolves(monkeypatch):
+    """Probing mlx_no_adapter should map to runtime=mlx with the env override."""
+    from djangoscrap.imageboard_ingestion import eval_fit_voice
+    runtime, env = eval_fit_voice._resolve_label("mlx_no_adapter")
+    assert runtime == "mlx"
+    assert env.get("IMAGEBOARD_MLX_DISABLE_ADAPTER") == "1"
+
+
+def test_normalize_and_jaccard():
+    """Sanity-check the dedupe helpers used in metrics."""
+    from djangoscrap.imageboard_ingestion import eval_fit_voice as ev
+    assert ev._normalize("  >Be ME!  / >2024 will be My YEAR  ") == ">be me >2024 will be my year"
+    assert ev._trigram_jaccard("a b c d e f", "a b c d e f") == 1.0
+    assert ev._trigram_jaccard("a b c", "x y z") == 0.0
+    assert ev._trigram_jaccard("", "anything") == 0.0

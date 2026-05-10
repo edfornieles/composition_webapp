@@ -157,6 +157,10 @@ _MLX_CACHE: dict = {}
 def _mlx_paths() -> tuple[str, str]:
     base_model = str(_setting("IMAGEBOARD_MLX_MODEL", _setting("FIT_MLX_BASE_MODEL", "mlx-community/Qwen2.5-3B-Instruct-4bit")))
     adapter_dir = str(_setting("IMAGEBOARD_MLX_ADAPTER", _setting("FIT_MLX_ADAPTER_DIR", "")) or "")
+    # Diagnostic override: force base-model-only generation even when an
+    # adapter is configured. Used by the eval harness for collapse diagnosis.
+    if str(os.environ.get("IMAGEBOARD_MLX_DISABLE_ADAPTER", "")).strip() in ("1", "true", "yes"):
+        adapter_dir = ""
     return base_model, adapter_dir
 
 
@@ -299,7 +303,7 @@ def generate(req: GenerationRequest, *, runtime: str | None = None) -> Generatio
     elif rt == "llamacpp":
         result = _llamacpp_generate(req)
     else:
-        return _template_generate(req)
+        result = _template_generate(req)
 
     # Fall back to template only for "infrastructure missing" errors. Real
     # generation errors (e.g. model crashed mid-decode) propagate.
@@ -308,5 +312,14 @@ def generate(req: GenerationRequest, *, runtime: str | None = None) -> Generatio
         if err_kind in _MISSING_RUNTIME_ERRORS:
             fb = _template_generate(req, fallback_from=rt, fallback_reason=result.error)
             fb.debug = {**(fb.debug or {}), "fallback_from": rt, "fallback_error": result.error}
-            return fb
+            result = fb
+
+    # Diagnostic capture: always stash the assembled prompt on result.debug so
+    # callers using --debug-prompts can see exactly what was sent. Cheap; the
+    # debug dict was already returned and unused by most callers.
+    if result.debug is None:
+        result.debug = {}
+    result.debug.setdefault("prompt_system", req.system)
+    result.debug.setdefault("prompt_user", req.user)
+    result.debug.setdefault("requested_runtime", rt)
     return result

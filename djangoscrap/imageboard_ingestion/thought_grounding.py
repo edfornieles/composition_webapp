@@ -172,6 +172,7 @@ def generate_fit_be_me_thought(
     contamination_intensity: float = 0.75,
     require_grounding: bool = True,
     runtime: str | None = None,
+    debug_sink: dict | None = None,
 ) -> dict:
     profile = _load_profile(source_key)
     state = _seed_state(current_context, screen_id, profile, contamination_intensity)
@@ -202,32 +203,57 @@ def generate_fit_be_me_thought(
     persona_system = profile.get("prompt_card") or training_dataset.PERSONA_SYSTEM
 
     def _attempt(strict: bool):
-        # `strict` nudges temperature down a notch on retry; the base profile
-        # is already conservative.
+        user_msg = _build_user_message(fragments, state, strict=strict)
         req = local_fit_model.build_request(
             system=persona_system,
-            user=_build_user_message(fragments, state, strict=strict),
+            user=user_msg,
             profile="thought",
             temperature=None if not strict else 0.50,
         )
         result = local_fit_model.generate(req, runtime=runtime)
-        return result
+        return result, user_msg
 
-    result1 = _attempt(strict=False)
+    result1, user_prompt_1 = _attempt(strict=False)
     text = result1.text
     used_meta = result1.meta
     safety_flags: list[str] = []
     safe_fragments_for_overlap = [f.get("contaminated_excerpt", "") or f.get("safe_excerpt", "") for f in fragments]
     v = output_validator.validate(text, source_fragments=safe_fragments_for_overlap)
+    result2 = None
+    user_prompt_2: str | None = None
+    v2: dict | None = None
     if not v["ok"]:
         safety_flags.extend(v["reasons"])
-        result2 = _attempt(strict=True)
+        result2, user_prompt_2 = _attempt(strict=True)
         v2 = output_validator.validate(result2.text, source_fragments=safe_fragments_for_overlap)
         if v2["ok"]:
             text = v2["repaired_text"] or result2.text
             used_meta = result2.meta
             safety_flags = []
         else:
+            if debug_sink is not None:
+                debug_sink.update({
+                    "system_prompt": persona_system,
+                    "first_user_prompt": user_prompt_1,
+                    "first_attempt_text": result1.text,
+                    "first_attempt_validator": dict(v),
+                    "first_attempt_runtime_meta": result1.meta.as_dict(),
+                    "second_user_prompt": user_prompt_2,
+                    "second_attempt_text": result2.text,
+                    "second_attempt_validator": dict(v2),
+                    "final_text": "",
+                    "final_status": "REJECTED",
+                    "fragments": [
+                        {
+                            "chunk_id": f.get("chunk_id"),
+                            "post_id": f.get("post_id"),
+                            "rrf_score": f.get("rrf_score"),
+                            "source_components": f.get("source_components"),
+                            "safe_excerpt": (f.get("safe_excerpt") or "")[:240],
+                        }
+                        for f in (fragments or [])
+                    ],
+                })
             return {
                 "thought": None,
                 "persona_id": "fourchan_fit_be_me_body_discipline",
@@ -242,6 +268,30 @@ def generate_fit_be_me_thought(
             }
     else:
         text = v["repaired_text"] or text
+
+    if debug_sink is not None:
+        debug_sink.update({
+            "system_prompt": persona_system,
+            "first_user_prompt": user_prompt_1,
+            "first_attempt_text": result1.text,
+            "first_attempt_validator": dict(v),
+            "first_attempt_runtime_meta": result1.meta.as_dict(),
+            "second_user_prompt": user_prompt_2,
+            "second_attempt_text": result2.text if result2 else None,
+            "second_attempt_validator": dict(v2) if v2 else None,
+            "final_text": text,
+            "final_status": "OK" if v.get("ok") or (v2 and v2.get("ok")) else "PARTIAL",
+            "fragments": [
+                {
+                    "chunk_id": f.get("chunk_id"),
+                    "post_id": f.get("post_id"),
+                    "rrf_score": f.get("rrf_score"),
+                    "source_components": f.get("source_components"),
+                    "safe_excerpt": (f.get("safe_excerpt") or "")[:240],
+                }
+                for f in (fragments or [])
+            ],
+        })
 
     return {
         "thought": text,

@@ -469,7 +469,14 @@ def _build_chat_user_prompt(
     )
 
 
-def _generate_chat_reply(persona: MonologuePersona, history: list, user_msg: str, *, session=None) -> str:
+def _generate_chat_reply(
+    persona: MonologuePersona,
+    history: list,
+    user_msg: str,
+    *,
+    session=None,
+    debug_sink: dict | None = None,
+) -> str:
     try:
         from ..imageboard_ingestion import (
             anon_zoo, local_fit_model, output_validator, retrieval, storage, training_dataset,
@@ -567,37 +574,68 @@ def _generate_chat_reply(persona: MonologuePersona, history: list, user_msg: str
             user=user_prompt,
             profile="chat",
         )
-        return local_fit_model.generate(req)
+        return local_fit_model.generate(req), user_prompt
 
-    res = _attempt()
-    text = (res.text or "").strip()
+    res, used_user_prompt = _attempt()
+    first_text = (res.text or "").strip()
     v = output_validator.validate(
-        text,
+        first_text,
         source_fragments=fragment_excerpts,
         recent_outputs=recent_outputs,
     )
+    text = first_text
+    retry_instruction = ""
+    second_text = None
+    v2: dict | None = None
     if not v.get("ok"):
         # Hard rejections cannot be retried; return a marker (caller logs it).
         if v.get("severity") == "hard":
             text = ""
         else:
-            res2 = _attempt(extra_instruction=v.get("suggested_retry_instruction") or "")
-            text2 = (res2.text or "").strip()
+            retry_instruction = v.get("suggested_retry_instruction") or ""
+            res2, _ = _attempt(extra_instruction=retry_instruction)
+            second_text = (res2.text or "").strip()
             v2 = output_validator.validate(
-                text2,
+                second_text,
                 source_fragments=fragment_excerpts,
                 recent_outputs=recent_outputs,
             )
             if v2.get("ok"):
-                text = v2.get("repaired_text") or text2
+                text = v2.get("repaired_text") or second_text
             elif v2.get("repaired_text"):
                 text = v2["repaired_text"]
             else:
                 # Twice rejected: return whatever the second attempt got, or
                 # the repair from the first if the second was empty.
-                text = text2 or v.get("repaired_text") or text or ""
+                text = second_text or v.get("repaired_text") or text or ""
     else:
         text = v.get("repaired_text") or text
+
+    # Optional diagnostic capture
+    if debug_sink is not None:
+        debug_sink.update({
+            "anon_variant": variant.key,
+            "anon_state": dict(state),
+            "system_prompt": full_system,
+            "first_user_prompt": used_user_prompt,
+            "first_attempt_text": first_text,
+            "first_attempt_validator": dict(v) if v else {},
+            "first_attempt_runtime_meta": res.meta.as_dict(),
+            "retry_instruction": retry_instruction,
+            "second_attempt_text": second_text,
+            "second_attempt_validator": dict(v2) if v2 else None,
+            "final_text": text,
+            "fragments": [
+                {
+                    "chunk_id": f.get("chunk_id"),
+                    "post_id": f.get("post_id"),
+                    "rrf_score": f.get("rrf_score"),
+                    "source_components": f.get("source_components"),
+                    "safe_excerpt": (f.get("safe_excerpt") or "")[:240],
+                }
+                for f in (fragments or [])
+            ],
+        })
 
     # Update recent_fragment_uids on session for anti-repeat in next turn
     if session is not None and fragments:
