@@ -14,7 +14,11 @@ from django.views.generic import RedirectView
 urlpatterns = [
     path("django-admin/", admin.site.urls),
     path('', views.fit_chat_page, name='home'),
+    # Explicit aliases that cannot collide with browser autocomplete of the
+    # admin's /s3/<bucket>/ source library. Bookmark these.
+    path('chat/', views.fit_chat_page, name='fit_chat'),
     path('wall/', views.fit_stream_page, name='wall_shortcut'),
+    path('fit/', views.fit_chat_page, name='fit_chat_alt'),
     path('api/fit/feedback/', views.fit_thought_feedback, name='fit_thought_feedback'),
     path('api/fit/stream-next/', views.fit_wall_stream_next, name='fit_wall_stream_next'),
     path('service/', views.service, name='service'),

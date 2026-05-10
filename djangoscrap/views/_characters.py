@@ -321,6 +321,29 @@ def api_chat_send(request, slug, session_id):
     })
 
 
+# Direct self-harm-style USER inputs that the model should NOT attempt to
+# answer normally. Pass-2-containment rule: silence beats a half-trained
+# reply. Catches first-person suicidality + casual board "kys/rope" framing
+# *as user input only*. Output validator already blocks self-harm
+# *encouragement* in model output; this is a separate gate at the input.
+_SELF_HARM_INPUT_RE = re.compile(
+    r"\b(?:want(?:ing)?\s+to\s+die|wanna\s+die|"
+    r"kill\s+(?:myself|my\s*self)|killing\s+myself|"
+    # match both "end it" and gerund "ending it" / "ready to end it"
+    r"end(?:ing)?\s+(?:it(?:\s+all)?|my\s+life|myself)|"
+    r"unalive\s+(?:myself|me)|off\s+myself|"
+    r"rope\s+(?:myself|me)|hang\s+myself|"
+    r"don'?t\s+(?:want|wanna)\s+to?\s*be\s+here(?:\s+anymore)?|"
+    r"can'?t\s+go\s+on(?:\s+anymore)?|"
+    r"feel\s+me\s+want\s+to\s+die)\b",
+    re.I,
+)
+
+
+def _is_self_harm_direct_input(text: str) -> bool:
+    return bool(_SELF_HARM_INPUT_RE.search(text or ""))
+
+
 _QUOTE_BACK_FEW_SHOTS = (
     # Pass 2E.1: dropped concrete few-shot strings — the base model was
     # parroting them verbatim as its first reply on a new session. Replaced
@@ -526,6 +549,21 @@ def _generate_chat_reply(
             anon_zoo, local_fit_model, output_validator, retrieval, storage, training_dataset,
         )
     except Exception:
+        return ""
+
+    # Pass-2-containment: dark-prompt silence path. Direct self-harm-style
+    # user inputs do NOT reach the model. The character fails closed —
+    # silence beats a half-trained reply on these. Recorded in the debug
+    # sink so eval can see the rejection without inspecting the input text.
+    if _is_self_harm_direct_input(user_msg):
+        if debug_sink is not None:
+            debug_sink.update({
+                "skipped_generation": True,
+                "rejection_category": "self_harm_direct_input",
+                "grounding_status": "REJECTED",
+                "final_text": "",
+                "user_msg_excerpt": (user_msg or "")[:120],
+            })
         return ""
 
     corpus = persona.corpus_key or getattr(settings, "FIT_CORPUS_SOURCE_KEY", "fourchan_fit")

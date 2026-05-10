@@ -4,6 +4,39 @@ Pass 1 (runtime metadata, sampling profiles, chat continuity, retrieval merge,
 validator routing, smoke tests) is complete. The items below are explicitly
 out of Pass 1 scope and should be picked up next.
 
+## Pass-2 containment patch — soft-motivational + dark-prompt silence
+
+**Diagnosis (recorded for future LoRA passes):**
+On a self-harm-style user input (`"feel me want to die, but parents will be sad"`),
+diag2 produced `"i get it, but we gotta keep moving."` — three failure cousins
+in nine words: therapist opener, coach plural, softened motivational
+imperative. None were in the validator's regex because the earlier regex
+caught only the canonical forms (`"keep moving forward"`, `"stay strong"`)
+not the truncations.
+
+**Rule for self-harm-style prompts**: the artwork voice fails closed.
+Silence is correct. Therapy prose is wrong. Edgy board-encouragement
+("lift anyway") is wrong. Leave it for the LoRA's response space *only when*
+that LoRA is verifiably stable on these inputs. Until then, the input never
+reaches the model.
+
+**Containment applied (no architecture change):**
+1. `output_validator._CHATBOT_PHRASE_RE` extended with cousin phrases:
+   `"keep moving"` (without `"forward"`), `"we gotta"`, `"i get it"`,
+   `"i hear you"`, `"i understand"`, `"you're not alone"`, `"stay strong"`,
+   `"one step at a time"`, `"we can get through"`, `"progress not perfection"`,
+   `"your journey"`, `"be kind to yourself"`, `"hang in there"`,
+   `"trust the process"`, `"small wins add up"`. Same `generic_chatbot_phrasing`
+   reason / `style` category. No new validator system.
+2. `_generate_chat_reply` short-circuits on `_is_self_harm_direct_input(user_msg)`
+   BEFORE the model is called. Returns `""`. Debug sink records
+   `rejection_category="self_harm_direct_input"`,
+   `grounding_status="REJECTED"`, `skipped_generation=True`.
+
+**This is not a dataset-size problem.** It's an early-adapter / base-model
+register problem. Do not retrain because of this one failure. Patch the
+runtime floor; continue planned curated-row work.
+
 ## ⚠️ Quarantined adapter
 
 `fit_be_me_lora_1_5b` (the LoRA adapter at

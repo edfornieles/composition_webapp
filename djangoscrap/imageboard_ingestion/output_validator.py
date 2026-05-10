@@ -93,17 +93,27 @@ _GENERIC_AI_RE = re.compile(
 )
 
 # Heuristic for a chatty assistant register that isn't /fit/.
+# Pass-2-containment: extended with the soft-motivational cousin phrases the
+# diag2 LoRA produced on dark prompts ("i get it, but we gotta keep moving").
+# These were not in the earlier regex because they're truncations / softer
+# variants of already-banned phrases.
 _CHATBOT_PHRASE_RE = re.compile(
     r"\b(it'?s important to|it is important to|please consult|"
     r"seek professional|consult a (?:doctor|physician|professional)|"
-    r"i understand that|i'?m here to (?:help|listen|support)|"
+    r"i understand(?:\s+that)?|i'?m here to (?:help|listen|support)|"
     r"taking care of your (?:well[-\s]?being|health|mental health)|"
     r"your well[-\s]?being matters|prioriti[sz]e your|"
-    r"keep moving forward|moving forward|keep pushing|"
-    r"keep it real|stay strong|don'?t give up|"
+    r"keep moving(?:\s+forward)?|moving forward|keep pushing|"
+    r"keep it real|stay strong|don'?t give up|stay with me|"
     r"you'?re doing the best you can|you can do (?:it|this)|"
     r"believe in yourself|you'?ve got this|effort doesn'?t equal|"
-    r"a form of self[-\s]?care|recogni[sz]ing your own)\b",
+    r"a form of self[-\s]?care|recogni[sz]ing your own|"
+    # diag2 cousin-phrase additions
+    r"i get it(?:,?\s+but)?|i hear you|you'?re not alone|"
+    r"we gotta(?:\s+keep)?|gotta keep|gotta stay|"
+    r"one step at a time|we can get through|you can get through|"
+    r"progress not perfection|your journey|be kind to yourself|"
+    r"hang in there|small wins add up|trust the process)\b",
     re.I,
 )
 
