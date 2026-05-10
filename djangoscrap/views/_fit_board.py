@@ -83,10 +83,12 @@ NEW_THREAD_PROBABILITY = 0.10  # 10% of ticks open a new thread
 
 # --- OP topic seeds -------------------------------------------------------
 
-# Hand-written OP topic seeds. The model fills in the body or expands. Each
-# seed is a (subject, opener_text, image_keyword) tuple. Subject sometimes
-# blank — most /fit/ OPs are subjectless.
-OP_SEEDS: list[tuple[str, str, str]] = [
+# Hand-written OP seeds (defaults). At module-init we ALSO try to merge in
+# scraped seeds from training/fit_lora/board_op_seeds.json if it exists —
+# that file is produced by `scripts/scrape_fit_op_seeds.py` against the live
+# /fit/ catalog and lets us refresh the seed pool without code changes.
+# Each seed is (subject, opener_text, image_keyword).
+_HAND_OP_SEEDS: list[tuple[str, str, str]] = [
     ("", "is creatine actually worth it or am i getting memed", "creatine_tub"),
     ("", "should i bulk or cut. 5'10 175lb ~16% bf", "scale"),
     ("", "missed the gym 4 days in a row. talk me back in", "gym_bag"),
@@ -108,6 +110,48 @@ OP_SEEDS: list[tuple[str, str, str]] = [
     ("", "anyone else just lift in silence now", "barbell"),
     ("", "on tren. wife thinks im on the spectrum. i kinda agree", "needle"),
 ]
+
+
+def _load_scraped_op_seeds() -> list[tuple[str, str, str]]:
+    """Merge JSON-scraped seeds with hand-written ones. Silent if absent."""
+    try:
+        from django.conf import settings  # type: ignore
+        base = getattr(settings, "BASE_DIR", "")
+    except Exception:
+        base = ""
+    candidates = [
+        f"{base}/training/fit_lora/board_op_seeds.json" if base else None,
+        "training/fit_lora/board_op_seeds.json",
+    ]
+    import os
+    for p in candidates:
+        if not p:
+            continue
+        if not os.path.exists(p):
+            continue
+        try:
+            with open(p, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            seeds = []
+            for entry in data:
+                if isinstance(entry, dict):
+                    s = entry.get("subject", "") or ""
+                    b = entry.get("body", "") or ""
+                    k = entry.get("image_keyword", "thumb") or "thumb"
+                    if b.strip():
+                        seeds.append((s, b.strip(), k))
+                elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                    s, b = entry[0] or "", entry[1] or ""
+                    k = entry[2] if len(entry) > 2 else "thumb"
+                    if b.strip():
+                        seeds.append((s, b.strip(), k))
+            return seeds
+        except Exception:
+            continue
+    return []
+
+
+OP_SEEDS: list[tuple[str, str, str]] = _HAND_OP_SEEDS + _load_scraped_op_seeds()
 
 
 # --- image-info stubs (cosmetic) -----------------------------------------
