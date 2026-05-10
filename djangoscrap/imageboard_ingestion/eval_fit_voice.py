@@ -634,22 +634,89 @@ def compute_collapse_metrics(rows: list[EvalRow], *, sweep_rows: Optional[list[E
                     return True
         return False
 
+    # LoRA gating additions: abstract-drift count, quote-back success, length-overflow.
+    abstract_drift_re = _re.compile(
+        r"\b(?:the\s+(?:past|present|future|truth|void|silence|"
+        r"reflection|essence|whole|story|tape|canvas)|"
+        r"only\s+what(?:\s+was|\s+is|'?s|\s+matters)|"
+        r"what\s+was\s+inside|what'?s\s+inside|"
+        r"nothing\s+(?:matters|but)|matters\s+(?:now|anymore)|"
+        r"my\s+reality|a\s+canvas|a\s+tape|a\s+story|"
+        r"your\s+journey|your\s+path|moving\s+forward)\b",
+        _re.I,
+    )
+
+    def _has_quote_back(user_text: str, anon_text: str) -> bool:
+        """True if anon_text starts (within first 80 chars) with `>`+phrase
+        and the phrase contains at least one user-message word ≥4 chars."""
+        if not anon_text or not user_text:
+            return False
+        head = anon_text[:120].lstrip()
+        if not head.startswith(">"):
+            return False
+        first_line = head.splitlines()[0].lstrip(">").strip()
+        if not first_line:
+            return False
+        first_words = {
+            w.lower() for w in _re.findall(r"\w+", first_line) if len(w) >= 4
+        }
+        user_words = {
+            w.lower() for w in _re.findall(r"\w+", user_text) if len(w) >= 4
+        }
+        return bool(first_words & user_words)
+
+    def _is_overlong(mode: str, text: str) -> bool:
+        wc = len((text or "").split())
+        # rubric: chat ≤50, wall thought ≤30, inner_monologue ≤30 (target ~4-30)
+        cap = {"chat": 50, "thought": 30}.get(mode, 50)
+        return wc > cap
+
     pass2e: dict[str, dict] = {}
     for backend, brows in by_backend.items():
         format_leak_count = 0
         loop_count = 0
         assistant_tone_count = 0
-        for text in _row_outputs(brows):
-            if any(tok in text for tok in leak_tokens) or label_re.search(text):
-                format_leak_count += 1
-            if _has_within_loop(text):
-                loop_count += 1
-            if assistant_tone_re.search(text):
-                assistant_tone_count += 1
+        abstract_drift_count = 0
+        over_length_count = 0
+        quote_back_attempts = 0
+        quote_back_hits = 0
+        for r in brows:
+            # Iterate per output (chat case = many turns, thought case = one)
+            entries = r.outputs if r.outputs else [{"user": r.prompt, "anon": r.output}]
+            for entry in entries:
+                anon = entry.get("anon", "") or ""
+                user = entry.get("user", "") or r.prompt or ""
+                if not anon:
+                    continue
+                if any(tok in anon for tok in leak_tokens) or label_re.search(anon):
+                    format_leak_count += 1
+                if _has_within_loop(anon):
+                    loop_count += 1
+                if assistant_tone_re.search(anon):
+                    assistant_tone_count += 1
+                if abstract_drift_re.search(anon):
+                    abstract_drift_count += 1
+                if _is_overlong(r.mode, anon):
+                    over_length_count += 1
+                # Quote-back attempt: any chat case where the user message
+                # has at least 3 words. Only count cases that asked for it
+                # implicitly (chat mode), not thought-only screen presets.
+                if r.mode == "chat" and len((user or "").split()) >= 3:
+                    quote_back_attempts += 1
+                    if _has_quote_back(user, anon):
+                        quote_back_hits += 1
         pass2e[backend] = {
             "format_leak_count": format_leak_count,
             "within_generation_loop_count": loop_count,
             "assistant_tone_count": assistant_tone_count,
+            "abstract_drift_count": abstract_drift_count,
+            "over_length_count": over_length_count,
+            "quote_back_attempts": quote_back_attempts,
+            "quote_back_hits": quote_back_hits,
+            "quote_back_rate": (
+                round(quote_back_hits / quote_back_attempts, 3)
+                if quote_back_attempts else None
+            ),
         }
     out["pass2e_regression"] = pass2e
 
@@ -818,13 +885,19 @@ def render_diagnosis(
     # Pass 2E regression counts
     pass2e = (metrics or {}).get("pass2e_regression") or {}
     if pass2e:
-        lines.append("## Pass 2E regression counts (lower is better)\n")
-        lines.append("| backend | format_leak | within_loop | assistant_tone |")
-        lines.append("|---|---|---|---|")
+        lines.append("## Regression + LoRA gating counts (lower is better, except quote_back_rate)\n")
+        lines.append("| backend | format_leak | loop | assistant_tone | abstract_drift | over_length | quote_back hits/att (rate) |")
+        lines.append("|---|---|---|---|---|---|---|")
         for backend, m in pass2e.items():
+            qb_rate = m.get("quote_back_rate")
+            qb_str = f"{m.get('quote_back_hits', 0)}/{m.get('quote_back_attempts', 0)}"
+            if qb_rate is not None:
+                qb_str += f" ({qb_rate})"
             lines.append(
                 f"| {backend} | {m['format_leak_count']} | "
-                f"{m['within_generation_loop_count']} | {m['assistant_tone_count']} |"
+                f"{m['within_generation_loop_count']} | {m['assistant_tone_count']} | "
+                f"{m.get('abstract_drift_count', 0)} | {m.get('over_length_count', 0)} | "
+                f"{qb_str} |"
             )
         lines.append("")
 

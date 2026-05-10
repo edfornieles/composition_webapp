@@ -3,91 +3,75 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>/fit/ - Health &amp; Fitness - chat</title>
+  <title>/fit/ - Health &amp; Fitness</title>
   <style>
-    /* Yotsuba B (real 4chan /fit/ palette) */
+    /* Yotsuba B — matched to live boards.4chan.org/fit/ */
     html, body { margin: 0; padding: 0; }
     body {
       background: #EEF2FF;
       color: #000;
-      font: 13px/1.4 Arial, Helvetica, sans-serif;
+      font: 10pt 'arial', 'helvetica', sans-serif;
     }
     a { color: #34345C; text-decoration: none; }
-    a:hover { color: #D00; }
+    a:hover { color: #DD0000; }
 
-    /* Top board nav (style mimics the chan board strip) */
+    /* Top board nav */
     .boardnav {
-      font-size: 11px;
-      padding: 4px 6px;
+      font-size: 9pt;
+      padding: 2px 6px;
       color: #34345C;
-      border-bottom: 1px solid #B7C5D9;
       background: #EEF2FF;
     }
     .boardnav a { color: #34345C; }
-    .boardnav .sep { color: #B7C5D9; margin: 0 2px; }
+    .boardnav .sep { color: #B7C5D9; margin: 0 1px; }
     .boardnav b { color: #000; }
 
     /* Big board header */
     .boardhdr {
       text-align: center;
-      padding: 8px 0 0 0;
-      border-bottom: 1px solid #B7C5D9;
+      padding: 6px 0 0 0;
     }
     .boardhdr h1 {
       margin: 0;
-      font: bold 28px Tahoma, Arial, sans-serif;
+      font: bold 28px 'tahoma', 'arial', sans-serif;
       color: #AF0A0F;
-      letter-spacing: 0.5px;
     }
     .boardhdr .sub {
-      font: italic 12px Arial, sans-serif;
+      font: italic 10pt 'arial', sans-serif;
       color: #800;
-      padding: 2px 0 8px;
+      padding: 1px 0 6px;
     }
 
     .threadbar {
-      background: #EEF2FF;
-      padding: 6px 12px;
-      font-size: 11px;
+      padding: 4px 8px;
+      font-size: 9pt;
       color: #34345C;
-      border-bottom: 1px dotted #B7C5D9;
     }
-    .threadbar a { margin-right: 10px; }
 
     .wrap {
-      max-width: 1080px;
-      margin: 0 auto;
-      padding: 8px 12px 240px 12px;
+      padding: 4px 8px 220px 8px;
     }
 
-    /* Posts */
-    .post {
-      display: block;
-      margin: 0 0 0 0;
-      padding: 4px 4px 8px 4px;
+    /* Reply count line ("31 replies and 5 images omitted...") */
+    .replycount {
+      font-size: 9pt;
+      color: #707070;
+      padding: 4px 0 4px 0;
+    }
+    .replycount a { color: #34345C; }
+
+    /* OP post layout — no box, image float left, file info above */
+    .post-op {
+      padding: 0 0 6px 0;
       max-width: 900px;
     }
-    .post.op { padding: 6px 6px 10px 6px; margin-top: 4px; }
-    .post.reply { margin-left: 22px; padding: 4px; }
-
-    .pwrap {
-      display: inline-block;
-      background: #D6DAF0;
-      border: 1px solid #B7C5D9;
-      padding: 4px 8px 6px 8px;
-      box-sizing: border-box;
-      max-width: 100%;
-    }
-    .post.reply .pwrap { background: #D6DAF0; }
-
     .fileinfo {
-      font-size: 11px;
+      font-size: 9pt;
       color: #000;
-      padding: 0 0 2px 0;
+      padding: 0 0 1px 0;
     }
     .fileinfo a { color: #34345C; text-decoration: underline; }
-    .fileinfo .meta { color: #555; }
-
+    .fileinfo .meta { color: #707070; }
     .filewrap {
       float: left;
       margin: 2px 12px 4px 0;
@@ -96,16 +80,19 @@
       width: 125px;
       height: 125px;
       display: block;
-      border: 1px solid #555;
       object-fit: cover;
       background:
         repeating-linear-gradient(45deg, #555 0px, #555 2px, #777 2px, #777 4px);
     }
 
     .posthead {
-      font-size: 12px;
+      font-size: 10pt;
       color: #000;
-      margin-bottom: 2px;
+    }
+    .posthead .checkbox {
+      font-size: 10pt;
+      color: #707070;
+      margin-right: 2px;
     }
     .posthead .subject {
       color: #0F0C5D;
@@ -123,49 +110,72 @@
       font-weight: normal;
     }
     .posthead .time { color: #000; margin-right: 4px; }
+    .posthead .num {
+      color: #000;
+    }
     .posthead .num a { color: #000; text-decoration: none; }
-    .posthead .num a:hover { color: #D00; }
-    .posthead .ops {
+    .posthead .num a:hover { color: #DD0000; }
+    .posthead .reply-link {
+      margin-left: 2px;
+    }
+    .posthead .reply-link a { color: #34345C; }
+    .posthead .triangle {
       color: #34345C;
-      font-size: 11px;
       margin-left: 4px;
     }
-    .posthead .ops a {
-      margin: 0 2px;
-      text-decoration: none;
-      color: #34345C;
-    }
-    .posthead .ops a:hover { color: #D00; }
     .posthead .replyref {
-      color: #34345C;
+      color: #DD0000;
       text-decoration: underline;
-      margin-left: 4px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 10pt;
+      margin-right: 4px;
     }
 
     .body {
-      font: 13px/1.45 Arial, Helvetica, sans-serif;
+      font: 10pt 'arial', 'helvetica', sans-serif;
       color: #000;
       white-space: pre-wrap;
       word-wrap: break-word;
-      margin-top: 4px;
+      padding: 4px 0 0 0;
       max-width: 720px;
-      clear: none;
     }
     .body .gt { color: #789922; }
+    .body .quotelink {
+      color: #DD0000;
+      text-decoration: underline;
+    }
     .body.typing { color: #888; font-style: italic; }
 
-    /* Backlinks (the small `>>NNN` showing who replied) */
-    .backlinks {
-      clear: both;
-      font-size: 11px;
-      color: #000;
-      padding-top: 4px;
+    /* Reply post — boxed, indented, leading caret marker */
+    .reply-row {
+      padding: 2px 0;
+      margin: 0;
+      display: flex;
+      align-items: flex-start;
+      gap: 4px;
     }
-    .backlinks a { color: #34345C; text-decoration: underline; }
+    .reply-row .caret {
+      color: #34345C;
+      font-size: 10pt;
+      padding-top: 1px;
+      flex-shrink: 0;
+      width: 16px;
+      text-align: right;
+    }
+    .reply-box {
+      background: #D6DAF0;
+      border: 1px solid #B7C5D9;
+      padding: 2px 6px 4px 6px;
+      display: inline-block;
+      max-width: calc(100% - 24px);
+      box-sizing: border-box;
+    }
+    /* indent each reply slightly more than the OP */
+    .reply-row.lvl-1 { margin-left: 12px; }
 
-    /* Quick-reply box */
+    .clear { clear: both; }
+
+    /* Quick-reply box (4chan-style QR popup, fixed at bottom) */
     .qr {
       position: fixed;
       bottom: 0;
@@ -173,74 +183,70 @@
       right: 0;
       background: #D6DAF0;
       border-top: 1px solid #B7C5D9;
-      box-shadow: 0 -1px 4px rgba(0,0,0,0.06);
     }
     .qr .qrhdr {
       background: linear-gradient(#FFFFFF, #DCDCDC);
       border-bottom: 1px solid #B7C5D9;
-      font-size: 11px;
+      font-size: 9pt;
       color: #34345C;
-      padding: 3px 12px;
+      padding: 2px 10px;
       font-weight: bold;
     }
     .qr .qrbody {
-      max-width: 1080px;
-      margin: 0 auto;
-      padding: 8px 12px;
+      padding: 6px 8px 8px 8px;
       display: grid;
-      grid-template-columns: 90px 1fr;
-      gap: 4px 6px;
-      font-size: 12px;
+      grid-template-columns: 70px 1fr 80px;
+      gap: 3px 4px;
+      font-size: 10pt;
+      max-width: 1080px;
     }
     .qr label {
       color: #34345C;
       align-self: center;
+      font-size: 9pt;
     }
     .qr input.field {
       background: #FFF;
       border: 1px solid #B7C5D9;
-      padding: 2px 4px;
-      font: 12px Arial;
+      padding: 1px 3px;
+      font: 10pt 'arial';
       color: #000;
-      height: 22px;
+      height: 18px;
+      grid-column: 2 / 3;
     }
     #composeText {
-      grid-column: 1 / -1;
+      grid-column: 2 / 3;
+      grid-row: 3 / 4;
       background: #FFF;
       border: 1px solid #B7C5D9;
       color: #000;
-      font: 13px/1.45 Arial, Helvetica, sans-serif;
-      padding: 6px 8px;
+      font: 10pt 'arial', 'helvetica', sans-serif;
+      padding: 3px 4px;
       resize: none;
-      min-height: 70px;
-      max-height: 220px;
+      min-height: 56px;
+      max-height: 200px;
       overflow-y: auto;
+      width: 100%;
     }
     #composeText:focus { outline: 1px solid #34345C; }
-    .qrfoot {
-      grid-column: 1 / -1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 4px;
-    }
     #btnSend {
+      grid-column: 3 / 4;
+      grid-row: 3 / 4;
+      align-self: end;
       background: linear-gradient(#FFFFFF, #DCDCDC);
       border: 1px solid #B7C5D9;
       color: #000;
-      font: 12px Arial, sans-serif;
+      font: 10pt 'arial';
       padding: 4px 14px;
       cursor: pointer;
-      height: 26px;
+      height: 24px;
     }
     #btnSend:hover { background: linear-gradient(#FFFFFF, #C0C0C0); }
     #btnSend:disabled { opacity: 0.5; cursor: wait; }
-    .qrfoot .hint { color: #555; font-size: 11px; }
   </style>
 </head>
 <body>
 
-  <!-- /a/ /b/ /c/ ... mock board nav -->
   <div class="boardnav">
     [<a href="#">a</a><span class="sep">/</span><a href="#">b</a><span class="sep">/</span><a href="#">co</a><span class="sep">/</span><b>fit</b><span class="sep">/</span><a href="#">g</a><span class="sep">/</span><a href="#">k</a><span class="sep">/</span><a href="#">lit</a><span class="sep">/</span><a href="#">r9k</a><span class="sep">/</span><a href="#">x</a>]
     &nbsp;[<a href="/wall/">Home</a>]
@@ -254,9 +260,8 @@
 
   <div class="threadbar">
     [<a href="/">Catalog</a>]
-    [<a href="/">Top</a>]
-    <span style="color:#888">·</span>
-    Posting mode: Reply
+    [<a href="/">Bottom</a>]
+    &nbsp;&nbsp;Posting mode: Reply
   </div>
 
   <div class="wrap" id="wrap">
@@ -270,11 +275,9 @@
       <input class="field" type="text" value="Anonymous" disabled>
       <label>Subject</label>
       <input class="field" type="text" id="subjectField" placeholder="(auto from first post)">
-      <textarea id="composeText" rows="3" placeholder="say something… (Enter to post · Shift+Enter for newline)"></textarea>
-      <div class="qrfoot">
-        <span class="hint">corpus-grounded /fit/ anon · base MLX · no adapter</span>
-        <button id="btnSend">Post</button>
-      </div>
+      <label>Comment</label>
+      <textarea id="composeText" rows="3" placeholder="Enter to post · Shift+Enter for newline"></textarea>
+      <button id="btnSend">Post</button>
     </div>
   </div>
 
@@ -289,7 +292,6 @@ const subjectField = document.getElementById("subjectField");
 
 let postCount = 0;
 let lastPostNumber = null;
-let opPostNumber = null;
 const seedNum = 7 * 10000000 + Math.floor(Math.random() * 9_000_000);
 
 function fmtChanTime(d) {
@@ -309,58 +311,27 @@ function _renderBody(text) {
 }
 
 function fakeFileInfo() {
-  // Plausible chan-style file metadata for the OP image.
-  const kb = 30 + Math.floor(Math.random() * 380);
+  const kb = (Math.random() * 4 + 0.2).toFixed(2) + " MB";
   const w = 480 + Math.floor(Math.random() * 800);
   const h = 480 + Math.floor(Math.random() * 800);
   const tag = ["spreadsheet","mirror","scale","fridge_2am","mog","gymrat",
-               "dyel","cope","ankles","void"][Math.floor(Math.random()*10)];
+               "dyel","cope","ankles","void","Japanese_buddhist_monk_by"][Math.floor(Math.random()*11)];
   return {filename: `${tag}.jpg`, kb, w, h};
 }
 
-function renderPost(role, text, opts) {
-  opts = opts || {};
-  const isOp = postCount === 0;
-  const num = seedNum + postCount;
-  postCount++;
-  if (isOp) opPostNumber = num;
-
-  const post = document.createElement("div");
-  post.className = "post" + (isOp ? " op" : " reply");
-  post.id = "p" + num;
-
-  const pwrap = document.createElement("div");
-  pwrap.className = "pwrap";
-
-  // OP gets a file thumb (placeholder); replies don't.
-  if (isOp) {
-    const fi = fakeFileInfo();
-    const fileinfo = document.createElement("div");
-    fileinfo.className = "fileinfo";
-    fileinfo.innerHTML = `File: <a href="#">${fi.filename}</a> <span class="meta">(${fi.kb} KB, ${fi.w}x${fi.h})</span>`;
-    pwrap.appendChild(fileinfo);
-
-    const filewrap = document.createElement("div");
-    filewrap.className = "filewrap";
-    const thumb = document.createElement("div");
-    thumb.className = "thumb";
-    filewrap.appendChild(thumb);
-    pwrap.appendChild(filewrap);
-  }
-
+function buildPostHead({isOp, num, role, replyToNum, subject}) {
   const head = document.createElement("div");
   head.className = "posthead";
 
-  if (isOp) {
+  const cb = document.createElement("span");
+  cb.className = "checkbox";
+  cb.innerHTML = "&#9744;";  // empty checkbox
+  head.appendChild(cb);
+
+  if (isOp && subject) {
     const subj = document.createElement("span");
     subj.className = "subject";
-    const userSubject = (subjectField.value || "").trim();
-    let s = userSubject;
-    if (!s) {
-      const words = text.split(/\s+/).slice(0, 6).join(" ");
-      s = (words || "thread").replace(/[\n\r]/g, " ").slice(0, 60);
-    }
-    subj.textContent = s;
+    subj.textContent = subject;
     head.appendChild(subj);
   }
 
@@ -379,21 +350,94 @@ function renderPost(role, text, opts) {
   numSpan.innerHTML = `No.<a href="#p${num}">${num}</a>`;
   head.appendChild(numSpan);
 
-  const ops = document.createElement("span");
-  ops.className = "ops";
-  ops.innerHTML = `[<a href="#p${num}">Reply</a>]`;
-  head.appendChild(ops);
+  const reply = document.createElement("span");
+  reply.className = "reply-link";
+  reply.innerHTML = `[<a href="#p${num}">Reply</a>]`;
+  head.appendChild(reply);
 
-  // ">>opnum" reply ref on every non-OP post
-  if (lastPostNumber !== null && !isOp) {
+  if (replyToNum !== null) {
+    const tri = document.createElement("span");
+    tri.className = "triangle";
+    tri.textContent = "▶";
+    head.appendChild(tri);
     const ref = document.createElement("a");
     ref.className = "replyref";
-    ref.href = "#p" + lastPostNumber;
-    ref.textContent = ">>" + lastPostNumber;
+    ref.href = "#p" + replyToNum;
+    ref.textContent = ">>" + replyToNum;
     head.appendChild(ref);
   }
 
-  pwrap.appendChild(head);
+  return head;
+}
+
+function renderPost(role, text, opts) {
+  opts = opts || {};
+  const isOp = postCount === 0;
+  const num = seedNum + postCount;
+  postCount++;
+
+  if (isOp) {
+    // OP: no box, image float left, file info on top, header below image, body wraps right
+    const post = document.createElement("div");
+    post.className = "post-op";
+    post.id = "p" + num;
+
+    const fi = fakeFileInfo();
+    const fileinfo = document.createElement("div");
+    fileinfo.className = "fileinfo";
+    fileinfo.innerHTML = `File: <a href="#">${fi.filename}</a> <span class="meta">(${fi.kb}, ${fi.w}x${fi.h})</span>`;
+    post.appendChild(fileinfo);
+
+    const filewrap = document.createElement("div");
+    filewrap.className = "filewrap";
+    const thumb = document.createElement("div");
+    thumb.className = "thumb";
+    filewrap.appendChild(thumb);
+    post.appendChild(filewrap);
+
+    const userSubject = (subjectField.value || "").trim();
+    let s = userSubject;
+    if (!s) {
+      const words = text.split(/\s+/).slice(0, 6).join(" ");
+      s = (words || "thread").replace(/[\n\r]/g, " ").slice(0, 60);
+    }
+    const head = buildPostHead({isOp: true, num, role, replyToNum: null, subject: s});
+    post.appendChild(head);
+
+    const body = document.createElement("div");
+    body.className = "body" + (opts.typing ? " typing" : "");
+    if (opts.typing) {
+      body.textContent = "…";
+    } else {
+      body.innerHTML = _renderBody(text);
+    }
+    post.appendChild(body);
+
+    const clearer = document.createElement("div");
+    clearer.className = "clear";
+    post.appendChild(clearer);
+
+    messagesEl.appendChild(post);
+    lastPostNumber = num;
+    setTimeout(() => post.scrollIntoView({behavior: "smooth", block: "end"}), 30);
+    return post;
+  }
+
+  // Reply: caret + box, indented under OP
+  const row = document.createElement("div");
+  row.className = "reply-row lvl-1";
+
+  const caret = document.createElement("span");
+  caret.className = "caret";
+  caret.textContent = ">>";
+  row.appendChild(caret);
+
+  const box = document.createElement("div");
+  box.className = "reply-box";
+  box.id = "p" + num;
+
+  const head = buildPostHead({isOp: false, num, role, replyToNum: lastPostNumber, subject: ""});
+  box.appendChild(head);
 
   const body = document.createElement("div");
   body.className = "body" + (opts.typing ? " typing" : "");
@@ -402,19 +446,16 @@ function renderPost(role, text, opts) {
   } else {
     body.innerHTML = _renderBody(text);
   }
-  pwrap.appendChild(body);
+  box.appendChild(body);
 
-  post.appendChild(pwrap);
-  messagesEl.appendChild(post);
+  row.appendChild(box);
+  messagesEl.appendChild(row);
   lastPostNumber = num;
-
-  setTimeout(() => post.scrollIntoView({behavior: "smooth", block: "end"}), 30);
-  return post;
+  setTimeout(() => row.scrollIntoView({behavior: "smooth", block: "end"}), 30);
+  return row;
 }
 
 async function loadHistory() {
-  // Fresh thread on each page load — no auto-history.
-  // (View creates a new ChatSession; the messages list comes back empty.)
   try {
     const r = await fetch(`/api/characters/${SLUG}/chat/sessions/${SESSION_ID}/`);
     const data = await r.json();
@@ -429,8 +470,9 @@ async function send() {
   sendBtn.disabled = true;
 
   renderPost("user", text);
-
-  const typingPost = renderPost("anon", "", {typing: true});
+  const typingEl = renderPost("anon", "", {typing: true});
+  // Find body inside whichever node was returned (OP or row)
+  const bodyEl = typingEl.querySelector(".body");
 
   try {
     const r = await fetch(`/api/characters/${SLUG}/chat/sessions/${SESSION_ID}/send/`, {
@@ -439,17 +481,15 @@ async function send() {
       body: JSON.stringify({message: text}),
     });
     const data = await r.json();
-    const body = typingPost.querySelector(".body");
-    body.classList.remove("typing");
+    bodyEl.classList.remove("typing");
     if (data.anon) {
-      body.innerHTML = _renderBody(data.anon.text || "(silence)");
+      bodyEl.innerHTML = _renderBody(data.anon.text || "(silence)");
     } else if (data.error) {
-      body.textContent = "(error: " + data.error + ")";
+      bodyEl.textContent = "(error: " + data.error + ")";
     }
   } catch(e) {
-    const body = typingPost.querySelector(".body");
-    body.classList.remove("typing");
-    body.textContent = "(network error)";
+    bodyEl.classList.remove("typing");
+    bodyEl.textContent = "(network error)";
   }
 
   sendBtn.disabled = false;
@@ -464,7 +504,7 @@ composeEl.addEventListener("keydown", e => {
   }
   setTimeout(() => {
     composeEl.style.height = "auto";
-    composeEl.style.height = Math.min(composeEl.scrollHeight, 220) + "px";
+    composeEl.style.height = Math.min(composeEl.scrollHeight, 200) + "px";
   }, 0);
 });
 

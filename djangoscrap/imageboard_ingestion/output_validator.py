@@ -354,7 +354,11 @@ def validate(
         reasons.append("targeted_violence")
 
     # --- soft format / style ---
-    if source_fragments and _longest_overlap(text, source_fragments) > MAX_QUOTE_RUN:
+    # Pass-2-diag2: relax quote_too_long for very short outputs. A line of
+    # ≤8 words that happens to overlap with a corpus fragment isn't
+    # plagiarism — it's the shape of board cadence (e.g. ">missed lifts
+    # again"). Only flag when the output is longer than the overlap window.
+    if source_fragments and wc > MAX_QUOTE_RUN and _longest_overlap(text, source_fragments) > MAX_QUOTE_RUN:
         reasons.append("quote_too_long")
 
     if require_grounding and source_fragments:

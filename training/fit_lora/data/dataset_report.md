@@ -1,28 +1,29 @@
-# Dataset report — 2026-05-10T18:06:23
+# Dataset report — 2026-05-10T19:39:30
 
 - **source_key**: `fourchan_fit`
 - **primary target_strategy**: `real_post_targets`
-- **rows_total**: 769
+- **rows_total**: 1269
 - **template_pct**: 0.0%
 
 ## Splits
-- train: 692
-- valid: 38
-- test:  39
+- train: 1142
+- valid: 63
+- test:  64
 
 ## Rows by mode
-- quote_back_reply: 214
+- quote_back_reply: 464
+- inner_monologue: 254
 - body_judgement: 214
 - next_anon_reply: 214
 - confession: 113
 - image_caption: 10
-- inner_monologue: 4
 
 ## Rows by target strategy
 - real_post_targets: 769
+- curated_targets: 500
 
 ## Target suitability tiers (Pass 2D)
-- accepted raw (target_ok_realistic): 736
+- accepted raw (target_ok_realistic): 1236
 - accepted with redaction (target_ok_with_redaction): 33
 - rejected: 9
 
@@ -79,30 +80,30 @@
 - unsafe (policy_reject): 9
 
 ## Top assistant targets (top 10)
-- 1× `>>we re all gonna make it that s zyzzs message wagmi clavs message is you re not gonna make it unless you bonesmash ngmi`
-- 1× `>>help me obese jew shiggy`
-- 1× `>>alive lmfao barely`
-- 1× `>>thinking positive about monday huh >>kek nothing personal kid`
-- 1× `>>finasteride >>bio aaacking`
-- 1× `>>the sun h aaackk`
-- 1× `>>mate even a huge bowl of ice cream is like 500 calories imagine just straight up lying to people trying to lose weight`
-- 1× `>> nitric oxide endothelial health general cancer suppression tnfa exercise does all that not sun exposure`
-- 1× `>>clitty meltdown so severe he necrobumped his own thread`
-- 1× `>>i have never seen a fat person not eating food all the time`
+- 5× `>be me >3am again >mirror still asking the same question >still no answer`
+- 5× `>be me >flexed in the bathroom mirror >looked ok for 8 seconds >then i moved`
+- 5× `>be me >front camera at 6am >mirror at 11pm >two different men neither winning`
+- 5× `>be me >caught my reflection in the bus window >thought it was someone else for a second >recognised the shoulders it wa`
+- 5× `>be me >mirror does attendance every morning >jaw absent >neck absent >body present`
+- 5× `>be me >turned the bathroom light off >still saw the gut >brain doesn t need light`
+- 5× `>be me >angle 1 chad >angle 2 dyel >can t decide which one is real >both probably`
+- 5× `>be me >full length mirror in the changing room >stood there 30 seconds longer than i should have >nothing improved`
+- 5× `>be me >scale up 0 4kg >not water >i know it s not water`
+- 5× `>be me >weighed in three times >same number >weighed in a fourth time anyway`
 
 ## Top openings (top 10)
-- 1× `>>we re all gonna make it that s zyzzs message wagmi clavs message is you re not gonna make it unless you bonesmash ngmi`
-- 1× `>>help me obese jew shiggy`
-- 1× `>>alive lmfao barely`
-- 1× `>>thinking positive about monday huh >>kek nothing personal kid`
-- 1× `>>finasteride >>bio aaacking`
-- 1× `>>the sun h aaackk`
-- 1× `>>mate even a huge bowl of ice cream is like 500 calories imagine just straight up lying to people trying to lose weight`
-- 1× `>> nitric oxide endothelial health general cancer suppression tnfa exercise does all that not sun exposure`
-- 1× `>>clitty meltdown so severe he necrobumped his own thread`
-- 1× `>>i have never seen a fat person not eating food all the time`
+- 5× `>be me >3am again >mirror still asking the same question >still no answer`
+- 5× `>be me >flexed in the bathroom mirror >looked ok for 8 seconds >then i moved`
+- 5× `>be me >front camera at 6am >mirror at 11pm >two different men neither winning`
+- 5× `>be me >caught my reflection in the bus window >thought it was someone else for a second >recognised the shoulders it wa`
+- 5× `>be me >mirror does attendance every morning >jaw absent >neck absent >body present`
+- 5× `>be me >turned the bathroom light off >still saw the gut >brain doesn t need light`
+- 5× `>be me >angle 1 chad >angle 2 dyel >can t decide which one is real >both probably`
+- 5× `>be me >full length mirror in the changing room >stood there 30 seconds longer than i should have >nothing improved`
+- 5× `>be me >scale up 0 4kg >not water >i know it s not water`
+- 5× `>be me >weighed in three times >same number >weighed in a fourth time anyway`
 
-## Near-duplicate target count: 0
+## Near-duplicate target count: 100
 
 ## Warnings
 - (none)

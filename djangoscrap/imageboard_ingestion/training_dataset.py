@@ -683,6 +683,166 @@ def _normalise_curated(rec: dict, *, source_path: Path, default_mode: str) -> It
     }
 
 
+# --- curation helper: suggest real-post candidates for human rewriting ---
+
+def _suggest_candidates(
+    *,
+    source_key: str,
+    mode: str,
+    n: int,
+    rng: random.Random,
+    min_words: int = 4,
+    max_words: int = 60,
+    post_index: Optional[_PostIndex] = None,
+) -> Iterator[dict]:
+    """Yield candidate corpus posts a human can rewrite into curated rows.
+
+    This is read-only — it does NOT produce training data. The output is
+    raw source material plus a pre-filled user-prompt scaffold the curator
+    can edit and paste into training/fit_lora/curated/<mode>.jsonl.
+    """
+    idx = post_index or _build_post_index(source_key)
+
+    candidates: list[dict] = []
+    for rec in idx.by_uid.values():
+        if not _safe_for_target(rec):
+            continue
+        text = _post_text_for_target(rec)
+        wc = _word_count(text)
+        if wc < min_words or wc > max_words:
+            continue
+        if _is_low_info(text):
+            continue
+
+        # Run target_policy so the curator sees what the build would do
+        policy = _tp.classify_target(text)
+        if policy.status == "target_reject":
+            continue
+
+        if mode in _classify_modes(rec, text):
+            candidates.append({"rec": rec, "text": text, "policy": policy})
+
+    rng.shuffle(candidates)
+    for c in candidates[:n]:
+        yield c
+
+
+def _candidate_markdown(items: list[dict], *, mode: str) -> str:
+    """Render candidates as a markdown editing pad.
+
+    For each candidate: source metadata + raw text + suggested user prompt
+    scaffold + a blank `your rewrite:` section and the JSONL row format
+    skeleton ready to paste into the curated file.
+    """
+    out: list[str] = []
+    out.append(f"# Curation candidates — mode: `{mode}`\n")
+    out.append(
+        "Each entry below is a real corpus post that *plausibly* fits this mode. "
+        "Read it, decide if it's worth keeping, and rewrite/compress it into "
+        "the curated voice. **Do not paste the source verbatim** — the build "
+        "pipeline already includes real-post-as-target rows. The point of "
+        "curation is the rows the corpus *cannot* produce: tighter, uglier, "
+        "more compressed, more specific.\n"
+    )
+    out.append(
+        "When you have a rewrite you like, paste the JSONL row at the bottom "
+        "of each block into `training/fit_lora/curated/<mode>.jsonl` (one row "
+        "per line, no leading whitespace). Skip the `.example.jsonl` files — "
+        "those are templates only.\n"
+    )
+    out.append("---\n")
+
+    task_text = _MODE_TASK_INSTRUCTIONS.get(mode, "Write one short post.")
+
+    for i, c in enumerate(items, 1):
+        rec = c["rec"]
+        text = c["text"]
+        policy = c["policy"]
+        out.append(f"## Candidate {i}\n")
+        out.append(f"- **post_uid**: `{rec.get('post_uid')}`")
+        out.append(f"- **thread**: `{rec.get('thread_no')}` · subject: `{(rec.get('subject') or '').strip()[:80]}`")
+        out.append(f"- **fit_tags**: {', '.join(rec.get('fit_tags') or []) or '(none)'}")
+        out.append(f"- **policy**: `{policy.status}`"
+                   + (f" reasons={policy.reasons}" if policy.reasons else "")
+                   + (f" redactions={policy.redactions_applied}" if policy.redactions_applied else ""))
+        out.append("")
+        out.append("**Source post (corpus model_safe_text):**\n")
+        out.append("```")
+        out.append(text)
+        out.append("```\n")
+
+        # Pre-filled user prompt scaffold matching the runtime structure.
+        anon_state_lines = "  fit_tags: " + (", ".join(rec.get("fit_tags") or []) or "(none)")
+        suggested_user = (
+            "BOARD: /fit/\n"
+            f"MODE: {mode}\n"
+            "ANON_STATE:\n"
+            f"{anon_state_lines}\n"
+            "TASK:\n"
+            f"{task_text}\n"
+        ).rstrip()
+
+        out.append("**Suggested user-prompt scaffold (edit if needed):**\n")
+        out.append("```")
+        out.append(suggested_user)
+        out.append("```\n")
+
+        # Pre-filled assistant placeholder row to paste once edited.
+        skeleton = {
+            "messages": [
+                {"role": "system",
+                 "content": "You are FitAnon, a corpus-grounded /fit/ voice. Produce short, "
+                            "compressed imageboard-style thoughts or replies. No assistant voice, "
+                            "no therapy voice, no motivational coaching."},
+                {"role": "user", "content": suggested_user},
+                {"role": "assistant", "content": "<<< write your tightened rewrite here >>>"},
+            ],
+            "metadata": {
+                "board": "fit",
+                "mode": mode,
+                "target_strategy": "curated_targets",
+                "curated_by": "human",
+                "source_post_uid": rec.get("post_uid"),
+                "notes": "",
+            },
+        }
+        out.append("**Skeleton row (replace the assistant placeholder, paste as one line):**\n")
+        out.append("```json")
+        out.append(json.dumps(skeleton, ensure_ascii=False))
+        out.append("```\n")
+        out.append("---\n")
+
+    out.append(f"\n_total candidates: {len(items)}_\n")
+    return "\n".join(out)
+
+
+def _cli_suggest_curated(args: argparse.Namespace) -> int:
+    if args.mode not in MODES:
+        print(f"unknown mode: {args.mode!r}; valid: {', '.join(MODES)}", file=sys.stderr)
+        return 2
+
+    rng = random.Random(int(args.seed))
+    items = list(_suggest_candidates(
+        source_key=args.source_key,
+        mode=args.mode,
+        n=int(args.n),
+        rng=rng,
+    ))
+
+    md = _candidate_markdown(items, mode=args.mode)
+
+    out_path = Path(args.out) if args.out else (
+        Path("training/fit_lora/curated") / f"candidates_{args.mode}.md"
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(md, encoding="utf-8")
+
+    print(f"wrote {len(items)} candidates → {out_path}")
+    if not items:
+        print("(no candidates matched the filters; try a different mode or relax min/max words)")
+    return 0
+
+
 # --- teacher-model interface stub ----------------------------------------
 
 class TeacherNotConfigured(RuntimeError):
@@ -806,6 +966,7 @@ def build_dataset_v2(
     seed: int = 123,
     profile: Optional[dict] = None,
     allow_template_heavy: bool = False,
+    curated_multiplier: int = 1,
 ) -> tuple[list[dict], BuildSummary]:
     """Build the in-memory list of dataset rows + a summary.
 
@@ -901,9 +1062,34 @@ def build_dataset_v2(
             n_per_mode=n_per_mode, profile=profile,
         ))
 
-    # 2. Curated rows (always allowed; layered on top)
+    # 2. Curated rows (always allowed; layered on top). Optional oversampling
+    # multiplier (Pass-2-diag2 lever): bumps curated weight in the training
+    # signal by repeating each curated row N times. Avoids exact dedupe by
+    # tagging copies in metadata so the seen_targets set still allows them
+    # — they're identical rows, intentionally; curated_multiplier overrides
+    # the default duplicate-skip for curated rows only.
     if include_curated:
-        _absorb(_curated_rows(Path(include_curated)))
+        mult = max(1, int(curated_multiplier))
+        if mult == 1:
+            _absorb(_curated_rows(Path(include_curated)))
+        else:
+            # Materialise once; replicate without re-running dedupe on copies.
+            curated = list(_curated_rows(Path(include_curated)))
+            for cidx in range(mult):
+                for row in curated:
+                    # tag the copy so summary can count it
+                    row_copy = json.loads(json.dumps(row))  # deep clone
+                    md = row_copy.setdefault("metadata", {})
+                    md["curated_copy_idx"] = cidx
+                    target = (row_copy["messages"][-1].get("content") or "").strip()
+                    rows.append(row_copy)
+                    summary.rows_by_mode[md.get("mode") or "?"] += 1
+                    summary.rows_by_strategy[md.get("target_strategy") or "?"] += 1
+                    summary.accepted_raw += 1  # curated rows count as raw
+                    if cidx == 0 and len(summary.sample_raw) < 8:
+                        summary.sample_raw.append(target[:200])
+            # Note: we deliberately bypass _absorb's dedupe so multipliers work.
+            # The seen_targets set still tracks the pre-curated state.
 
     # 3. Compute summary aggregates
     summary.rows_total = len(rows)
@@ -1161,13 +1347,14 @@ def write_dataset_v2(
     profile: Optional[dict] = None,
     allow_template_heavy: bool = False,
     max_fragments: int = 8,
+    curated_multiplier: int = 1,
 ) -> dict:
     """Build the dataset, write {train,valid,test}.jsonl + reports."""
     rows, summary = build_dataset_v2(
         source_key=source_key, modes=modes, target_strategy=target_strategy,
         include_curated=include_curated, n_per_mode=n_per_mode, seed=seed,
         profile=profile, allow_template_heavy=allow_template_heavy,
-        max_fragments=max_fragments,
+        max_fragments=max_fragments, curated_multiplier=curated_multiplier,
     )
 
     refused = any("refuses" in w for w in summary.warnings)
@@ -1297,6 +1484,7 @@ def _cli_build(args: argparse.Namespace) -> int:
             profile=profile,
             allow_template_heavy=bool(args.allow_template_heavy),
             max_fragments=int(args.max_fragments),
+            curated_multiplier=int(args.curated_multiplier),
         )
     except RuntimeError as e:
         print(f"BUILD REFUSED: {e}", file=sys.stderr)
@@ -1433,7 +1621,18 @@ def main(argv: Optional[list[str]] = None) -> int:
                          help="Folder of curated *.jsonl files to mix in.")
     p_build.add_argument("--split", default="0.9,0.05,0.05")
     p_build.add_argument("--allow-template-heavy", action="store_true")
+    p_build.add_argument("--curated-multiplier", type=int, default=1,
+                         help="Replicate each curated row N times to boost their weight in training (default 1).")
     p_build.add_argument("--source-key", default=DEFAULT_SOURCE_KEY)
+
+    p_suggest = sub.add_parser("suggest-curated",
+                                help="Print real-post candidate material for human rewriting.")
+    p_suggest.add_argument("--mode", required=True, choices=list(MODES))
+    p_suggest.add_argument("--n", type=int, default=50)
+    p_suggest.add_argument("--out", default="",
+                            help="Output markdown path; default training/fit_lora/curated/candidates_<mode>.md")
+    p_suggest.add_argument("--seed", type=int, default=123)
+    p_suggest.add_argument("--source-key", default=DEFAULT_SOURCE_KEY)
 
     p_inspect = sub.add_parser("inspect", help="Print sample rows from a built JSONL.")
     p_inspect.add_argument("--data", required=True)
@@ -1461,6 +1660,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         return _cli_build(args)
     if args.cmd == "inspect":
         return _cli_inspect(args)
+    if args.cmd == "suggest-curated":
+        return _cli_suggest_curated(args)
     parser.print_help()
     return 2
 
