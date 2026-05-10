@@ -21,6 +21,11 @@ urlpatterns = [
     path('fit/', views.fit_chat_page, name='fit_chat_alt'),
     path('api/fit/feedback/', views.fit_thought_feedback, name='fit_thought_feedback'),
     path('api/fit/stream-next/', views.fit_wall_stream_next, name='fit_wall_stream_next'),
+    # Board simulator: self-generating /fit/ catalog with multiple anons posting
+    # threads + replies. The artwork form, not just a single anon chat.
+    path('board/', views.fit_board_page, name='fit_board'),
+    path('api/fit/board-tick/', views.fit_board_tick, name='fit_board_tick'),
+    path('api/fit/board-state/', views.fit_board_state, name='fit_board_state'),
     path('service/', views.service, name='service'),
     path('portfolio/', views.portfolio, name='portfolio'),
     path('register/', views.register, name='register'),

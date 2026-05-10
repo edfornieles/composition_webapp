@@ -15,6 +15,9 @@ from ._media import *
 from ._masks import *
 from ._health import *
 from ._fit_operator import *
+from ._fit_board import (
+    fit_board_page, fit_board_tick, fit_board_state,
+)
 from ._characters import *
 from ._scrape_monitor import *
 from ._image_scrape_monitor import *

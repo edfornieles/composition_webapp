@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/fit/ - Health &amp; Fitness</title>
+  <style>
+    /* Yotsuba B (matches real boards.4chan.org/fit/) */
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: #EEF2FF;
+      color: #000;
+      font: 10pt 'arial', 'helvetica', sans-serif;
+    }
+    a { color: #34345C; text-decoration: none; }
+    a:hover { color: #DD0000; }
+
+    .boardnav {
+      font-size: 9pt;
+      padding: 2px 6px;
+      color: #34345C;
+    }
+    .boardnav a { color: #34345C; }
+    .boardnav .sep { color: #B7C5D9; margin: 0 1px; }
+    .boardnav b { color: #000; }
+
+    .boardhdr {
+      text-align: center;
+      padding: 6px 0 0 0;
+    }
+    .boardhdr h1 {
+      margin: 0;
+      font: bold 28px 'tahoma', 'arial', sans-serif;
+      color: #AF0A0F;
+    }
+    .boardhdr .sub {
+      font: italic 10pt 'arial', sans-serif;
+      color: #800;
+      padding: 1px 0 6px;
+    }
+
+    .threadbar {
+      padding: 4px 8px;
+      font-size: 9pt;
+      color: #34345C;
+    }
+    .threadbar .status {
+      color: #707070;
+      font-style: italic;
+      margin-left: 12px;
+    }
+
+    .wrap {
+      padding: 4px 8px 80px 8px;
+    }
+
+    /* Thread separator */
+    hr.thread-sep {
+      border: none;
+      border-bottom: 1px dashed #B7C5D9;
+      margin: 8px 0;
+    }
+
+    /* OP post layout */
+    .post-op { padding: 0 0 6px 0; max-width: 980px; margin: 0; }
+    .fileinfo { font-size: 9pt; color: #000; padding: 0 0 1px 0; }
+    .fileinfo a { color: #34345C; text-decoration: underline; }
+    .fileinfo .meta { color: #707070; }
+    .filewrap { float: left; margin: 2px 12px 4px 0; }
+    .thumb {
+      width: 125px; height: 125px; display: block;
+      object-fit: cover;
+      background: repeating-linear-gradient(45deg, #555 0, #555 2px, #777 2px, #777 4px);
+    }
+
+    .posthead { font-size: 10pt; color: #000; }
+    .posthead .checkbox { color: #707070; margin-right: 2px; }
+    .posthead .subject { color: #0F0C5D; font-weight: bold; margin-right: 4px; }
+    .posthead .name { color: #117743; font-weight: bold; margin-right: 4px; }
+    .posthead .time { color: #000; margin-right: 4px; }
+    .posthead .num a { color: #000; text-decoration: none; }
+    .posthead .num a:hover { color: #DD0000; }
+    .posthead .reply-link { margin-left: 2px; }
+    .posthead .reply-link a { color: #34345C; }
+    .posthead .triangle { color: #34345C; margin-left: 4px; }
+
+    .body {
+      font: 10pt 'arial', 'helvetica', sans-serif;
+      color: #000;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      padding: 4px 0 0 0;
+      max-width: 760px;
+    }
+    .body .gt { color: #789922; }
+    .body .quotelink {
+      color: #DD0000;
+      text-decoration: underline;
+    }
+
+    .replycount-line {
+      clear: both;
+      font-size: 9pt;
+      color: #707070;
+      padding: 4px 0 6px 0;
+      max-width: 980px;
+    }
+
+    /* Reply post — boxed, indented under OP */
+    .reply-row {
+      padding: 1px 0;
+      margin: 0 0 0 22px;
+      display: flex;
+      align-items: flex-start;
+      gap: 4px;
+    }
+    .reply-row .caret {
+      color: #34345C;
+      font-size: 10pt;
+      padding-top: 1px;
+      flex-shrink: 0;
+      width: 16px;
+      text-align: right;
+    }
+    .reply-box {
+      background: #D6DAF0;
+      border: 1px solid #B7C5D9;
+      padding: 2px 6px 4px 6px;
+      display: inline-block;
+      max-width: calc(100% - 28px);
+      box-sizing: border-box;
+    }
+
+    .replyref {
+      color: #DD0000;
+      text-decoration: underline;
+      cursor: pointer;
+      margin-right: 4px;
+    }
+
+    .clear { clear: both; }
+
+    /* Status bar at bottom */
+    .statusbar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(#FFFFFF, #DCDCDC);
+      border-top: 1px solid #B7C5D9;
+      padding: 4px 12px;
+      font-size: 10pt;
+      color: #34345C;
+    }
+    .statusbar a { cursor: pointer; margin-right: 8px; }
+    .statusbar .status { color: #707070; font-style: italic; }
+    .statusbar .meta { color: #555; margin-left: 8px; font-size: 9pt; }
+  </style>
+</head>
+<body>
+
+  <div class="boardnav">
+    [<a href="#">a</a><span class="sep">/</span><a href="#">b</a><span class="sep">/</span><a href="#">co</a><span class="sep">/</span><b>fit</b><span class="sep">/</span><a href="#">g</a><span class="sep">/</span><a href="#">k</a><span class="sep">/</span><a href="#">lit</a><span class="sep">/</span><a href="#">r9k</a><span class="sep">/</span><a href="#">x</a>]
+    &nbsp;[<a href="/">Home</a>]
+    &nbsp;[<a href="/wall/">/wall/</a>]
+    &nbsp;[<a href="/chat/">/chat/</a>]
+  </div>
+
+  <div class="boardhdr">
+    <h1>/fit/ - Health &amp; Fitness</h1>
+    <div class="sub">discipline / shame / repeat</div>
+  </div>
+
+  <div class="threadbar">
+    [<a href="#">Catalog</a>] [<a href="#">Bottom</a>]
+    <span class="status" id="threadbarStatus">…booting board</span>
+  </div>
+
+  <div class="wrap" id="wrap">
+    <div id="threads"></div>
+  </div>
+
+  <div class="statusbar">
+    <a id="toggle">[ pause ]</a>
+    <a id="reset">[ reset ]</a>
+    <span class="status" id="status">starting…</span>
+    <span class="meta" id="meta"></span>
+  </div>
+
+<script>
+const POLL_MS = 5500;       // how often to fetch the next post
+const MAX_VISIBLE_REPLIES_PER_THREAD = 5;  // tail of the thread shown on the catalog
+const threadsEl = document.getElementById('threads');
+const statusEl = document.getElementById('status');
+const threadbarStatus = document.getElementById('threadbarStatus');
+const metaEl = document.getElementById('meta');
+const toggle = document.getElementById('toggle');
+const resetBtn = document.getElementById('reset');
+
+let running = true;
+let consecutiveEmpty = 0;
+let totalTicks = 0;
+let totalPosts = 0;
+
+function fmtChanTime(ts) {
+  const d = new Date(ts * 1000);
+  const pad = n => String(n).padStart(2, '0');
+  const dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  return `${pad(d.getMonth()+1)}/${pad(d.getDate())}/${String(d.getFullYear()).slice(2)}(${dows[d.getDay()]})${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// Renders body with greentext + clickable >>NNN reply links
+function renderBody(text) {
+  return text.split("\n").map(line => {
+    if (/^\s*>>\d+/.test(line)) {
+      // Reply-link line — render as red underlined link
+      return line.replace(/(>>\d+)/g, '<a class="quotelink" href="#p$1">$1</a>');
+    }
+    if (line.trimStart().startsWith(">")) {
+      return `<span class="gt">${escHtml(line)}</span>`;
+    }
+    return escHtml(line);
+  }).join("\n");
+}
+
+function renderOpHead(post) {
+  let head = `<div class="posthead">`;
+  head += `<span class="checkbox">&#9744;</span>`;
+  if (post.subject) head += `<span class="subject">${escHtml(post.subject)}</span>`;
+  head += `<span class="name">Anonymous</span>`;
+  head += `<span class="time">${fmtChanTime(post.timestamp)}</span>`;
+  head += `<span class="num">No.<a id="p${post.post_no}" href="#p${post.post_no}">${post.post_no}</a></span>`;
+  head += `<span class="reply-link">[<a href="#p${post.post_no}">Reply</a>]</span>`;
+  head += `</div>`;
+  return head;
+}
+
+function renderReplyHead(post) {
+  let head = `<div class="posthead">`;
+  head += `<span class="checkbox">&#9744;</span>`;
+  head += `<span class="name">Anonymous</span>`;
+  head += `<span class="time">${fmtChanTime(post.timestamp)}</span>`;
+  head += `<span class="num">No.<a id="p${post.post_no}" href="#p${post.post_no}">${post.post_no}</a></span>`;
+  head += `<span class="reply-link">[<a href="#p${post.post_no}">Reply</a>]</span>`;
+  if (post.reply_targets && post.reply_targets.length) {
+    head += `<span class="triangle">▶</span>`;
+    for (const r of post.reply_targets) {
+      head += ` <a class="replyref" href="#p${r}">&gt;&gt;${r}</a>`;
+    }
+  }
+  head += `</div>`;
+  return head;
+}
+
+function renderThread(t) {
+  const op = t.op;
+  let html = `<div class="post-op" id="t${t.thread_no}">`;
+  if (op.image) {
+    html += `<div class="fileinfo">File: <a href="#">${escHtml(op.image.filename)}</a> <span class="meta">(${op.image.size_kb} KB, ${op.image.w}x${op.image.h})</span></div>`;
+    html += `<div class="filewrap"><div class="thumb"></div></div>`;
+  }
+  html += renderOpHead(op);
+  html += `<div class="body">${renderBody(op.body)}</div>`;
+  html += `<div class="clear"></div>`;
+  html += `</div>`;
+
+  // Reply summary like "+N replies omitted" — but we show last K
+  const total = t.reply_count;
+  const tailReplies = t.replies.slice(-MAX_VISIBLE_REPLIES_PER_THREAD);
+  const omitted = total - tailReplies.length;
+  if (omitted > 0) {
+    html += `<div class="replycount-line">+${omitted} replies omitted. Click here to view.</div>`;
+  }
+
+  for (const r of tailReplies) {
+    html += `<div class="reply-row">`;
+    html += `<span class="caret">&gt;&gt;</span>`;
+    html += `<div class="reply-box" id="rb${r.post_no}">`;
+    html += renderReplyHead(r);
+    html += `<div class="body">${renderBody(r.body)}</div>`;
+    html += `</div>`;
+    html += `</div>`;
+  }
+  return html;
+}
+
+function renderState(state) {
+  const buf = [];
+  let firstThread = true;
+  for (const t of (state.threads || [])) {
+    if (!firstThread) buf.push(`<hr class="thread-sep">`);
+    firstThread = false;
+    buf.push(renderThread(t));
+  }
+  threadsEl.innerHTML = buf.join('');
+}
+
+async function tick() {
+  if (!running) return;
+  statusEl.textContent = '…';
+  try {
+    const r = await fetch('/api/fit/board-tick/', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: '{}',
+    });
+    const d = await r.json();
+    totalTicks++;
+    if (d.tick && d.tick.action !== 'noop') {
+      totalPosts++;
+      consecutiveEmpty = 0;
+      const action = d.tick.action;
+      const variant = d.tick.variant || '';
+      statusEl.textContent = `${action} · anon=${variant}`;
+      threadbarStatus.textContent = `${state_threads_summary(d.state)}`;
+    } else {
+      consecutiveEmpty++;
+      const reason = d.tick && d.tick.reason ? d.tick.reason : 'no_action';
+      statusEl.textContent = `(${reason}) x${consecutiveEmpty}`;
+    }
+    if (d.state) renderState(d.state);
+    metaEl.textContent = `ticks: ${totalTicks} · posts: ${totalPosts}`;
+  } catch (e) {
+    consecutiveEmpty++;
+    statusEl.textContent = `(net err) x${consecutiveEmpty}`;
+  }
+  if (running) {
+    const delay = Math.min(POLL_MS * Math.max(1, consecutiveEmpty), 30000);
+    setTimeout(tick, delay);
+  }
+}
+
+function state_threads_summary(state) {
+  if (!state || !state.threads) return '';
+  const parts = state.threads.slice(0, 4).map(t => `${t.thread_no}(+${t.reply_count})`);
+  return `threads: ${state.threads.length} · ${parts.join(' · ')}`;
+}
+
+toggle.addEventListener('click', () => {
+  running = !running;
+  toggle.textContent = running ? '[ pause ]' : '[ resume ]';
+  if (running) tick();
+});
+
+resetBtn.addEventListener('click', async () => {
+  if (!confirm('Reset the board? All threads will be cleared.')) return;
+  // Simple reset by just clearing the visible state and re-fetching;
+  // server-side reset would need an admin endpoint. For now we just
+  // reload the page.
+  location.reload();
+});
+
+// Initial fetch state, then start ticking
+(async () => {
+  try {
+    const r = await fetch('/api/fit/board-state/');
+    const state = await r.json();
+    renderState(state);
+  } catch(e) {}
+  tick();
+})();
+</script>
+</body>
+</html>

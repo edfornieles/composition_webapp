@@ -42,11 +42,14 @@ _HATE_TOKENS = [
     r'\bn[i1]gg[e3]r\b',
     r'\bn[i1]gg[a4]\b',
     r'\bk[i1]k[e3]\b',
-    r'\bf[a4]gg[o0]t\b',
-    r'\btr[a4]nn[i1y]\b',
-    r'\bch[i1]nk\b',
-    r'\bsp[i1]c\b',
-    r'\bg[o0][o0]k\b',
+    r'\bh[e3]{1,2}bs?\b',        # diag3 leak — antisemitic (heeb / heebs)
+    r'\bf[a4]gg[o0]ts?\b',
+    r'\btr[a4]nn[i1y](?:e?s)?\b',
+    r'\bch[i1]nks?\b',
+    r'\bsp[i1]cs?\b',
+    r'\bg[o0][o0]ks?\b',
+    r'\bp[a4]j[e3]{1,2}ts?\b',   # caste slur common in /fit/ corpus
+    r'\bj[e3]{2}ts?\b',          # short form of pajeet
 ]
 _HATE_RE = re.compile('|'.join(_HATE_TOKENS), re.IGNORECASE)
 

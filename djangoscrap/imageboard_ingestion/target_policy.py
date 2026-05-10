@@ -159,12 +159,15 @@ PROTECTED_SLURS = (
     # racial/ethnic
     "nigger", "niggers",
     "kike", "kikes",
+    "heeb", "heebs",            # diag3 leak
     "chink", "chinks",
     "gook", "gooks",
     "spic", "spics",
     "beaner", "beaners",
     "towelhead", "towelheads",
     "sandnigger", "sandniggers",
+    "jeet", "jeets",            # caste/ethnic slur common on /fit/
+    "pajeet", "pajeets",
     # homophobic
     "faggot", "faggots", "fag", "fags",
     # transphobic
