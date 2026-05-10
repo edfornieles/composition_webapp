@@ -14,3 +14,13 @@ from ._audio import *
 from ._media import *
 from ._masks import *
 from ._health import *
+from ._fit_operator import *
+from ._characters import *
+from ._scrape_monitor import *
+from ._image_scrape_monitor import *
+from ._image_curation import *
+from ._image_search import *
+from ._image_ranker import *
+from ._avatar import *
+from ._greenscreen import *
+from ._studio3d import *

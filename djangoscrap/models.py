@@ -418,6 +418,31 @@ class MonologuePersona(models.Model):
         help_text="Image URLs (e.g. og:image) harvested from source_urls for the public page backdrop.",
     )
     visual_cache_updated_at = models.DateTimeField(null=True, blank=True)
+
+    base_model = models.CharField(
+        max_length=255, blank=True, default="",
+        help_text="HuggingFace ID for the MLX base, e.g. mlx-community/Qwen2.5-7B-Instruct-4bit.",
+    )
+    adapter_dir = models.CharField(
+        max_length=512, blank=True, default="",
+        help_text="Filesystem path to the trained LoRA adapter directory.",
+    )
+    corpus_key = models.CharField(
+        max_length=120, blank=True, default="",
+        help_text="Imageboard corpus key, e.g. fourchan_fit.",
+    )
+    image_dir = models.CharField(
+        max_length=512, blank=True, default="",
+        help_text="Filesystem directory for this character's per-character image pool.",
+    )
+    persona_prompt = models.TextField(
+        blank=True, default="",
+        help_text="System prompt that sculpts the character's voice for chat + thoughts.",
+    )
+    gen_temperature = models.FloatField(default=0.95)
+    gen_top_p = models.FloatField(default=0.95)
+    gen_max_tokens = models.PositiveIntegerField(default=140)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -426,6 +451,70 @@ class MonologuePersona(models.Model):
 
     def __str__(self):
         return self.title
+
+    @property
+    def has_trained_model(self) -> bool:
+        from pathlib import Path
+        if not self.adapter_dir:
+            return False
+        try:
+            return Path(self.adapter_dir).exists()
+        except Exception:
+            return False
+
+
+class ChatSession(models.Model):
+    """Persistent studio chat session with one character.
+
+    `state` holds Pass-1 chat-continuity scaffolding:
+      - anon_variant       : key into imageboard_ingestion.anon_zoo
+      - op_anchor          : first user message captured at session start
+      - session_summary    : compressed memory beyond the rolling-history cliff
+      - last_summary_turn  : turn index when the summary was last regenerated
+      - recent_fragments   : list of fragment chunk_ids served in last N turns
+                             (for retrieval anti-repeat)
+    Older rows have empty state; callers must lazily initialise on first
+    generation.
+    """
+    persona = models.ForeignKey(
+        MonologuePersona, related_name="chat_sessions", on_delete=models.CASCADE
+    )
+    name = models.CharField(max_length=120, default="new chat")
+    state = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.persona.slug}/{self.name}"
+
+
+class ChatMessage(models.Model):
+    ROLE_CHOICES = (("user", "user"), ("anon", "anon"))
+    session = models.ForeignKey(
+        ChatSession, related_name="messages", on_delete=models.CASCADE
+    )
+    role = models.CharField(max_length=8, choices=ROLE_CHOICES)
+    text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+
+class FavoriteThought(models.Model):
+    """Saved/curated generated thought; used as gallery fallback pool."""
+    persona = models.ForeignKey(
+        MonologuePersona, related_name="favorite_thoughts", on_delete=models.CASCADE
+    )
+    text = models.TextField()
+    note = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
 
 
 class AdvancedThoughtScenario(models.Model):

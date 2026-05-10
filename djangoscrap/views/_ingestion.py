@@ -2102,12 +2102,16 @@ def _run_campaign_cycle(
         for p in yandex_page_offsets:
             base = f"https://yandex.ru/images/search?rpt=imageview&url={quoted}&cbir_page=similar"
             image_pages.append(base if p == 0 else f"{base}&p={p}")
-    text_pages: list[str] = []
+    # Pinterest search replaces Yandex text pages — Yandex text is equally
+    # bot-blocked, while Pinterest has no CAPTCHA and the scroll adapter
+    # pulls 50-100 on-aesthetic pins per page. One URL per query is enough
+    # because the adapter handles infinite-scroll internally.
+    pinterest_pages: list[str] = []
     for q in queries[: max_pages * 3]:
-        quoted_q = quote(q)
-        for p in yandex_page_offsets:
-            base = f"https://yandex.ru/images/search?text={quoted_q}"
-            text_pages.append(base if p == 0 else f"{base}&p={p}")
+        pinterest_pages.append(
+            f"https://www.pinterest.com/search/pins/?q={quote(q, safe='')}"
+        )
+    text_pages: list[str] = pinterest_pages
     # CBIR (reverse-image search) pulls results that *look like* a folder image and is by far
     # the strongest signal for on-theme aggregation. Text queries are broad and drift fast,
     # so only use them to fill pages we can't cover with CBIR seeds.
@@ -2174,12 +2178,13 @@ def _run_campaign_cycle(
     per_host_cap = max(3, min(20, cand_budget // 12 or 3))
     host_counts: dict[str, int] = {}
     host_overflow_skipped = 0
-    # Archive mode needs the adapter framework (Instagrapi / yt-dlp etc.) so
-    # locked-source URLs like an Instagram profile actually get dispatched to
-    # the right extractor. In search mode we leave this at None (the legacy
-    # engine chain already covers Yandex pages fine).
-    _archive_live_adapters = (
-        _ensure_default_adapters_registered() if archive_mode else None
+    # Pinterest pages need the adapter framework even in search mode.
+    # _ensure_default_adapters_registered is idempotent so calling it here
+    # is cheap. For Yandex CBIR pages the adapter dispatch finds no match
+    # and falls through to the legacy Yandex extractor unchanged.
+    _live_adapters = _ensure_default_adapters_registered()
+    _active_adapters: set[str] | None = (
+        _live_adapters if (archive_mode or pinterest_pages) else None
     )
     for page in pages:
         extracted, engine_used = _extract_candidates_from_page(
@@ -2187,7 +2192,7 @@ def _run_campaign_cycle(
             max_urls=per_page_limit,
             engine="auto",
             rewrite_stats=rewrite_stats,
-            enabled_adapters=_archive_live_adapters or None,
+            enabled_adapters=_active_adapters,
         )
         engines_used[engine_used] = engines_used.get(engine_used, 0) + 1
         for u in extracted:

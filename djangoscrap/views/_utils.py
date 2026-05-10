@@ -152,6 +152,16 @@ def _ensure_default_adapters_registered() -> set[str]:
     else:
         live.add("yt-dlp")
 
+    if "pinterest-board" not in existing:
+        try:
+            from djangoscrap.ingestion_adapters.playwright_scroll import PinterestBoardAdapter
+            _reg.register(PinterestBoardAdapter())
+            live.add("pinterest-board")
+        except Exception:
+            pass
+    else:
+        live.add("pinterest-board")
+
     _ADAPTERS_BOOTSTRAPPED = True
     return live
 from ..video_processing import combine_video_with_audio,create_video_ffmpegNew

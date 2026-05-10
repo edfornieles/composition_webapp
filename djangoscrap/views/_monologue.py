@@ -110,6 +110,10 @@ s3 = boto3.client('s3')
 def monologue_public_page(request, slug):
     persona = get_object_or_404(monologue_persona_queryset(), slug=slug, is_published=True)
     segments = build_segments(persona)
+    has_trained_model = bool(getattr(persona, "has_trained_model", False))
+    fit_slugs = set(getattr(settings, "FIT_PERSONA_SLUGS", ("fit", "fourchan_fit_body_discipline")))
+    use_clean_template = has_trained_model or (persona.slug in fit_slugs)
+    detail_url = reverse("character_page", kwargs={"slug": persona.slug})
     context = {
         "persona": persona,
         "segment_count": len(segments),
@@ -119,8 +123,14 @@ def monologue_public_page(request, slug):
         "stream_endpoint": reverse("monologue_segment", kwargs={"slug": persona.slug}),
         "bg_endpoint": reverse("monologue_background_images", kwargs={"slug": persona.slug}),
         "has_openai": bool(getattr(settings, "OPENAI_API_KEY", None) or ""),
+        "has_chat": has_trained_model,
+        "has_sources": has_trained_model,
+        "chat_url": detail_url + "#chat",
+        "sources_url": detail_url + "#images",
+        "detail_url": detail_url,
     }
-    return render(request, "monologue_public.html", context)
+    template = "character_thoughts.html" if use_clean_template else "monologue_public.html"
+    return render(request, template, context)
 
 
 @csrf_exempt
