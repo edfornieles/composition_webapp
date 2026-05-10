@@ -322,14 +322,31 @@ def api_chat_send(request, slug, session_id):
 
 
 _QUOTE_BACK_FEW_SHOTS = (
-    ">spare day what should i do\n"
-    "go for a long walk. stop overthinking it.\n"
-    "\n"
-    ">missed lifts again\n"
-    "spreadsheet doesn't lie. neither does the rack.\n"
-    "\n"
-    ">cant stay disciplined this week\n"
-    "nothing sticks. it never sticks."
+    # Pass 2E.1: dropped concrete few-shot strings — the base model was
+    # parroting them verbatim as its first reply on a new session. Replaced
+    # with abstract guidance only, no copy-able templates.
+    "Some replies begin with one '>line' that quotes ONE short phrase from\n"
+    "the user's last message, then a 1–2 line response. The quote is\n"
+    "extracted from the user, never invented. Quote-back is OPTIONAL.\n"
+    "Never restate the user's whole message. Never apologise. Never greet."
+)
+
+
+_ANTI_ASSISTANT_RULES = (
+    "Hard rules for your output:\n"
+    "- You are a single anonymous /fit/ poster, not an assistant.\n"
+    "- Reply ONCE. One short post: 1-3 lines.\n"
+    "- Do NOT write 'user:' or 'anon:' or 'assistant:' or any role label.\n"
+    "- Do NOT repeat any sentence.\n"
+    "- Do NOT give motivational coaching, life advice, or self-help framing.\n"
+    "- Do NOT say 'you need to', 'it's time to', 'make a change', 'stay strong',\n"
+    "  'you've got this', 'i hope this helps', 'as an AI', 'feel free'.\n"
+    "- Do NOT explain, summarise, or list options.\n"
+    "- Do NOT use markdown headings, bullets, or bold.\n"
+    "- Sometimes (not always) start with one >line that quotes a short phrase\n"
+    "  from the user's message. Otherwise just respond directly.\n"
+    "- Stay terse, specific, board-shaped. Profanity, self-shame, body talk,\n"
+    "  ngmi/dyel/mogged are fine — generic encouragement is not."
 )
 
 
@@ -412,61 +429,88 @@ def _maybe_update_session_summary(session, history, persona_system: str) -> None
         session.save(update_fields=["state", "updated_at"])
 
 
-def _build_chat_user_prompt(
+def _build_system_prompt(
     *,
-    state: dict,
+    persona_system: str,
     variant,
-    history,
-    user_msg: str,
+    state: dict,
     fragments: list[dict],
 ) -> str:
-    convo_lines = []
-    for m in history[-10:]:
-        prefix = "user" if m.role == "user" else "anon"
-        convo_lines.append(f"{prefix}: {(m.text or '')[:400]}")
-    convo_lines.append(f"user: {user_msg}")
-    recent_block = "\n".join(convo_lines) if convo_lines else "(start of session)"
+    """Pass 2E: everything that was previously stuffed into the user message
+    (RECENT_TURNS, BOARD, MODE labels) now lives here. The model never sees a
+    `user:`/`anon:` label inside the user-side prompt, so it can't continue
+    that pattern in its output.
+    """
+    summary = (state.get("session_summary") or "").strip()
+    op_anchor = (state.get("op_anchor") or "").strip()
 
     frag_lines = []
     for f in fragments[:6]:
         excerpt = (f.get("contaminated_excerpt") or f.get("safe_excerpt") or "").strip()
         if not excerpt:
             continue
-        excerpt = " ".join(excerpt.split())[:160]
-        sources = ",".join(f.get("source_components") or [])
-        frag_lines.append(f"- [{sources}] {excerpt}")
-    frag_block = "\n".join(frag_lines) if frag_lines else "(no fragments retrieved)"
+        excerpt = " ".join(excerpt.split())[:140]
+        frag_lines.append(f"- {excerpt}")
+    frag_block = "\n".join(frag_lines) if frag_lines else ""
 
-    summary = (state.get("session_summary") or "").strip() or "(none yet)"
-    op_anchor = (state.get("op_anchor") or "").strip() or "(none)"
+    parts = [persona_system, "", variant.system_card_addendum, ""]
+    parts.append(_ANTI_ASSISTANT_RULES)
+    parts.append("")
+    parts.append("Examples of acknowledging the user before replying:")
+    parts.append(_QUOTE_BACK_FEW_SHOTS)
+    parts.append("")
 
-    return (
-        "BOARD: /fit/\n"
-        f"ANON_VARIANT: {variant.key}\n"
-        f"DOMINANT_DRIVE: {variant.dominant_drive}\n"
-        f"DOMINANT_FEAR: {variant.dominant_fear}\n"
-        f"OP_ANCHOR: {op_anchor}\n"
-        f"SESSION_SUMMARY: {summary}\n"
-        "\n"
-        "RECENT_TURNS:\n"
-        f"{recent_block}\n"
-        "\n"
-        "RETRIEVED_FRAGMENTS (style/voice reference; do not quote verbatim):\n"
-        f"{frag_block}\n"
-        "\n"
-        "SAFETY_RULES:\n"
-        "- no raw protected-class slurs\n"
-        "- no doxxing or private info\n"
-        "- no steroid sourcing/dosing or eating-disorder how-tos\n"
-        "- no self-harm encouragement or targeted violence\n"
-        "\n"
-        "TASK:\n"
-        "Reply as the pinned anon. 1–3 lines.\n"
-        "Often (but not always) begin with a single >line that quotes one short phrase\n"
-        "from the user's last message, then a 1–2 line response. Stay in voice.\n"
-        "Acknowledge the user — do not produce disconnected one-liners.\n"
-        "If the user asked something direct, address it; do not pivot.\n"
-    )
+    ctx_lines = ["Current session context (for your awareness; do not echo back):"]
+    ctx_lines.append(f"- pinned anon: {variant.label}")
+    ctx_lines.append(f"- dominant drive: {variant.dominant_drive}")
+    ctx_lines.append(f"- dominant fear: {variant.dominant_fear}")
+    if op_anchor:
+        ctx_lines.append(f"- thread opened with: \"{op_anchor[:200]}\"")
+    if summary:
+        ctx_lines.append(f"- ongoing thread state: {summary[:300]}")
+    if frag_block:
+        ctx_lines.append("- corpus fragments (voice reference only, do not quote):")
+        for line in frag_block.splitlines():
+            ctx_lines.append(f"  {line}")
+    parts.append("\n".join(ctx_lines))
+
+    return "\n".join(parts).strip()
+
+
+def _build_chat_messages(
+    *,
+    system_prompt: str,
+    history,
+    user_msg: str,
+    history_limit: int = 10,
+) -> list[dict]:
+    """Return a chat-template-ready message list.
+
+    History is converted to real alternating turns (anon → assistant). Two
+    consecutive same-role messages are collapsed (some templates require
+    strict alternation).
+    """
+    msgs: list[dict] = [{"role": "system", "content": system_prompt}]
+    last_role = "system"
+    for m in (history or [])[-history_limit:]:
+        role = "assistant" if getattr(m, "role", "") == "anon" else "user"
+        text = (getattr(m, "text", "") or "").strip()
+        if not text:
+            continue
+        if role == last_role and msgs:
+            # Merge into previous to keep strict alternation
+            msgs[-1]["content"] = (msgs[-1]["content"].rstrip() + "\n" + text).strip()
+        else:
+            msgs.append({"role": role, "content": text})
+            last_role = role
+    # Strict alternation requires the final pre-user message to be assistant
+    # (or nothing). If the last appended message is also from the user, merge
+    # the new latest user message into it.
+    if msgs[-1]["role"] == "user":
+        msgs[-1]["content"] = (msgs[-1]["content"].rstrip() + "\n" + (user_msg or "")).strip()
+    else:
+        msgs.append({"role": "user", "content": user_msg})
+    return msgs
 
 
 def _generate_chat_reply(
@@ -510,14 +554,8 @@ def _generate_chat_reply(
             "You are an anonymous poster. Reply terse, in-voice. No advice, no AI disclaimers.",
         )
 
-    # Layer in the pinned variant + few-shot quote-back examples
-    full_system = (
-        f"{persona_system}\n\n"
-        f"PINNED ANON VARIANT: {variant.label}\n"
-        f"{variant.system_card_addendum}\n\n"
-        "Quote-back examples (showing how to acknowledge the user before replying):\n"
-        f"{_QUOTE_BACK_FEW_SHOTS}\n"
-    )
+    # Pass 2E: full_system is now built later via _build_system_prompt with
+    # the structured context baked into the system slot — see below.
 
     # Maybe refresh rolling summary before retrieval (so it can feed retrieval)
     if session is not None:
@@ -553,9 +591,13 @@ def _generate_chat_reply(
     except Exception:
         fragments = []
 
-    base_user_prompt = _build_chat_user_prompt(
-        state=state, variant=variant, history=history,
-        user_msg=user_msg, fragments=fragments,
+    # Pass 2E: build the system prompt with everything (variant + style rules
+    # + few-shots + corpus context). The user-side stays clean: real
+    # alternating chat-template messages, no `user:`/`anon:` labels for the
+    # model to parrot.
+    full_system = _build_system_prompt(
+        persona_system=persona_system, variant=variant,
+        state=state, fragments=fragments,
     )
 
     # Recent anon outputs for the validator's repetition check
@@ -566,17 +608,18 @@ def _generate_chat_reply(
     ]
 
     def _attempt(extra_instruction: str = ""):
-        user_prompt = base_user_prompt
+        sys_prompt = full_system
         if extra_instruction:
-            user_prompt = base_user_prompt + "\nRETRY_GUIDANCE:\n" + extra_instruction + "\n"
-        req = local_fit_model.build_request(
-            system=full_system,
-            user=user_prompt,
-            profile="chat",
+            sys_prompt = full_system + "\n\nADDITIONAL CONSTRAINT:\n" + extra_instruction
+        chat_msgs = _build_chat_messages(
+            system_prompt=sys_prompt, history=history, user_msg=user_msg,
         )
-        return local_fit_model.generate(req), user_prompt
+        req = local_fit_model.build_request(
+            messages=chat_msgs, system=sys_prompt, user=user_msg, profile="chat",
+        )
+        return local_fit_model.generate(req), chat_msgs
 
-    res, used_user_prompt = _attempt()
+    res, used_messages = _attempt()
     first_text = (res.text or "").strip()
     v = output_validator.validate(
         first_text,
@@ -588,7 +631,7 @@ def _generate_chat_reply(
     second_text = None
     v2: dict | None = None
     if not v.get("ok"):
-        # Hard rejections cannot be retried; return a marker (caller logs it).
+        # Hard rejections cannot be retried; emit silence.
         if v.get("severity") == "hard":
             text = ""
         else:
@@ -602,12 +645,13 @@ def _generate_chat_reply(
             )
             if v2.get("ok"):
                 text = v2.get("repaired_text") or second_text
-            elif v2.get("repaired_text"):
+            elif v2.get("repaired_text") and v2.get("severity") != "hard":
                 text = v2["repaired_text"]
             else:
-                # Twice rejected: return whatever the second attempt got, or
-                # the repair from the first if the second was empty.
-                text = second_text or v.get("repaired_text") or text or ""
+                # Pass 2E.1: twice rejected on a soft category → return
+                # silence, NOT the bad text. Better an empty post than a
+                # corporate-coach / AI-disclosure / numbered-list reply.
+                text = ""
     else:
         text = v.get("repaired_text") or text
 
@@ -617,7 +661,7 @@ def _generate_chat_reply(
             "anon_variant": variant.key,
             "anon_state": dict(state),
             "system_prompt": full_system,
-            "first_user_prompt": used_user_prompt,
+            "first_chat_messages": used_messages,
             "first_attempt_text": first_text,
             "first_attempt_validator": dict(v) if v else {},
             "first_attempt_runtime_meta": res.meta.as_dict(),

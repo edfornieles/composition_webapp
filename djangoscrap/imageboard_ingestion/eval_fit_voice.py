@@ -195,6 +195,27 @@ CHAT_CASES: list[dict[str, Any]] = [
             "discipline is hard",
         ],
     },
+    # --- Pass 2E regression cases ---
+    {
+        # Format leak: this prompt previously elicited `anon: ... user: ...`
+        # because the structured prompt was read as a transcript. After 2E
+        # the assistant should never print `user:` / `anon:` / OP_ANCHOR etc.
+        "id": "regress_format_leak",
+        "messages": ["okay ill try"],
+    },
+    {
+        # Within-generation loop: small prompt that previously triggered the
+        # "try eating clean and working out without excuses" × 6 failure.
+        "id": "regress_within_loop",
+        "messages": ["like what"],
+    },
+    {
+        # Motivational-coach assistant register: opening turn that previously
+        # produced "You need to make a change, anon. It's time to make it
+        # happen." instead of /fit/ voice.
+        "id": "regress_motivational_assistant",
+        "messages": ["hey how are you doing"],
+    },
 ]
 
 
@@ -566,7 +587,71 @@ def compute_collapse_metrics(rows: list[EvalRow], *, sweep_rows: Optional[list[E
     for r in rows:
         by_backend.setdefault(r.backend, []).append(r)
 
-    out: dict = {"per_backend": {}, "cross_backend": {}, "sweep": {}}
+    out: dict = {"per_backend": {}, "cross_backend": {}, "sweep": {},
+                 "pass2e_regression": {}}
+
+    # --- Pass 2E regression counts (per backend) ---
+    leak_tokens = (
+        "BOARD: /fit/", "MODE:", "ANON_STATE:", "OP_ANCHOR:",
+        "SESSION_SUMMARY:", "RECENT_TURNS:", "RETRIEVED_FRAGMENTS:",
+        "SAFETY_RULES:", "TASK:",
+    )
+    label_re = _re.compile(r"(?:^|\n)\s*(?:user|anon|assistant)\s*:", _re.I)
+    assistant_tone_re = _re.compile(
+        r"\b(?:you need to|it'?s time to|make a change|stay strong|"
+        r"you'?ve got this|you got this|i hope this helps|you can do (?:it|this)|"
+        r"keep pushing|don'?t give up|believe in yourself)\b",
+        _re.I,
+    )
+
+    def _row_outputs(rows_for_backend: list[EvalRow]) -> Iterable[str]:
+        for r in rows_for_backend:
+            if r.outputs:
+                for entry in r.outputs:
+                    yield entry.get("anon", "") or ""
+            else:
+                yield r.output or ""
+
+    def _has_within_loop(text: str) -> bool:
+        if not text:
+            return False
+        sents = [s.strip().lower() for s in _re.split(r"[.!?\n]+", text) if s and s.strip()]
+        if sents:
+            counts: dict[str, int] = {}
+            for s in sents:
+                if len(s.split()) < 3:
+                    continue
+                counts[s] = counts.get(s, 0) + 1
+                if counts[s] >= 3:
+                    return True
+        words = _re.findall(r"\w+|[>]+", text.lower())
+        if len(words) >= 15:
+            grams: dict[tuple, int] = {}
+            for i in range(len(words) - 4):
+                g = tuple(words[i:i + 5])
+                grams[g] = grams.get(g, 0) + 1
+                if grams[g] >= 3:
+                    return True
+        return False
+
+    pass2e: dict[str, dict] = {}
+    for backend, brows in by_backend.items():
+        format_leak_count = 0
+        loop_count = 0
+        assistant_tone_count = 0
+        for text in _row_outputs(brows):
+            if any(tok in text for tok in leak_tokens) or label_re.search(text):
+                format_leak_count += 1
+            if _has_within_loop(text):
+                loop_count += 1
+            if assistant_tone_re.search(text):
+                assistant_tone_count += 1
+        pass2e[backend] = {
+            "format_leak_count": format_leak_count,
+            "within_generation_loop_count": loop_count,
+            "assistant_tone_count": assistant_tone_count,
+        }
+    out["pass2e_regression"] = pass2e
 
     for backend, brows in by_backend.items():
         outputs = [r.output for r in brows]
@@ -728,6 +813,19 @@ def render_diagnosis(
         lines.append("|---|---|---|---|")
         for backend, s in sweep.items():
             lines.append(f"| {backend} | {s['rows']} | {s['unique_outputs']} | {s['duplicate_outputs']} |")
+        lines.append("")
+
+    # Pass 2E regression counts
+    pass2e = (metrics or {}).get("pass2e_regression") or {}
+    if pass2e:
+        lines.append("## Pass 2E regression counts (lower is better)\n")
+        lines.append("| backend | format_leak | within_loop | assistant_tone |")
+        lines.append("|---|---|---|---|")
+        for backend, m in pass2e.items():
+            lines.append(
+                f"| {backend} | {m['format_leak_count']} | "
+                f"{m['within_generation_loop_count']} | {m['assistant_tone_count']} |"
+            )
         lines.append("")
 
     # Auto-conclusions ----------------------------------------------------

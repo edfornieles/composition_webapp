@@ -317,10 +317,11 @@ def test_anon_zoo_serializable():
 def test_chat_prompt_assembly_uses_pinned_anon():
     """Build a prompt with a fake session — no DB needed.
 
-    Exercises _ensure_session_state's lazy-init path and _build_chat_user_prompt
-    against a stand-in object that mimics the ChatSession surface area used.
+    Pass 2E moved the structured context (BOARD/OP_ANCHOR/etc) out of the
+    user-side prompt and into the system prompt. The pinned variant + OP
+    anchor must land in the system prompt; the user message stays clean.
     """
-    from djangoscrap.views._characters import _ensure_session_state, _build_chat_user_prompt
+    from djangoscrap.views._characters import _ensure_session_state, _build_system_prompt, _build_chat_messages
     from djangoscrap.imageboard_ingestion import anon_zoo
 
     class FakeSession:
@@ -344,15 +345,28 @@ def test_chat_prompt_assembly_uses_pinned_anon():
     assert s.saved, "session should have been persisted on init"
 
     variant = anon_zoo.get(state["anon_variant"])
-    prompt = _build_chat_user_prompt(
-        state=state, variant=variant, history=[],
-        user_msg="cant stay disciplined this week", fragments=[],
+    sys_prompt = _build_system_prompt(
+        persona_system="You are /fit/.", variant=variant,
+        state=state, fragments=[],
     )
-    assert "BOARD: /fit/" in prompt
-    assert "OP_ANCHOR" in prompt
-    assert state["anon_variant"] in prompt
-    assert "SAFETY_RULES" in prompt
-    assert "quote" in prompt.lower()  # task instructs quote-back
+    assert variant.label in sys_prompt
+    assert "cant stay disciplined this week" in sys_prompt   # OP anchor present
+    assert variant.dominant_drive in sys_prompt
+    # Anti-assistant rules must be there
+    assert "Reply ONCE" in sys_prompt or "1 short post" in sys_prompt or "1-3 lines" in sys_prompt
+    # Quote-back guidance present (as abstract pattern, not verbatim few-shots
+    # — Pass 2E.1 dropped the concrete strings because the model parroted them).
+    assert "quote-back" in sys_prompt.lower() or "begin with one '>line'" in sys_prompt.lower()
+
+    # And the chat-message list must NOT leak the structured labels into user side
+    msgs = _build_chat_messages(
+        system_prompt=sys_prompt, history=[], user_msg="cant stay disciplined this week",
+    )
+    for m in msgs:
+        if m["role"] != "system":
+            assert "BOARD: /fit/" not in m["content"]
+            assert "OP_ANCHOR:" not in m["content"]
+            assert "RECENT_TURNS" not in m["content"]
 
 
 # --- feedback loader ------------------------------------------------------

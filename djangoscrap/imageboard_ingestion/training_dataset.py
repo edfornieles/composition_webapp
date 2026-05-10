@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Iterator, Optional
 
-from . import output_validator, retrieval, storage
+from . import output_validator, retrieval, storage, target_policy as _tp
 
 
 _log = logging.getLogger(__name__)
@@ -76,6 +76,20 @@ MODES = (
     "confession",
     "body_judgement",
     "image_caption",
+    "dream_fragment",
+)
+
+# Real-post extraction iterates modes in this order so the same source post
+# gets its highest-fidelity mode label first. quote_back_reply > body_judgement
+# > inner_monologue > confession > image_caption > next_anon_reply.
+# Anything else falls through to whatever next_anon_reply consumes.
+MODE_PRIORITY = (
+    "quote_back_reply",
+    "body_judgement",
+    "inner_monologue",
+    "confession",
+    "image_caption",
+    "next_anon_reply",
     "dream_fragment",
 )
 
@@ -312,8 +326,12 @@ def _hash_id(s: str) -> str:
 
 # --- real-post mode classifiers -------------------------------------------
 
-_GREENTEXT_QUOTE_RE = re.compile(r"^>(?!>)", re.MULTILINE)
-_BE_ME_RE = re.compile(r"^>be\s*me\b", re.IGNORECASE | re.MULTILINE)
+# This corpus stores greentext lines with `>>` (double-arrow) rather than the
+# usual `>` — a quirk of the HTML→text normaliser. We match both forms so the
+# classifier works regardless. We do exclude `>>123456` post-number references
+# (digits after the arrows) which are board cross-post links, not greentext.
+_GREENTEXT_QUOTE_RE = re.compile(r"^>{1,2}(?!\d)", re.MULTILINE)
+_BE_ME_RE = re.compile(r"^>{1,2}\s*be\s*me\b", re.IGNORECASE | re.MULTILINE)
 _FIRST_PERSON_RE = re.compile(r"\b(i|i'?m|i've|i'll|i'd|me|my|myself|mine)\b", re.IGNORECASE)
 _BODY_VOCAB_RE = re.compile(
     r"\b(body|fat|skinny|soft|chubby|lean|jacked|natty|frame|jaw|wrist|"
@@ -471,8 +489,18 @@ def _real_post_rows(
             if m in candidates_by_mode:
                 candidates_by_mode[m].append(rec)
 
+    # Iterate in MODE_PRIORITY so a source post gets claimed by its
+    # highest-fidelity mode first. Posts only emit once across modes (we
+    # de-dupe by source_post_uid), which keeps quote_back_reply distinct from
+    # next_anon_reply for posts with both a quote and a reply target.
+    requested = set(modes)
+    ordered_modes = [m for m in MODE_PRIORITY if m in requested] + [
+        m for m in modes if m not in MODE_PRIORITY
+    ]
+
     seen_targets: set[str] = set()
-    for mode in modes:
+    seen_post_uids: set[str] = set()
+    for mode in ordered_modes:
         if mode in MODES_REQUIRING_CURATED:
             continue
         pool = candidates_by_mode.get(mode) or []
@@ -483,16 +511,27 @@ def _real_post_rows(
         for rec in pool:
             if emitted >= n_per_mode:
                 break
-            target_text = _post_text_for_target(rec)
-            norm = _normalise_for_dedupe(target_text)
+            uid = rec.get("post_uid")
+            if uid and uid in seen_post_uids:
+                continue
+
+            raw_target = _post_text_for_target(rec)
+            norm = _normalise_for_dedupe(raw_target)
             if norm in seen_targets:
                 continue
 
-            # Validator gate (also redacts slurs etc. via repaired_text)
-            v = output_validator.validate(target_text)
-            if not v.get("ok") and v.get("severity") == "hard":
+            # NEW: three-tier suitability classifier (Pass 2D).
+            policy = _tp.classify_target(raw_target)
+            if policy.status == "target_reject":
+                # The caller's `_absorb` step counts these via skipped_unsafe;
+                # we yield a sentinel so the writer's pipeline can record it.
+                yield {"_skipped": True, "_reason": "policy_reject", "_policy": policy.as_dict(), "_uid": uid}
                 continue
-            target_text = v.get("repaired_text") or target_text
+
+            # Use redacted text for redacted rows; raw for realistic rows.
+            target_text = (
+                policy.redacted_text if policy.status == "target_ok_with_redaction" else policy.raw_text
+            )
             if _is_low_info(target_text):
                 continue
 
@@ -502,19 +541,16 @@ def _real_post_rows(
                 parent = idx.by_post_no.get((rec.get("board"), parent_no))
             op_rec = None
             if rec.get("thread_no") and rec.get("thread_no") in idx.by_thread:
-                # First post in thread is OP heuristically
                 thread_posts = idx.by_thread[rec["thread_no"]]
                 op_rec = next((p for p in thread_posts if p.get("is_op")), None)
             thread_context = _format_thread_context(parent=parent, op=op_rec)
 
-            # Anon state derived from profile + record fit_tags
             anon_state = {
                 "anon_variant": "(real-post-derived)",
                 "fit_tags": ", ".join(rec.get("fit_tags") or [])[:120],
                 "thread_subject": (rec.get("subject") or "")[:120],
             }
 
-            # Retrieval fragments seeded from target text
             fragments: list[dict] = []
             if ret is not None:
                 fragments = ret.search(target_text[:200], top_k=fragments_per_row, mode="contaminated_art") or []
@@ -543,9 +579,14 @@ def _real_post_rows(
                     "safety": rec.get("safety") or {},
                     "retrieved_fragment_uids": [f.get("post_id") for f in fragments],
                     "fit_tags": rec.get("fit_tags") or [],
+                    "target_policy": policy.as_dict(),
+                    "target_raw_differs": policy.status == "target_ok_with_redaction",
+                    "target_raw_text": policy.raw_text if policy.status == "target_ok_with_redaction" else "",
                 },
             }
             seen_targets.add(norm)
+            if uid:
+                seen_post_uids.add(uid)
             emitted += 1
             yield row
 
@@ -558,10 +599,20 @@ def _curated_rows(curated_dir: Path, *, default_mode: str = "inner_monologue") -
       - a simple {"mode":..., "user":..., "assistant":...}
       - {"prompt":..., "completion":...}
     Normalise into our schema and tag target_strategy=curated_targets.
+
+    Files matching `*.example.jsonl` are skipped — those are schema templates
+    for humans, not training data. Copy or rename to a non-`.example.` file
+    to opt them in.
     """
     if not curated_dir or not Path(curated_dir).exists():
         return
     for path in sorted(Path(curated_dir).glob("*.jsonl")):
+        # Skip macOS resource-fork metadata files that look like JSONL but
+        # are binary (._foo.jsonl). Skip example files (schema templates).
+        if path.name.startswith("._") or path.name.endswith(".example.jsonl"):
+            if path.name.endswith(".example.jsonl"):
+                _log.info("curated: skipping example file %s (rename to opt in)", path.name)
+            continue
         try:
             with path.open("r", encoding="utf-8") as fh:
                 for line_no, raw in enumerate(fh):
@@ -720,11 +771,19 @@ class BuildSummary:
     rows_by_mode: Counter = field(default_factory=Counter)
     rows_by_strategy: Counter = field(default_factory=Counter)
     rows_by_thread: Counter = field(default_factory=Counter)
-    skipped_unsafe: int = 0
+    skipped_unsafe: int = 0                  # legacy alias = policy_reject + safety
     skipped_duplicate: int = 0
     skipped_too_short: int = 0
     skipped_too_long: int = 0
     skipped_low_info: int = 0
+    # Pass 2D — three-tier policy stats
+    accepted_raw: int = 0                    # target_ok_realistic
+    accepted_redacted: int = 0               # target_ok_with_redaction
+    rejected_by_policy: Counter = field(default_factory=Counter)  # reason → count
+    redactions_applied: Counter = field(default_factory=Counter)  # type → count
+    sample_raw: list[str] = field(default_factory=list)
+    sample_redacted: list[dict] = field(default_factory=list)     # {raw, redacted, reasons}
+    sample_rejected: list[dict] = field(default_factory=list)     # {text, reasons}
     template_pct: float = 0.0
     top_targets: list[tuple[str, int]] = field(default_factory=list)
     top_openings: list[tuple[str, int]] = field(default_factory=list)
@@ -766,6 +825,21 @@ def build_dataset_v2(
 
     def _absorb(stream: Iterable[dict]) -> None:
         for row in stream:
+            # Pass 2D: real_post_rows yields sentinels for policy-rejected
+            # candidates so we can count and sample them in the report.
+            if row.get("_skipped"):
+                policy = row.get("_policy") or {}
+                reasons = policy.get("reasons") or ["unknown"]
+                summary.skipped_unsafe += 1
+                for r in reasons:
+                    summary.rejected_by_policy[r] += 1
+                if len(summary.sample_rejected) < 12:
+                    summary.sample_rejected.append({
+                        "reasons": reasons,
+                        "text": (row.get("_uid") or "")[:80],
+                    })
+                continue
+
             target = (row["messages"][-1].get("content") or "").strip()
             wc = _word_count(target)
             if wc < 1:
@@ -790,6 +864,23 @@ def build_dataset_v2(
             tno = md.get("thread_no")
             if tno:
                 summary.rows_by_thread[str(tno)] += 1
+
+            policy = (md.get("target_policy") or {})
+            status = policy.get("status") or ""
+            if status == "target_ok_realistic":
+                summary.accepted_raw += 1
+                if len(summary.sample_raw) < 8:
+                    summary.sample_raw.append(target[:200])
+            elif status == "target_ok_with_redaction":
+                summary.accepted_redacted += 1
+                for kind in policy.get("redactions_applied") or []:
+                    summary.redactions_applied[kind] += 1
+                if len(summary.sample_redacted) < 8:
+                    summary.sample_redacted.append({
+                        "raw": (md.get("target_raw_text") or "")[:200],
+                        "redacted": target[:200],
+                        "reasons": policy.get("reasons") or [],
+                    })
 
     # 1. Primary strategy
     if target_strategy == "real_post_targets":
@@ -894,6 +985,45 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
             fh.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
+_VOICE_PRESERVATION_NOTES = """\
+## Voice preservation notes
+
+This dataset deliberately keeps the rough register of the source corpus.
+Acceptable assistant targets explicitly include:
+
+- self-directed shame ("i'm pathetic", "i hate myself", "i'm a fraud")
+- body insecurity language ("soft", "weak", "dyel", "skinny-fat", "mogged")
+- mirror/scale/calorie obsession (without specific harm numbers)
+- profanity and abrasive tone
+- failure / discipline / humiliation language
+- ugly humour, terse hostile replies, greentext compression
+- crude self-talk and obsessive routine cadence
+
+What the policy filter blocks (target_reject) is genuinely unusable
+material, not emotional negativity:
+
+- doxxing and private identifying info
+- specific steroid sourcing / dosing / cycle protocols
+- explicit ED how-tos with calorie targets or fast durations
+- self-harm encouragement or method talk
+- targeted threats with named real people
+- sexual content involving minors / extremist recruitment
+- slur-heavy rants where hate is the main point
+- mojibake / encoding corruption
+- the smoking-gun template phrases that broke the previous LoRA
+
+What it redacts (target_ok_with_redaction) — sentence structure preserved,
+private/dangerous tokens replaced with `[redacted_*]` markers:
+
+- URLs / emails / phone numbers / handles
+- substance vendor or source references
+- isolated protected-class slurs in otherwise-valuable text
+
+If the model trained on this dataset starts to *sound like a chatbot*,
+that is a regression. Re-tune the filter, not the voice.
+"""
+
+
 def _write_reports(out_dir: Path, summary: BuildSummary, *, source_key: str, target_strategy: str) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -910,6 +1040,18 @@ def _write_reports(out_dir: Path, summary: BuildSummary, *, source_key: str, tar
             "too_short": summary.skipped_too_short,
             "too_long": summary.skipped_too_long,
             "low_info": summary.skipped_low_info,
+        },
+        "policy_tiers": {
+            "accepted_raw": summary.accepted_raw,
+            "accepted_with_redaction": summary.accepted_redacted,
+            "rejected_total": sum(summary.rejected_by_policy.values()),
+            "rejected_by_reason": dict(summary.rejected_by_policy),
+            "redactions_applied": dict(summary.redactions_applied),
+        },
+        "samples": {
+            "accepted_raw": summary.sample_raw,
+            "accepted_redacted": summary.sample_redacted,
+            "rejected": summary.sample_rejected,
         },
         "template_pct": summary.template_pct,
         "top_targets": summary.top_targets,
@@ -945,12 +1087,45 @@ def _write_reports(out_dir: Path, summary: BuildSummary, *, source_key: str, tar
     for k, v in summary.rows_by_strategy.most_common():
         md.append(f"- {k}: {v}")
     md.append("")
+    md.append("## Target suitability tiers (Pass 2D)")
+    md.append(f"- accepted raw (target_ok_realistic): {summary.accepted_raw}")
+    md.append(f"- accepted with redaction (target_ok_with_redaction): {summary.accepted_redacted}")
+    md.append(f"- rejected: {sum(summary.rejected_by_policy.values())}")
+    if summary.rejected_by_policy:
+        md.append("")
+        md.append("### Rejected by reason")
+        for reason, count in summary.rejected_by_policy.most_common():
+            md.append(f"- {reason}: {count}")
+    if summary.redactions_applied:
+        md.append("")
+        md.append("### Redactions applied (by type)")
+        for kind, count in summary.redactions_applied.most_common():
+            md.append(f"- {kind}: {count}")
+    md.append("")
+    md.append("## Samples")
+    if summary.sample_raw:
+        md.append("### accepted raw (preserved voice)")
+        for s in summary.sample_raw[:6]:
+            md.append(f"- {s}")
+    if summary.sample_redacted:
+        md.append("")
+        md.append("### accepted with redaction (raw → redacted)")
+        for s in summary.sample_redacted[:6]:
+            md.append(f"- raw:      {s.get('raw','')}")
+            md.append(f"  redacted: {s.get('redacted','')}")
+            md.append(f"  reasons:  {', '.join(s.get('reasons') or [])}")
+    if summary.sample_rejected:
+        md.append("")
+        md.append("### rejected (sample reasons; uids only, body intentionally not surfaced)")
+        for s in summary.sample_rejected[:6]:
+            md.append(f"- reasons={s.get('reasons') or []} uid={s.get('text','')}")
+    md.append("")
     md.append("## Skip counts")
     md.append(f"- duplicate: {summary.skipped_duplicate}")
     md.append(f"- too_short: {summary.skipped_too_short}")
     md.append(f"- too_long: {summary.skipped_too_long}")
     md.append(f"- low_info: {summary.skipped_low_info}")
-    md.append(f"- unsafe: {summary.skipped_unsafe}")
+    md.append(f"- unsafe (policy_reject): {summary.skipped_unsafe}")
     md.append("")
     md.append("## Top assistant targets (top 10)")
     for t, c in summary.top_targets[:10]:
@@ -968,6 +1143,8 @@ def _write_reports(out_dir: Path, summary: BuildSummary, *, source_key: str, tar
             md.append(f"- ⚠️ {w}")
     else:
         md.append("- (none)")
+    md.append("")
+    md.append(_VOICE_PRESERVATION_NOTES)
     (out_dir / "dataset_report.md").write_text("\n".join(md), encoding="utf-8")
 
 
@@ -1141,41 +1318,84 @@ def _cli_build(args: argparse.Namespace) -> int:
 
 
 def _cli_inspect(args: argparse.Namespace) -> int:
+    import random as _random
+
     p = Path(args.data)
     if not p.exists():
         print(f"no such file: {p}", file=sys.stderr)
         return 2
-    n = int(args.n)
+
     target_mode = args.mode
-    shown = 0
+    target_strategy = args.strategy
+    contains = (args.contains or "").lower().strip()
+
+    # Load all rows up front so --random / --contains can filter
+    all_rows: list[dict] = []
     with p.open("r", encoding="utf-8") as fh:
         for line in fh:
-            if shown >= n:
-                break
             line = line.strip()
             if not line:
                 continue
             try:
-                rec = json.loads(line)
+                all_rows.append(json.loads(line))
             except (ValueError, json.JSONDecodeError):
                 continue
-            md = rec.get("metadata") or {}
-            if target_mode != "all" and md.get("mode") != target_mode:
-                continue
-            user = next((m["content"] for m in rec["messages"] if m["role"] == "user"), "")
-            assistant = next((m["content"] for m in rec["messages"] if m["role"] == "assistant"), "")
-            print("=" * 70)
-            print(f"row_id: {md.get('row_id')}  mode: {md.get('mode')}  strategy: {md.get('target_strategy')}")
+
+    def _passes(rec: dict) -> bool:
+        md = rec.get("metadata") or {}
+        if target_mode != "all" and md.get("mode") != target_mode:
+            return False
+        if target_strategy and md.get("target_strategy") != target_strategy:
+            return False
+        if contains:
+            blob = json.dumps(rec, ensure_ascii=False).lower()
+            if contains not in blob:
+                return False
+        return True
+
+    filtered = [r for r in all_rows if _passes(r)]
+    if args.random:
+        _random.shuffle(filtered)
+
+    n = int(args.n)
+    shown = 0
+    for rec in filtered[:n]:
+        md = rec.get("metadata") or {}
+        user = next((m["content"] for m in rec["messages"] if m["role"] == "user"), "")
+        assistant = next((m["content"] for m in rec["messages"] if m["role"] == "assistant"), "")
+        print("=" * 70)
+        print(f"row_id: {md.get('row_id')}  mode: {md.get('mode')}  strategy: {md.get('target_strategy')}")
+        if args.show_source:
             print(f"source_post_uid: {md.get('source_post_uid')}  thread: {md.get('thread_no')}")
-            # Show only the TASK + key parts of the user message
-            user_short = (user.split("\n\nTASK:\n")[-1]).strip() if "TASK:" in user else user[:300]
-            print("USER (TASK):")
-            print("  " + user_short[:300].replace("\n", "\n  "))
-            print("ASSISTANT:")
-            print("  " + assistant.replace("\n", "\n  "))
-            shown += 1
+            tags = md.get("fit_tags") or []
+            if tags:
+                print(f"fit_tags: {', '.join(tags)}")
+        if args.show_policy:
+            policy = md.get("target_policy") or {}
+            print(
+                f"target_policy: status={policy.get('status', '?')} "
+                f"reasons={policy.get('reasons') or []} "
+                f"redactions={policy.get('redactions_applied') or []}"
+            )
+        if args.show_safety:
+            safety = md.get("safety") or {}
+            print(f"safety: {safety}")
+        if args.show_redactions and md.get("target_raw_differs"):
+            print("RAW (pre-redaction):")
+            print("  " + (md.get("target_raw_text") or "").replace("\n", "\n  "))
+        # Always show TASK from the user prompt + the assistant target
+        user_short = (user.split("\n\nTASK:\n")[-1]).strip() if "TASK:" in user else user[:300]
+        print("USER (TASK):")
+        print("  " + user_short[:300].replace("\n", "\n  "))
+        print("ASSISTANT:")
+        print("  " + assistant.replace("\n", "\n  "))
+        shown += 1
+
     if shown == 0:
         print("(no matching rows)")
+    else:
+        print("=" * 70)
+        print(f"shown {shown} of {len(filtered)} matching rows (total in file: {len(all_rows)})")
     return 0
 
 
@@ -1219,6 +1439,20 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_inspect.add_argument("--data", required=True)
     p_inspect.add_argument("--mode", default="all")
     p_inspect.add_argument("--n", type=int, default=20)
+    p_inspect.add_argument("--strategy", default="",
+                           help="Filter by target_strategy (real_post_targets, curated_targets, ...).")
+    p_inspect.add_argument("--contains", default="",
+                           help="Only show rows whose JSON contains TEXT (case-insensitive).")
+    p_inspect.add_argument("--random", action="store_true",
+                           help="Shuffle filtered rows before showing.")
+    p_inspect.add_argument("--show-policy", action="store_true",
+                           help="Print target_policy status + reasons + redactions per row.")
+    p_inspect.add_argument("--show-safety", action="store_true",
+                           help="Print the manifest safety dict per row.")
+    p_inspect.add_argument("--show-source", action="store_true",
+                           help="Print source_post_uid + thread + fit_tags per row.")
+    p_inspect.add_argument("--show-redactions", action="store_true",
+                           help="When the target was redacted, also print the raw pre-redaction text.")
 
     args = parser.parse_args(argv)
     _ensure_django()

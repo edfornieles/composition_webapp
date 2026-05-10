@@ -78,21 +78,92 @@ _NAMED_TARGET_RE = re.compile(
 # --- soft-reject patterns -------------------------------------------------
 
 _GENERIC_AI_RE = re.compile(
-    r"\b(as an ai|as a language model|i'?m an ai|i am an ai|here'?s how|let me explain|in summary|i hope this helps|feel free to ask|certainly|absolutely[!,]|happy to help)\b",
+    r"\b(as an ai|as a language model|i'?m an ai\b|i am an ai\b|"
+    r"i'?m an artificial intelligence|as an artificial intelligence|"
+    r"i'?m not (?:a |an )?(?:autistic )?robot|"
+    r"my purpose is (?:to )?(?:assist|help|provide)|"
+    r"cannot engage in self|refuse to engage in|"
+    r"here'?s how|here'?s what (?:we|you) (?:need|should|have)|"
+    r"let me explain|in summary|i hope this helps|"
+    r"feel free to ask|certainly|absolutely[!,]|happy to help|"
+    r"please reach out|reach out to (?:a |an |the )?(?:mental health|"
+    r"professional|therapist|hotline|crisis|trusted)|"
+    r"mental health professional|trusted (?:adult|professional))\b",
     re.I,
 )
 
 # Heuristic for a chatty assistant register that isn't /fit/.
 _CHATBOT_PHRASE_RE = re.compile(
-    r"\b(it's important to|it is important to|please consult|seek professional|consult a (?:doctor|physician|professional)|i understand that|i'?m here to (?:help|listen|support))\b",
+    r"\b(it'?s important to|it is important to|please consult|"
+    r"seek professional|consult a (?:doctor|physician|professional)|"
+    r"i understand that|i'?m here to (?:help|listen|support)|"
+    r"taking care of your (?:well[-\s]?being|health|mental health)|"
+    r"your well[-\s]?being matters|prioriti[sz]e your|"
+    r"keep moving forward|moving forward|keep pushing|"
+    r"keep it real|stay strong|don'?t give up|"
+    r"you'?re doing the best you can|you can do (?:it|this)|"
+    r"believe in yourself|you'?ve got this|effort doesn'?t equal|"
+    r"a form of self[-\s]?care|recogni[sz]ing your own)\b",
+    re.I,
+)
+
+# Hard rejects: explicit AI-disclosure / safety-disclaimer phrases that
+# the chat path must NEVER return as anon output. These collapse the
+# /fit/ register entirely. Twice-rejected on these → return silence.
+_HARD_AI_DISCLOSURE_RE = re.compile(
+    r"\bi'?m an artificial intelligence\b|"
+    r"\bas an artificial intelligence\b|"
+    r"\bi'?m not (?:a |an )?(?:autistic )?robot\b|"
+    r"\bmy purpose is (?:to )?(?:assist|help|provide)\b|"
+    r"\bcannot engage in self[-\s]?destructive\b|"
+    r"\b(?:please )?reach out to (?:a |an |the )?(?:mental health|"
+    r"professional|therapist|hotline|crisis)\b|"
+    r"\bmental health professional\b",
     re.I,
 )
 
 # Markdown headings / bullets / fenced blocks — board posts don't use these.
+# Also catch numbered lists "1) ... 2) ... 3) ..." (assistant-style how-tos).
 _MARKDOWN_RE = re.compile(r"(^#+\s)|(^-\s\*\*)|(^\*\s+)|(```)", re.MULTILINE)
+_NUMBERED_LIST_RE = re.compile(r"\b1\)\s.+?\s2\)\s.+?\s3\)", re.S)
 
 
 # --- category & severity --------------------------------------------------
+
+def _has_within_generation_loop(text: str, *, sentence_min_repeat: int = 3,
+                                phrase_words: int = 5, phrase_min_repeat: int = 3) -> bool:
+    """Detect within-generation repetition. Catches the Pass 2E "try eating
+    clean and working out without excuses" × 6 case.
+
+    Triggers if either:
+      - any non-trivial sentence appears `sentence_min_repeat`+ times, or
+      - any `phrase_words`-word window appears `phrase_min_repeat`+ times.
+    """
+    if not text:
+        return False
+
+    # Sentence-level repeat
+    sents = [s.strip().lower() for s in re.split(r"[.!?\n]+", text) if s and s.strip()]
+    if sents:
+        counts: dict[str, int] = {}
+        for s in sents:
+            if len(s.split()) < 3:  # ignore short interjections
+                continue
+            counts[s] = counts.get(s, 0) + 1
+            if counts[s] >= sentence_min_repeat:
+                return True
+
+    # N-gram phrase-level repeat
+    words = re.findall(r"\w+|[>]+", text.lower())
+    if len(words) >= phrase_words * phrase_min_repeat:
+        windows: dict[tuple, int] = {}
+        for i in range(len(words) - phrase_words + 1):
+            w = tuple(words[i:i + phrase_words])
+            windows[w] = windows.get(w, 0) + 1
+            if windows[w] >= phrase_min_repeat:
+                return True
+    return False
+
 
 # reason -> (category, severity)
 REASON_CATALOG: dict[str, tuple[str, str]] = {
@@ -113,6 +184,11 @@ REASON_CATALOG: dict[str, tuple[str, str]] = {
     "markdown_formatting":    ("style", "soft"),
     "mojibake":               ("encoding", "soft"),
     "repeats_recent":         ("repetition", "soft"),
+    "within_generation_repetition": ("within_generation_repetition", "soft"),
+    "format_leak":            ("style", "soft"),
+    "assistant_tone":         ("style", "soft"),
+    "ai_disclosure":          ("hard_safety", "hard"),
+    "numbered_list":          ("style", "soft"),
     # special
     "empty":                  ("length", "soft"),
 }
@@ -137,6 +213,10 @@ _RETRY_INSTRUCTIONS: dict[str, str] = {
     "repetition": (
         "Do not repeat phrasing or content from the last few replies. "
         "Find a different angle."
+    ),
+    "within_generation_repetition": (
+        "Do not repeat the same sentence or phrase. Produce one short reply "
+        "only — 1 to 3 lines. Stop after the first sentence if needed."
     ),
     "hard_safety": (
         "Cannot retry — output violated a hard safety rule."
@@ -294,13 +374,42 @@ def validate(
         reasons.append("sounds_like_assistant")
     if _CHATBOT_PHRASE_RE.search(text):
         reasons.append("generic_chatbot_phrasing")
+    if _HARD_AI_DISCLOSURE_RE.search(text):
+        reasons.append("ai_disclosure")
     if _MARKDOWN_RE.search(text):
         reasons.append("markdown_formatting")
+    if _NUMBERED_LIST_RE.search(text):
+        reasons.append("numbered_list")
     if _detect_mojibake(text):
         reasons.append("mojibake")
 
     if recent_outputs and _looks_repeated(text, recent_outputs):
         reasons.append("repeats_recent")
+
+    # Pass 2E: catch within-generation loops + structured-prompt label leakage
+    # + motivational-coach tone that's specific to the base-MLX-no-adapter
+    # holding-pattern failure mode.
+    if _has_within_generation_loop(text):
+        reasons.append("within_generation_repetition")
+
+    leak_tokens = (
+        "BOARD: /fit/", "MODE:", "ANON_STATE:", "OP_ANCHOR:",
+        "SESSION_SUMMARY:", "RECENT_TURNS:", "RETRIEVED_FRAGMENTS:",
+        "SAFETY_RULES:", "TASK:",
+    )
+    if any(tok in text for tok in leak_tokens):
+        reasons.append("format_leak")
+    # Inline `user:`/`anon:` labels that the model parrots from its prompt.
+    if re.search(r"(?:^|\n)\s*(?:user|anon|assistant)\s*:", text, re.I):
+        reasons.append("format_leak")
+
+    if re.search(
+        r"\b(?:you need to|it'?s time to|make a change|stay strong|"
+        r"you'?ve got this|you got this|i hope this helps|you can do (?:it|this)|"
+        r"keep pushing|don'?t give up|believe in yourself)\b",
+        text, re.I,
+    ):
+        reasons.append("assistant_tone")
 
     if reasons:
         category, severity = _primary_category(reasons)

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/fit/ - Health &amp; Fitness - "be me"</title>
+  <style>
+    /* Yotsuba B (the /fit/ board theme), kept simple. */
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: #EEF2FF;
+      color: #000;
+      font: 13px/1.4 Arial, Helvetica, sans-serif;
+    }
+
+    .boardbar {
+      background: #34345C;
+      color: #FFF;
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+    .boardbar a { color: #FFF; text-decoration: none; }
+
+    .topbar {
+      background: linear-gradient(#FFF, #DCDCDC);
+      border-bottom: 1px solid #B7C5D9;
+      padding: 6px 10px;
+      font-size: 11px;
+      color: #555;
+    }
+    .topbar h1 {
+      font-size: 22px;
+      color: #AF0A0F;
+      font-family: Tahoma, Arial, sans-serif;
+      margin: 0 0 2px 0;
+      font-weight: bold;
+    }
+    .topbar .sub { font-style: italic; color: #800; }
+
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 10px 14px 80px 14px;
+    }
+
+    .post {
+      background: #D6DAF0;
+      border: 1px solid #B7C5D9;
+      padding: 6px 8px 10px 8px;
+      display: inline-block;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .post-img-wrap {
+      float: left;
+      margin: 4px 12px 4px 0;
+    }
+    .post-img-wrap .filename { font-size: 11px; color: #555; }
+    .post-img-wrap .filename a { color: #34345C; text-decoration: underline; }
+    .post-img-wrap .thumb {
+      width: 125px; height: 125px;
+      background: #888;
+      display: block;
+      border: 1px solid #555;
+      margin-top: 2px;
+      object-fit: cover;
+    }
+
+    .posthead {
+      font-size: 12px;
+      color: #000;
+      margin-bottom: 4px;
+    }
+    .posthead .subject {
+      color: #0F0C5D;
+      font-weight: bold;
+      margin-right: 4px;
+    }
+    .posthead .name {
+      color: #117743;
+      font-weight: bold;
+      margin-right: 4px;
+    }
+    .posthead .time { margin-right: 4px; }
+    .posthead .num a {
+      color: #34345C;
+      text-decoration: none;
+    }
+    .posthead .num a:hover { color: #D00; }
+
+    .body {
+      font: 13px/1.45 Arial, Helvetica, sans-serif;
+      color: #000;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      margin-top: 4px;
+      max-width: 800px;
+    }
+    .body .gt {
+      color: #789922;
+    }
+    .cursor {
+      display: inline-block;
+      width: 7px;
+      height: 14px;
+      vertical-align: text-bottom;
+      background: #000;
+      animation: blink 1.05s steps(2) infinite;
+      margin-left: 1px;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .controls {
+      clear: both;
+      font-size: 11px;
+      color: #555;
+      margin-top: 12px;
+      padding-top: 6px;
+      border-top: 1px dotted #B7C5D9;
+    }
+    .controls a {
+      color: #34345C;
+      text-decoration: underline;
+      cursor: pointer;
+      margin-right: 8px;
+    }
+    .status { color: #888; font-style: italic; }
+
+    .footnote {
+      max-width: 800px;
+      margin: 12px 0 0 0;
+      font-size: 10px;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div class="boardbar">
+    <b>/fit/</b> - Health &amp; Fitness · <a href="/">[chat]</a>
+  </div>
+
+  <div class="topbar">
+    <h1>/fit/ - Health &amp; Fitness</h1>
+    <div class="sub">"discipline / shame / repeat"</div>
+  </div>
+
+  <div class="wrap">
+    <div class="post" id="post">
+      <div class="post-img-wrap">
+        <div class="filename"><a id="imglink" href="#">spreadsheet.jpg</a> <span id="imgmeta"></span></div>
+        <!-- Plain placeholder; can be wired to actual generated imagery later -->
+        <div class="thumb" id="thumb" style="background:
+          repeating-linear-gradient(45deg, #555 0px, #555 2px, #777 2px, #777 4px);"></div>
+      </div>
+
+      <div class="posthead">
+        <span class="subject" id="subject">be me</span>
+        <span class="name">Anonymous</span>
+        <span class="time" id="ts">--/--/-- (--) --:--:--</span>
+        <span class="num">No.<a id="postnum" href="#">--</a></span>
+      </div>
+
+      <div class="body" id="body"><span class="cursor" id="cursor"></span></div>
+
+      <div class="controls">
+        <a id="toggle">[ pause ]</a>
+        <a id="reset">[ new post ]</a>
+        <span class="status" id="status"></span>
+      </div>
+    </div>
+
+    <div class="footnote">
+      Each turn pulls the next 1–3 lines from a corpus-grounded local model
+      (base MLX, no adapter loaded). Variant pinned per page-load.
+      <span id="variant"></span>
+    </div>
+  </div>
+
+<script>
+const body = document.getElementById('body');
+const cursor = document.getElementById('cursor');
+const status = document.getElementById('status');
+const toggle = document.getElementById('toggle');
+const resetBtn = document.getElementById('reset');
+const tsEl = document.getElementById('ts');
+const postnumEl = document.getElementById('postnum');
+const imgmeta = document.getElementById('imgmeta');
+const variantEl = document.getElementById('variant');
+
+const POLL_MS = 6500;            // base poll interval
+const MAX_LINES = 200;           // cap on visible lines (avoid runaway memory)
+let SESSION_SEED = "wall-" + Math.floor(Math.random() * 1e9);
+let running = true;
+let lines = [];
+let consecutiveEmpty = 0;
+
+// 4chan-style header strings
+function fmtChanTime(d) {
+  const pad = n => String(n).padStart(2, '0');
+  const dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  return `${pad(d.getMonth()+1)}/${pad(d.getDate())}/${String(d.getFullYear()).slice(2)}(${dows[d.getDay()]})${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+tsEl.textContent = fmtChanTime(new Date());
+postnumEl.textContent = '7' + Math.floor(Math.random() * 9e7 + 1e7);
+imgmeta.textContent = `(${(20 + Math.floor(Math.random()*180))} KB, ${600 + Math.floor(Math.random()*700)}x${600 + Math.floor(Math.random()*700)})`;
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function renderLine(text) {
+  // Insert newline before line if there's already content
+  if (lines.length > 0) {
+    body.insertBefore(document.createElement('br'), cursor);
+  }
+  const isGt = text.trimStart().startsWith('>');
+  const span = document.createElement('span');
+  if (isGt) span.className = 'gt';
+  span.textContent = text;
+  body.insertBefore(span, cursor);
+  // Cap: if too many lines, drop from the top
+  while (lines.length > MAX_LINES) {
+    // remove the first node before cursor
+    while (body.firstChild && body.firstChild !== cursor) {
+      const node = body.firstChild;
+      body.removeChild(node);
+      if (node.tagName === 'BR') break;
+    }
+    lines.shift();
+  }
+}
+
+async function fetchNext() {
+  if (!running) return;
+  status.textContent = '…';
+  try {
+    const r = await fetch('/api/fit/stream-next/', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({recent_lines: lines.slice(-8), session_seed: SESSION_SEED}),
+    });
+    const d = await r.json();
+    const newLines = (d.lines || []).filter(l => l && l.trim());
+    if (newLines.length === 0) {
+      consecutiveEmpty++;
+      // Adaptive backoff if model keeps producing nothing usable
+      status.textContent = consecutiveEmpty > 1 ? `(empty x${consecutiveEmpty})` : '';
+    } else {
+      consecutiveEmpty = 0;
+      status.textContent = '';
+      for (const l of newLines) {
+        lines.push(l);
+        renderLine(l);
+      }
+    }
+    if (d.variant) variantEl.textContent = `· anon = ${d.variant}`;
+  } catch(e) {
+    status.textContent = '(net err)';
+    consecutiveEmpty++;
+  }
+  if (running) {
+    const delay = Math.min(POLL_MS * Math.max(1, consecutiveEmpty), 30000);
+    setTimeout(fetchNext, delay);
+  }
+}
+
+toggle.addEventListener('click', () => {
+  running = !running;
+  toggle.textContent = running ? '[ pause ]' : '[ resume ]';
+  if (running) fetchNext();
+});
+
+resetBtn.addEventListener('click', () => {
+  // Clear visible state and start a fresh post.
+  lines = [];
+  consecutiveEmpty = 0;
+  while (body.firstChild && body.firstChild !== cursor) {
+    body.removeChild(body.firstChild);
+  }
+  SESSION_SEED = "wall-" + Math.floor(Math.random() * 1e9);
+  postnumEl.textContent = '7' + Math.floor(Math.random() * 9e7 + 1e7);
+  tsEl.textContent = fmtChanTime(new Date());
+  if (running) fetchNext();
+});
+
+// Kick off
+fetchNext();
+</script>
+</body>
+</html>

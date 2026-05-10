@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/fit/ - Health &amp; Fitness - chat</title>
+  <style>
+    /* Yotsuba B (real 4chan /fit/ palette) */
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: #EEF2FF;
+      color: #000;
+      font: 13px/1.4 Arial, Helvetica, sans-serif;
+    }
+    a { color: #34345C; text-decoration: none; }
+    a:hover { color: #D00; }
+
+    /* Top board nav (style mimics the chan board strip) */
+    .boardnav {
+      font-size: 11px;
+      padding: 4px 6px;
+      color: #34345C;
+      border-bottom: 1px solid #B7C5D9;
+      background: #EEF2FF;
+    }
+    .boardnav a { color: #34345C; }
+    .boardnav .sep { color: #B7C5D9; margin: 0 2px; }
+    .boardnav b { color: #000; }
+
+    /* Big board header */
+    .boardhdr {
+      text-align: center;
+      padding: 8px 0 0 0;
+      border-bottom: 1px solid #B7C5D9;
+    }
+    .boardhdr h1 {
+      margin: 0;
+      font: bold 28px Tahoma, Arial, sans-serif;
+      color: #AF0A0F;
+      letter-spacing: 0.5px;
+    }
+    .boardhdr .sub {
+      font: italic 12px Arial, sans-serif;
+      color: #800;
+      padding: 2px 0 8px;
+    }
+
+    .threadbar {
+      background: #EEF2FF;
+      padding: 6px 12px;
+      font-size: 11px;
+      color: #34345C;
+      border-bottom: 1px dotted #B7C5D9;
+    }
+    .threadbar a { margin-right: 10px; }
+
+    .wrap {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 8px 12px 240px 12px;
+    }
+
+    /* Posts */
+    .post {
+      display: block;
+      margin: 0 0 0 0;
+      padding: 4px 4px 8px 4px;
+      max-width: 900px;
+    }
+    .post.op { padding: 6px 6px 10px 6px; margin-top: 4px; }
+    .post.reply { margin-left: 22px; padding: 4px; }
+
+    .pwrap {
+      display: inline-block;
+      background: #D6DAF0;
+      border: 1px solid #B7C5D9;
+      padding: 4px 8px 6px 8px;
+      box-sizing: border-box;
+      max-width: 100%;
+    }
+    .post.reply .pwrap { background: #D6DAF0; }
+
+    .fileinfo {
+      font-size: 11px;
+      color: #000;
+      padding: 0 0 2px 0;
+    }
+    .fileinfo a { color: #34345C; text-decoration: underline; }
+    .fileinfo .meta { color: #555; }
+
+    .filewrap {
+      float: left;
+      margin: 2px 12px 4px 0;
+    }
+    .thumb {
+      width: 125px;
+      height: 125px;
+      display: block;
+      border: 1px solid #555;
+      object-fit: cover;
+      background:
+        repeating-linear-gradient(45deg, #555 0px, #555 2px, #777 2px, #777 4px);
+    }
+
+    .posthead {
+      font-size: 12px;
+      color: #000;
+      margin-bottom: 2px;
+    }
+    .posthead .subject {
+      color: #0F0C5D;
+      font-weight: bold;
+      margin-right: 4px;
+    }
+    .posthead .name {
+      color: #117743;
+      font-weight: bold;
+      margin-right: 4px;
+    }
+    .posthead .name.you::after {
+      content: " (You)";
+      color: #555;
+      font-weight: normal;
+    }
+    .posthead .time { color: #000; margin-right: 4px; }
+    .posthead .num a { color: #000; text-decoration: none; }
+    .posthead .num a:hover { color: #D00; }
+    .posthead .ops {
+      color: #34345C;
+      font-size: 11px;
+      margin-left: 4px;
+    }
+    .posthead .ops a {
+      margin: 0 2px;
+      text-decoration: none;
+      color: #34345C;
+    }
+    .posthead .ops a:hover { color: #D00; }
+    .posthead .replyref {
+      color: #34345C;
+      text-decoration: underline;
+      margin-left: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .body {
+      font: 13px/1.45 Arial, Helvetica, sans-serif;
+      color: #000;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      margin-top: 4px;
+      max-width: 720px;
+      clear: none;
+    }
+    .body .gt { color: #789922; }
+    .body.typing { color: #888; font-style: italic; }
+
+    /* Backlinks (the small `>>NNN` showing who replied) */
+    .backlinks {
+      clear: both;
+      font-size: 11px;
+      color: #000;
+      padding-top: 4px;
+    }
+    .backlinks a { color: #34345C; text-decoration: underline; }
+
+    /* Quick-reply box */
+    .qr {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #D6DAF0;
+      border-top: 1px solid #B7C5D9;
+      box-shadow: 0 -1px 4px rgba(0,0,0,0.06);
+    }
+    .qr .qrhdr {
+      background: linear-gradient(#FFFFFF, #DCDCDC);
+      border-bottom: 1px solid #B7C5D9;
+      font-size: 11px;
+      color: #34345C;
+      padding: 3px 12px;
+      font-weight: bold;
+    }
+    .qr .qrbody {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 8px 12px;
+      display: grid;
+      grid-template-columns: 90px 1fr;
+      gap: 4px 6px;
+      font-size: 12px;
+    }
+    .qr label {
+      color: #34345C;
+      align-self: center;
+    }
+    .qr input.field {
+      background: #FFF;
+      border: 1px solid #B7C5D9;
+      padding: 2px 4px;
+      font: 12px Arial;
+      color: #000;
+      height: 22px;
+    }
+    #composeText {
+      grid-column: 1 / -1;
+      background: #FFF;
+      border: 1px solid #B7C5D9;
+      color: #000;
+      font: 13px/1.45 Arial, Helvetica, sans-serif;
+      padding: 6px 8px;
+      resize: none;
+      min-height: 70px;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    #composeText:focus { outline: 1px solid #34345C; }
+    .qrfoot {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 4px;
+    }
+    #btnSend {
+      background: linear-gradient(#FFFFFF, #DCDCDC);
+      border: 1px solid #B7C5D9;
+      color: #000;
+      font: 12px Arial, sans-serif;
+      padding: 4px 14px;
+      cursor: pointer;
+      height: 26px;
+    }
+    #btnSend:hover { background: linear-gradient(#FFFFFF, #C0C0C0); }
+    #btnSend:disabled { opacity: 0.5; cursor: wait; }
+    .qrfoot .hint { color: #555; font-size: 11px; }
+  </style>
+</head>
+<body>
+
+  <!-- /a/ /b/ /c/ ... mock board nav -->
+  <div class="boardnav">
+    [<a href="#">a</a><span class="sep">/</span><a href="#">b</a><span class="sep">/</span><a href="#">co</a><span class="sep">/</span><b>fit</b><span class="sep">/</span><a href="#">g</a><span class="sep">/</span><a href="#">k</a><span class="sep">/</span><a href="#">lit</a><span class="sep">/</span><a href="#">r9k</a><span class="sep">/</span><a href="#">x</a>]
+    &nbsp;[<a href="/wall/">Home</a>]
+    &nbsp;[<a href="/wall/">/wall/</a>]
+  </div>
+
+  <div class="boardhdr">
+    <h1>/fit/ - Health &amp; Fitness</h1>
+    <div class="sub">discipline / shame / repeat</div>
+  </div>
+
+  <div class="threadbar">
+    [<a href="/">Catalog</a>]
+    [<a href="/">Top</a>]
+    <span style="color:#888">·</span>
+    Posting mode: Reply
+  </div>
+
+  <div class="wrap" id="wrap">
+    <div id="messages"></div>
+  </div>
+
+  <div class="qr">
+    <div class="qrhdr">Reply to thread</div>
+    <div class="qrbody">
+      <label>Name</label>
+      <input class="field" type="text" value="Anonymous" disabled>
+      <label>Subject</label>
+      <input class="field" type="text" id="subjectField" placeholder="(auto from first post)">
+      <textarea id="composeText" rows="3" placeholder="say something… (Enter to post · Shift+Enter for newline)"></textarea>
+      <div class="qrfoot">
+        <span class="hint">corpus-grounded /fit/ anon · base MLX · no adapter</span>
+        <button id="btnSend">Post</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const SLUG = "{{ slug }}";
+const SESSION_ID = {{ session_id }};
+
+const messagesEl = document.getElementById("messages");
+const composeEl = document.getElementById("composeText");
+const sendBtn = document.getElementById("btnSend");
+const subjectField = document.getElementById("subjectField");
+
+let postCount = 0;
+let lastPostNumber = null;
+let opPostNumber = null;
+const seedNum = 7 * 10000000 + Math.floor(Math.random() * 9_000_000);
+
+function fmtChanTime(d) {
+  const pad = n => String(n).padStart(2, "0");
+  const dows = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  return `${pad(d.getMonth()+1)}/${pad(d.getDate())}/${String(d.getFullYear()).slice(2)}(${dows[d.getDay()]})${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function _renderBody(text) {
+  return text.split("\n").map(line =>
+    line.startsWith(">") ? `<span class="gt">${escHtml(line)}</span>` : escHtml(line)
+  ).join("\n");
+}
+
+function fakeFileInfo() {
+  // Plausible chan-style file metadata for the OP image.
+  const kb = 30 + Math.floor(Math.random() * 380);
+  const w = 480 + Math.floor(Math.random() * 800);
+  const h = 480 + Math.floor(Math.random() * 800);
+  const tag = ["spreadsheet","mirror","scale","fridge_2am","mog","gymrat",
+               "dyel","cope","ankles","void"][Math.floor(Math.random()*10)];
+  return {filename: `${tag}.jpg`, kb, w, h};
+}
+
+function renderPost(role, text, opts) {
+  opts = opts || {};
+  const isOp = postCount === 0;
+  const num = seedNum + postCount;
+  postCount++;
+  if (isOp) opPostNumber = num;
+
+  const post = document.createElement("div");
+  post.className = "post" + (isOp ? " op" : " reply");
+  post.id = "p" + num;
+
+  const pwrap = document.createElement("div");
+  pwrap.className = "pwrap";
+
+  // OP gets a file thumb (placeholder); replies don't.
+  if (isOp) {
+    const fi = fakeFileInfo();
+    const fileinfo = document.createElement("div");
+    fileinfo.className = "fileinfo";
+    fileinfo.innerHTML = `File: <a href="#">${fi.filename}</a> <span class="meta">(${fi.kb} KB, ${fi.w}x${fi.h})</span>`;
+    pwrap.appendChild(fileinfo);
+
+    const filewrap = document.createElement("div");
+    filewrap.className = "filewrap";
+    const thumb = document.createElement("div");
+    thumb.className = "thumb";
+    filewrap.appendChild(thumb);
+    pwrap.appendChild(filewrap);
+  }
+
+  const head = document.createElement("div");
+  head.className = "posthead";
+
+  if (isOp) {
+    const subj = document.createElement("span");
+    subj.className = "subject";
+    const userSubject = (subjectField.value || "").trim();
+    let s = userSubject;
+    if (!s) {
+      const words = text.split(/\s+/).slice(0, 6).join(" ");
+      s = (words || "thread").replace(/[\n\r]/g, " ").slice(0, 60);
+    }
+    subj.textContent = s;
+    head.appendChild(subj);
+  }
+
+  const name = document.createElement("span");
+  name.className = "name" + (role === "user" ? " you" : "");
+  name.textContent = "Anonymous";
+  head.appendChild(name);
+
+  const time = document.createElement("span");
+  time.className = "time";
+  time.textContent = fmtChanTime(new Date());
+  head.appendChild(time);
+
+  const numSpan = document.createElement("span");
+  numSpan.className = "num";
+  numSpan.innerHTML = `No.<a href="#p${num}">${num}</a>`;
+  head.appendChild(numSpan);
+
+  const ops = document.createElement("span");
+  ops.className = "ops";
+  ops.innerHTML = `[<a href="#p${num}">Reply</a>]`;
+  head.appendChild(ops);
+
+  // ">>opnum" reply ref on every non-OP post
+  if (lastPostNumber !== null && !isOp) {
+    const ref = document.createElement("a");
+    ref.className = "replyref";
+    ref.href = "#p" + lastPostNumber;
+    ref.textContent = ">>" + lastPostNumber;
+    head.appendChild(ref);
+  }
+
+  pwrap.appendChild(head);
+
+  const body = document.createElement("div");
+  body.className = "body" + (opts.typing ? " typing" : "");
+  if (opts.typing) {
+    body.textContent = "…";
+  } else {
+    body.innerHTML = _renderBody(text);
+  }
+  pwrap.appendChild(body);
+
+  post.appendChild(pwrap);
+  messagesEl.appendChild(post);
+  lastPostNumber = num;
+
+  setTimeout(() => post.scrollIntoView({behavior: "smooth", block: "end"}), 30);
+  return post;
+}
+
+async function loadHistory() {
+  // Fresh thread on each page load — no auto-history.
+  // (View creates a new ChatSession; the messages list comes back empty.)
+  try {
+    const r = await fetch(`/api/characters/${SLUG}/chat/sessions/${SESSION_ID}/`);
+    const data = await r.json();
+    (data.messages || []).forEach(m => renderPost(m.role, m.text));
+  } catch(e) {}
+}
+
+async function send() {
+  const text = composeEl.value.trim();
+  if (!text) return;
+  composeEl.value = "";
+  sendBtn.disabled = true;
+
+  renderPost("user", text);
+
+  const typingPost = renderPost("anon", "", {typing: true});
+
+  try {
+    const r = await fetch(`/api/characters/${SLUG}/chat/sessions/${SESSION_ID}/send/`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({message: text}),
+    });
+    const data = await r.json();
+    const body = typingPost.querySelector(".body");
+    body.classList.remove("typing");
+    if (data.anon) {
+      body.innerHTML = _renderBody(data.anon.text || "(silence)");
+    } else if (data.error) {
+      body.textContent = "(error: " + data.error + ")";
+    }
+  } catch(e) {
+    const body = typingPost.querySelector(".body");
+    body.classList.remove("typing");
+    body.textContent = "(network error)";
+  }
+
+  sendBtn.disabled = false;
+  composeEl.focus();
+}
+
+sendBtn.addEventListener("click", send);
+composeEl.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    send();
+  }
+  setTimeout(() => {
+    composeEl.style.height = "auto";
+    composeEl.style.height = Math.min(composeEl.scrollHeight, 220) + "px";
+  }, 0);
+});
+
+loadHistory();
+composeEl.focus();
+</script>
+</body>
+</html>

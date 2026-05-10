@@ -51,16 +51,40 @@ def _setting(name: str, default):
 
 # --- request / result -----------------------------------------------------
 
+_DEFAULT_STOP_SEQUENCES_CHAT = (
+    "\nuser:", "\nUser:", "\nUSER:",
+    "\nanon:", "\nAnon:", "\nANON:",
+    "\nassistant:", "\nAssistant:",
+    "RECENT_TURNS:", "OP_ANCHOR:", "BOARD:", "MODE:",
+    "ANON_STATE:", "RETRIEVED_FRAGMENTS:", "SAFETY_RULES:",
+)
+
+
 @dataclass
 class GenerationRequest:
     system: str
     user: str
+    # Optional: full chat-template message list. When set on a backend that
+    # supports it (mlx via tokenizer.apply_chat_template), this overrides the
+    # `system`+`user` strings so history can be passed as real alternating
+    # turns instead of stuffed into one user blob (the cause of Pass 2E's
+    # `user:` / `anon:` format leakage).
+    messages: list[dict] | None = None
+
     # Sampling fields kept for backward compat; defaults are now safer than 0.95.
     # Callers should prefer build_request() which routes through resolve_sampling().
     max_tokens: int = CHAT_PROFILE.max_tokens
     temperature: float = CHAT_PROFILE.temperature
     top_p: float = CHAT_PROFILE.top_p
     profile: str = CHAT_PROFILE.name
+
+    # Pass 2E: repetition controls.
+    repetition_penalty: float = 1.10
+    no_repeat_ngram_size: int = 4
+
+    # Pass 2E: stop strings. The MLX backend post-trims at the first match so
+    # the model can't continue past a single reply into fake user/anon turns.
+    stop_sequences: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass
@@ -72,22 +96,58 @@ class GenerationResult:
     meta: RuntimeMeta = field(default_factory=RuntimeMeta)
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    try:
+        return float(raw) if raw not in (None, "") else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    try:
+        return int(float(raw)) if raw not in (None, "") else default
+    except (TypeError, ValueError):
+        return default
+
+
 def build_request(
     *,
-    system: str,
-    user: str,
+    system: str = "",
+    user: str = "",
+    messages: Optional[list[dict]] = None,
     profile: str = "chat",
     temperature: Optional[float] = None,
     top_p: Optional[float] = None,
     max_tokens: Optional[int] = None,
+    repetition_penalty: Optional[float] = None,
+    no_repeat_ngram_size: Optional[int] = None,
+    stop_sequences: Optional[tuple[str, ...]] = None,
 ) -> GenerationRequest:
-    """Build a GenerationRequest with sampling resolved via env + profile."""
+    """Build a GenerationRequest with sampling resolved via env + profile.
+
+    Pass 2E: env-overridable repetition controls; chat profile gets a default
+    set of stop sequences so the model can't continue past a single reply into
+    fake `user:` / `anon:` transcript turns.
+    """
     prof, t, p, m = resolve_sampling(
         profile, temperature=temperature, top_p=top_p, max_tokens=max_tokens
     )
+
+    if repetition_penalty is None:
+        repetition_penalty = _env_float("IMAGEBOARD_LM_REPETITION_PENALTY", 1.10)
+    if no_repeat_ngram_size is None:
+        no_repeat_ngram_size = _env_int("IMAGEBOARD_LM_NO_REPEAT_NGRAM_SIZE", 4)
+    if stop_sequences is None:
+        stop_sequences = _DEFAULT_STOP_SEQUENCES_CHAT if prof.name == "chat" else ()
+
     return GenerationRequest(
-        system=system, user=user,
+        system=system, user=user, messages=messages,
         temperature=t, top_p=p, max_tokens=m, profile=prof.name,
+        repetition_penalty=float(repetition_penalty),
+        no_repeat_ngram_size=int(no_repeat_ngram_size),
+        stop_sequences=tuple(stop_sequences),
     )
 
 
@@ -164,6 +224,29 @@ def _mlx_paths() -> tuple[str, str]:
     return base_model, adapter_dir
 
 
+def _trim_at_stops(text: str, stops: tuple[str, ...]) -> tuple[str, str]:
+    """Cut output at the first occurrence of any stop string.
+
+    Returns (trimmed_text, matched_stop_or_empty). Defensive fallback when the
+    backend doesn't accept stop sequences directly — the model can keep
+    generating past one reply, but we never expose the overflow.
+    """
+    if not text or not stops:
+        return text, ""
+    earliest = -1
+    matched = ""
+    for stop in stops:
+        if not stop:
+            continue
+        i = text.find(stop)
+        if i != -1 and (earliest == -1 or i < earliest):
+            earliest = i
+            matched = stop
+    if earliest == -1:
+        return text, ""
+    return text[:earliest].rstrip(), matched
+
+
 def _mlx_generate(req: GenerationRequest) -> GenerationResult:
     base_model, adapter_dir = _mlx_paths()
     meta = RuntimeMeta(
@@ -192,11 +275,49 @@ def _mlx_generate(req: GenerationRequest) -> GenerationResult:
     else:
         model, tokenizer = cached
 
-    prompt = (
-        f"<|im_start|>system\n{req.system}<|im_end|>\n"
-        f"<|im_start|>user\n{req.user}<|im_end|>\n"
-        f"<|im_start|>assistant\n"
-    )
+    # Build the prompt via the tokenizer's chat template when messages are
+    # provided. Falls back to manual <|im_start|> assembly for the legacy
+    # system+user path. This is the Pass 2E fix for format leakage — small
+    # instruct models continue any "user:/anon:" pattern they see verbatim,
+    # so we never let them see one.
+    used_chat_template = False
+    if req.messages and hasattr(tokenizer, "apply_chat_template"):
+        try:
+            prompt = tokenizer.apply_chat_template(
+                req.messages, tokenize=False, add_generation_prompt=True
+            )
+            used_chat_template = True
+        except Exception:
+            prompt = None  # fall through
+    else:
+        prompt = None
+
+    if prompt is None:
+        prompt = (
+            f"<|im_start|>system\n{req.system}<|im_end|>\n"
+            f"<|im_start|>user\n{req.user}<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
+
+    # Build a logits processor for repetition_penalty when mlx-lm supports
+    # the modern API. Older versions accept `repetition_penalty` directly on
+    # generate(); we try both.
+    rep_penalty = float(req.repetition_penalty or 1.0)
+    logits_processors = None
+    rep_processor_used = False
+    if rep_penalty and rep_penalty != 1.0:
+        try:
+            from mlx_lm.sample_utils import make_logits_processors  # type: ignore
+            logits_processors = make_logits_processors(repetition_penalty=rep_penalty)
+            rep_processor_used = True
+        except Exception:
+            try:
+                from mlx_lm.sample_utils import make_repetition_penalty  # type: ignore
+                logits_processors = [make_repetition_penalty(rep_penalty)]
+                rep_processor_used = True
+            except Exception:
+                logits_processors = None
+
     try:
         sampler = None
         try:
@@ -207,10 +328,27 @@ def _mlx_generate(req: GenerationRequest) -> GenerationResult:
         gen_kwargs = {"max_tokens": int(req.max_tokens), "verbose": False}
         if sampler is not None:
             gen_kwargs["sampler"] = sampler
+        if logits_processors is not None:
+            gen_kwargs["logits_processors"] = logits_processors
+        elif rep_penalty and rep_penalty != 1.0:
+            # Older API fallback
+            gen_kwargs["repetition_penalty"] = rep_penalty
         out = generate(model, tokenizer, prompt=prompt, **gen_kwargs)
     except Exception as e:
         return GenerationResult(text="", runtime="mlx", error=f"mlx_generate_failed:{e}", meta=meta)
-    return GenerationResult(text=str(out).strip(), runtime="mlx", meta=meta)
+
+    text = str(out).strip()
+    text, matched_stop = _trim_at_stops(text, req.stop_sequences)
+
+    debug = {
+        "used_chat_template": used_chat_template,
+        "repetition_penalty": rep_penalty,
+        "rep_processor_used": rep_processor_used,
+        "no_repeat_ngram_size": int(req.no_repeat_ngram_size),
+        "stop_sequences": list(req.stop_sequences),
+        "stop_matched": matched_stop,
+    }
+    return GenerationResult(text=text, runtime="mlx", meta=meta, debug=debug)
 
 
 # --- backend: ollama ------------------------------------------------------

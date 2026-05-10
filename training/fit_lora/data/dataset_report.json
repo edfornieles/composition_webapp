@@ -1,276 +1,417 @@
 {
-  "generated_at": "2026-05-10T17:43:34",
+  "generated_at": "2026-05-10T18:06:23",
   "source_key": "fourchan_fit",
   "target_strategy_primary": "real_post_targets",
-  "rows_total": 602,
+  "rows_total": 769,
   "rows_by_mode": {
-    "next_anon_reply": 214,
-    "confession": 207,
-    "body_judgement": 170,
-    "image_caption": 11
+    "quote_back_reply": 214,
+    "body_judgement": 214,
+    "inner_monologue": 4,
+    "confession": 113,
+    "image_caption": 10,
+    "next_anon_reply": 214
   },
   "rows_by_strategy": {
-    "real_post_targets": 602
+    "real_post_targets": 769
   },
   "rows_by_thread_top20": [
     [
-      "77232644",
-      55
+      "77239005",
+      66
     ],
     [
-      "77239005",
-      51
+      "77232644",
+      65
     ],
     [
       "77223506",
-      50
+      60
     ],
     [
       "77233378",
-      44
-    ],
-    [
-      "77242799",
-      29
-    ],
-    [
-      "77203393",
-      26
-    ],
-    [
-      "77234859",
-      25
+      49
     ],
     [
       "77226186",
-      23
+      40
+    ],
+    [
+      "77203393",
+      39
     ],
     [
       "77229751",
-      23
+      37
+    ],
+    [
+      "77242799",
+      32
+    ],
+    [
+      "77242258",
+      29
+    ],
+    [
+      "77234859",
+      27
+    ],
+    [
+      "77227354",
+      26
+    ],
+    [
+      "77239933",
+      26
     ],
     [
       "77240249",
       22
     ],
     [
-      "77227354",
-      22
-    ],
-    [
-      "77242258",
+      "77237527",
       21
     ],
     [
-      "77216389",
+      "77238941",
       20
     ],
     [
-      "77238299",
-      18
+      "77225535",
+      20
+    ],
+    [
+      "77216389",
+      19
     ],
     [
       "77225962",
-      17
+      19
     ],
     [
-      "77238941",
-      16
+      "77238299",
+      19
     ],
     [
-      "77225535",
-      16
-    ],
-    [
-      "77241859",
-      14
-    ],
-    [
-      "77229223",
-      13
-    ],
-    [
-      "77239933",
-      13
+      "77239842",
+      18
     ]
   ],
   "skipped": {
-    "unsafe": 0,
+    "unsafe": 9,
     "duplicate": 0,
     "too_short": 0,
     "too_long": 0,
     "low_info": 0
   },
+  "policy_tiers": {
+    "accepted_raw": 736,
+    "accepted_with_redaction": 33,
+    "rejected_total": 9,
+    "rejected_by_reason": {
+      "slur_heavy_rant": 7,
+      "steroid_dose": 1,
+      "self_harm_instruction": 1
+    },
+    "redactions_applied": {
+      "isolated_slur": 33
+    }
+  },
+  "samples": {
+    "accepted_raw": [
+      ">>We're all gonna make it! That's zyzzs message. WAGMI Clavs message is \"you're not gonna make it unless you bonesmash\" NGMIUYB",
+      ">>help me obese jew shiggy",
+      ">>alive lmfao barely",
+      ">>Thinking positive about Monday, huh? >>Kek, nothing personal kid",
+      ">>Finasteride >>BIO-AAACKING",
+      ">>The sun h-AAACKK",
+      ">>Mate even a huge bowl of ice cream is like 500 calories Imagine just straight up lying to people trying to lose weight",
+      ">>+nitric oxide/endothelial health, general cancer suppression (-TNFa) Exercise does all that, not sun exposure."
+    ],
+    "accepted_redacted": [
+      {
+        "raw": ">>retard on the internet finds out that if you eat less calories than you burn and eat a high amount of protein you can lose weight without losing a lot of muscle mass oh yes so insightful. Fucking du",
+        "redacted": ">>[redacted_slur] on the internet finds out that if you eat less calories than you burn and eat a high amount of protein you can lose weight without losing a lot of muscle mass oh yes so insightful. F",
+        "reasons": [
+          "isolated_slur"
+        ]
+      },
+      {
+        "raw": ">>I'm a dyel Stop self-deprecating, you fag. You're worsening physique inflation when you do that.",
+        "redacted": ">>I'm a dyel Stop self-deprecating, you [redacted_slur]. You're worsening physique inflation when you do that.",
+        "reasons": [
+          "isolated_slur"
+        ]
+      },
+      {
+        "raw": ">>Yes, and original study likely excluded them. No you retard, it excluded people who have negative side effects to statins due to genetic variances.",
+        "redacted": ">>Yes, and original study likely excluded them. No you [redacted_slur], it excluded people who have negative side effects to statins due to genetic variances.",
+        "reasons": [
+          "isolated_slur"
+        ]
+      },
+      {
+        "raw": ">>people love freak shows, it's this simple only easily programmed fags like you do",
+        "redacted": ">>people love freak shows, it's this simple only easily programmed [redacted_slur] like you do",
+        "reasons": [
+          "isolated_slur"
+        ]
+      },
+      {
+        "raw": ">>If you have the enzyme Its still sugar No, retard, it's not. Sugar contains fructose, trehalose doesn't.",
+        "redacted": ">>If you have the enzyme Its still sugar No, [redacted_slur], it's not. Sugar contains fructose, trehalose doesn't.",
+        "reasons": [
+          "isolated_slur"
+        ]
+      },
+      {
+        "raw": ">>using the same 30 year old image of an anecdotal case as an argument Do retards really?",
+        "redacted": ">>using the same 30 year old image of an anecdotal case as an argument Do [redacted_slur] really?",
+        "reasons": [
+          "isolated_slur"
+        ]
+      },
+      {
+        "raw": ">>training to failure promotes muscle growth >>go to gym >>do bench press to failure >>get trapped under bar until someone at dumbells notices and helps me lift <1pl8lmao off my chest this shit is ret",
+        "redacted": ">>training to failure promotes muscle growth >>go to gym >>do bench press to failure >>get trapped under bar until someone at dumbells notices and helps me lift <1pl8lmao off my chest this shit is [re",
+        "reasons": [
+          "isolated_slur"
+        ]
+      },
+      {
+        "raw": ">>>normalfags still love him because he’s hot only virgin faggots and indian simps love him.",
+        "redacted": ">>>normalfags still love him because he’s hot only virgin [redacted_slur] and indian simps love him.",
+        "reasons": [
+          "isolated_slur"
+        ]
+      }
+    ],
+    "rejected": [
+      {
+        "reasons": [
+          "slur_heavy_rant"
+        ],
+        "text": "4chan__fit__body_discipline:fit:77233500"
+      },
+      {
+        "reasons": [
+          "slur_heavy_rant"
+        ],
+        "text": "4chan__fit__body_discipline:fit:77229818"
+      },
+      {
+        "reasons": [
+          "slur_heavy_rant"
+        ],
+        "text": "4chan__fit__body_discipline:fit:77239462"
+      },
+      {
+        "reasons": [
+          "steroid_dose"
+        ],
+        "text": "4chan__fit__body_discipline:fit:77229937"
+      },
+      {
+        "reasons": [
+          "slur_heavy_rant"
+        ],
+        "text": "4chan__fit__body_discipline:fit:77242645"
+      },
+      {
+        "reasons": [
+          "self_harm_instruction"
+        ],
+        "text": "4chan__fit__body_discipline:fit:77242053"
+      },
+      {
+        "reasons": [
+          "slur_heavy_rant"
+        ],
+        "text": "4chan__fit__body_discipline:fit:77241833"
+      },
+      {
+        "reasons": [
+          "slur_heavy_rant"
+        ],
+        "text": "4chan__fit__body_discipline:fit:77226142"
+      },
+      {
+        "reasons": [
+          "slur_heavy_rant"
+        ],
+        "text": "4chan__fit__body_discipline:fit:77241908"
+      }
+    ]
+  },
   "template_pct": 0.0,
   "top_targets": [
     [
-      "congrats anon",
+      ">>we re all gonna make it that s zyzzs message wagmi clavs message is you re not gonna make it unless you bonesmash ngmiuyb",
       1
     ],
     [
-      "i think everyone knows that wow what a cool guy we have here",
+      ">>help me obese jew shiggy",
       1
     ],
     [
-      "it s also anti cancerous",
+      ">>alive lmfao barely",
       1
     ],
     [
-      "i kinda look like this my chest arms traps and shoulders look bigger but my abs aren t as defined i can also do 15 strict pull ups in a row but i don t think i look strong at all 3 lbs",
+      ">>thinking positive about monday huh >>kek nothing personal kid",
       1
     ],
     [
-      "good luck long term congratulations on making it you will succeed for sure",
+      ">>finasteride >>bio aaacking",
       1
     ],
     [
-      "i think about it a few times per week or if i see a thread like this or something not sure why you re trying to demoralize me but you can eat my hairy ass",
+      ">>the sun h aaackk",
       1
     ],
     [
-      "actually impressive",
+      ">>mate even a huge bowl of ice cream is like 500 calories imagine just straight up lying to people trying to lose weight",
       1
     ],
     [
-      "coach greg also shits on derek from mpmd even though that guy is awesome clav is really to looksmaxing what derek was to steroids",
+      ">> nitric oxide endothelial health general cancer suppression tnfa exercise does all that not sun exposure",
       1
     ],
     [
-      "i love them",
+      ">>clitty meltdown so severe he necrobumped his own thread",
       1
     ],
     [
-      "archmage here mg zinc mg coppee g lecithin g pygeum g citrulline g arganine i use this to sustain my magical powers daily",
+      ">>i have never seen a fat person not eating food all the time",
       1
     ],
     [
-      "how many gorillion migrants did you allow into your country today cuck",
+      ">>quercetin plus dasatinib was found to cause oligodendrocyte dysfunction and demyelination have you found anti sclerotic drugs to counteract this",
       1
     ],
     [
-      "why doxycycline",
+      ">>lean and muscular but not massive so ideal for ottermaxxers",
       1
     ],
     [
-      "words can really hurt you know that might be funny to you but we should try to do better",
+      ">>i have been aiming for 1kg per week it s all about having a goal in mind you can t do everything all at once except if you re a beginner",
       1
     ],
     [
-      "not this one but i m also working on a game that is basically fit antics and memes",
+      ">>hell i looked almost like that while not lifting at all and living off of junk food at 29 years old when i started lifting this is truer than you realize op s pic has fake abs painted on",
       1
     ],
     [
-      "pulling at those thongs when you walk by was a daily habit of mine",
+      ">> redacted_slur on the internet finds out that if you eat less calories than you burn and eat a high amount of protein you can lose weight without losing a lot of muscle mass oh yes so insightful fucking dumb cunt",
       1
     ],
     [
-      "w clav",
+      ">>unmaxxed what does that mean lmao",
       1
     ],
     [
-      "he s rich",
+      ">>oof go back",
       1
     ],
     [
-      "congrats on landing a new interest you re doing great getting over your last heartbreak try asking for her number though linkedin is a terrible place",
+      ">>dozens of chemicals chemicals bad because unnatural bad deadly radiation good because natural good miga",
       1
     ],
     [
-      "i actually never noticed that part of my form thanks for teaching me something new",
+      ">>eating eggs >>not normal",
       1
     ],
     [
-      "such is the life of leanpill twerps unless you literally have no shirt at all there is no benefit",
+      ">>guy posts near unreadable wall of text just to frame a simple question >>other guy responds multiple times with incoherent babble why are schizos like this",
       1
     ]
   ],
   "top_openings": [
     [
-      "congrats anon",
+      ">>we re all gonna make it that s zyzzs message wagmi clavs message is you re not gonna make it unless you bonesmash ngmiuyb",
       1
     ],
     [
-      "i think everyone knows that wow what a cool guy we have here",
+      ">>help me obese jew shiggy",
       1
     ],
     [
-      "it s also anti cancerous",
+      ">>alive lmfao barely",
       1
     ],
     [
-      "i kinda look like this my chest arms traps and shoulders look bigger but my abs aren t as defined i can also do 15 strict pull ups in a row but i don t think i look strong at all 3 lbs",
+      ">>thinking positive about monday huh >>kek nothing personal kid",
       1
     ],
     [
-      "good luck long term congratulations on making it you will succeed for sure",
+      ">>finasteride >>bio aaacking",
       1
     ],
     [
-      "i think about it a few times per week or if i see a thread like this or something not sure why you re trying to demoralize me but you can eat my hairy ass",
+      ">>the sun h aaackk",
       1
     ],
     [
-      "actually impressive",
+      ">>mate even a huge bowl of ice cream is like 500 calories imagine just straight up lying to people trying to lose weight",
       1
     ],
     [
-      "coach greg also shits on derek from mpmd even though that guy is awesome clav is really to looksmaxing what derek was to steroids",
+      ">> nitric oxide endothelial health general cancer suppression tnfa exercise does all that not sun exposure",
       1
     ],
     [
-      "i love them",
+      ">>clitty meltdown so severe he necrobumped his own thread",
       1
     ],
     [
-      "archmage here mg zinc mg coppee g lecithin g pygeum g citrulline g arganine i use this to sustain my magical powers daily",
+      ">>i have never seen a fat person not eating food all the time",
       1
     ],
     [
-      "how many gorillion migrants did you allow into your country today cuck",
+      ">>quercetin plus dasatinib was found to cause oligodendrocyte dysfunction and demyelination have you found anti sclerotic drugs to counteract this",
       1
     ],
     [
-      "why doxycycline",
+      ">>lean and muscular but not massive so ideal for ottermaxxers",
       1
     ],
     [
-      "words can really hurt you know that might be funny to you but we should try to do better",
+      ">>i have been aiming for 1kg per week it s all about having a goal in mind you can t do everything all at once except if you re a beginner",
       1
     ],
     [
-      "not this one but i m also working on a game that is basically fit antics and memes",
+      ">>hell i looked almost like that while not lifting at all and living off of junk food at 29 years old when i started lifting this is truer than you realize op s pic has fake abs painted on",
       1
     ],
     [
-      "pulling at those thongs when you walk by was a daily habit of mine",
+      ">> redacted_slur on the internet finds out that if you eat less calories than you burn and eat a high amount of protein you can lose weight without losing a lot of muscle mass oh yes so insightful fucking dumb cunt",
       1
     ],
     [
-      "w clav",
+      ">>unmaxxed what does that mean lmao",
       1
     ],
     [
-      "he s rich",
+      ">>oof go back",
       1
     ],
     [
-      "congrats on landing a new interest you re doing great getting over your last heartbreak try asking for her number though linkedin is a terrible place",
+      ">>dozens of chemicals chemicals bad because unnatural bad deadly radiation good because natural good miga",
       1
     ],
     [
-      "i actually never noticed that part of my form thanks for teaching me something new",
+      ">>eating eggs >>not normal",
       1
     ],
     [
-      "such is the life of leanpill twerps unless you literally have no shirt at all there is no benefit",
+      ">>guy posts near unreadable wall of text just to frame a simple question >>other guy responds multiple times with incoherent babble why are schizos like this",
       1
     ]
   ],
   "near_duplicate_target_count": 0,
   "split": {
-    "train": 541,
-    "valid": 30,
-    "test": 31
+    "train": 692,
+    "valid": 38,
+    "test": 39
   },
   "warnings": []
 }
