@@ -1,0 +1,276 @@
+{
+  "generated_at": "2026-05-10T17:43:34",
+  "source_key": "fourchan_fit",
+  "target_strategy_primary": "real_post_targets",
+  "rows_total": 602,
+  "rows_by_mode": {
+    "next_anon_reply": 214,
+    "confession": 207,
+    "body_judgement": 170,
+    "image_caption": 11
+  },
+  "rows_by_strategy": {
+    "real_post_targets": 602
+  },
+  "rows_by_thread_top20": [
+    [
+      "77232644",
+      55
+    ],
+    [
+      "77239005",
+      51
+    ],
+    [
+      "77223506",
+      50
+    ],
+    [
+      "77233378",
+      44
+    ],
+    [
+      "77242799",
+      29
+    ],
+    [
+      "77203393",
+      26
+    ],
+    [
+      "77234859",
+      25
+    ],
+    [
+      "77226186",
+      23
+    ],
+    [
+      "77229751",
+      23
+    ],
+    [
+      "77240249",
+      22
+    ],
+    [
+      "77227354",
+      22
+    ],
+    [
+      "77242258",
+      21
+    ],
+    [
+      "77216389",
+      20
+    ],
+    [
+      "77238299",
+      18
+    ],
+    [
+      "77225962",
+      17
+    ],
+    [
+      "77238941",
+      16
+    ],
+    [
+      "77225535",
+      16
+    ],
+    [
+      "77241859",
+      14
+    ],
+    [
+      "77229223",
+      13
+    ],
+    [
+      "77239933",
+      13
+    ]
+  ],
+  "skipped": {
+    "unsafe": 0,
+    "duplicate": 0,
+    "too_short": 0,
+    "too_long": 0,
+    "low_info": 0
+  },
+  "template_pct": 0.0,
+  "top_targets": [
+    [
+      "congrats anon",
+      1
+    ],
+    [
+      "i think everyone knows that wow what a cool guy we have here",
+      1
+    ],
+    [
+      "it s also anti cancerous",
+      1
+    ],
+    [
+      "i kinda look like this my chest arms traps and shoulders look bigger but my abs aren t as defined i can also do 15 strict pull ups in a row but i don t think i look strong at all 3 lbs",
+      1
+    ],
+    [
+      "good luck long term congratulations on making it you will succeed for sure",
+      1
+    ],
+    [
+      "i think about it a few times per week or if i see a thread like this or something not sure why you re trying to demoralize me but you can eat my hairy ass",
+      1
+    ],
+    [
+      "actually impressive",
+      1
+    ],
+    [
+      "coach greg also shits on derek from mpmd even though that guy is awesome clav is really to looksmaxing what derek was to steroids",
+      1
+    ],
+    [
+      "i love them",
+      1
+    ],
+    [
+      "archmage here mg zinc mg coppee g lecithin g pygeum g citrulline g arganine i use this to sustain my magical powers daily",
+      1
+    ],
+    [
+      "how many gorillion migrants did you allow into your country today cuck",
+      1
+    ],
+    [
+      "why doxycycline",
+      1
+    ],
+    [
+      "words can really hurt you know that might be funny to you but we should try to do better",
+      1
+    ],
+    [
+      "not this one but i m also working on a game that is basically fit antics and memes",
+      1
+    ],
+    [
+      "pulling at those thongs when you walk by was a daily habit of mine",
+      1
+    ],
+    [
+      "w clav",
+      1
+    ],
+    [
+      "he s rich",
+      1
+    ],
+    [
+      "congrats on landing a new interest you re doing great getting over your last heartbreak try asking for her number though linkedin is a terrible place",
+      1
+    ],
+    [
+      "i actually never noticed that part of my form thanks for teaching me something new",
+      1
+    ],
+    [
+      "such is the life of leanpill twerps unless you literally have no shirt at all there is no benefit",
+      1
+    ]
+  ],
+  "top_openings": [
+    [
+      "congrats anon",
+      1
+    ],
+    [
+      "i think everyone knows that wow what a cool guy we have here",
+      1
+    ],
+    [
+      "it s also anti cancerous",
+      1
+    ],
+    [
+      "i kinda look like this my chest arms traps and shoulders look bigger but my abs aren t as defined i can also do 15 strict pull ups in a row but i don t think i look strong at all 3 lbs",
+      1
+    ],
+    [
+      "good luck long term congratulations on making it you will succeed for sure",
+      1
+    ],
+    [
+      "i think about it a few times per week or if i see a thread like this or something not sure why you re trying to demoralize me but you can eat my hairy ass",
+      1
+    ],
+    [
+      "actually impressive",
+      1
+    ],
+    [
+      "coach greg also shits on derek from mpmd even though that guy is awesome clav is really to looksmaxing what derek was to steroids",
+      1
+    ],
+    [
+      "i love them",
+      1
+    ],
+    [
+      "archmage here mg zinc mg coppee g lecithin g pygeum g citrulline g arganine i use this to sustain my magical powers daily",
+      1
+    ],
+    [
+      "how many gorillion migrants did you allow into your country today cuck",
+      1
+    ],
+    [
+      "why doxycycline",
+      1
+    ],
+    [
+      "words can really hurt you know that might be funny to you but we should try to do better",
+      1
+    ],
+    [
+      "not this one but i m also working on a game that is basically fit antics and memes",
+      1
+    ],
+    [
+      "pulling at those thongs when you walk by was a daily habit of mine",
+      1
+    ],
+    [
+      "w clav",
+      1
+    ],
+    [
+      "he s rich",
+      1
+    ],
+    [
+      "congrats on landing a new interest you re doing great getting over your last heartbreak try asking for her number though linkedin is a terrible place",
+      1
+    ],
+    [
+      "i actually never noticed that part of my form thanks for teaching me something new",
+      1
+    ],
+    [
+      "such is the life of leanpill twerps unless you literally have no shirt at all there is no benefit",
+      1
+    ]
+  ],
+  "near_duplicate_target_count": 0,
+  "split": {
+    "train": 541,
+    "valid": 30,
+    "test": 31
+  },
+  "warnings": []
+}

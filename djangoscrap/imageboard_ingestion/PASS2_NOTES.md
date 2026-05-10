@@ -4,6 +4,24 @@ Pass 1 (runtime metadata, sampling profiles, chat continuity, retrieval merge,
 validator routing, smoke tests) is complete. The items below are explicitly
 out of Pass 1 scope and should be picked up next.
 
+## ⚠️ Quarantined adapter
+
+`fit_be_me_lora_1_5b` (the LoRA adapter at
+`/Volumes/oom/imageboard_corpora/fourchan_fit/models/fit_be_me_lora_1_5b`) is
+**quarantined**. Pass 2B's diagnostic eval (`var/evals/eval_2026-05-10T17-31-05/`)
+showed it was template-memorizing and mode-collapsed: it produced near-identical
+outputs across unrelated thought cases, and the same line literally appeared in
+both the LoRA-adapted MLX output and the project's pure-template generator.
+Base MLX without the adapter produced fully diverse output on the same prompts.
+
+**Do not use this adapter for production or as a baseline for future training.**
+
+Operating rule until a corrected adapter exists:
+```
+IMAGEBOARD_LM_BACKEND=mlx
+IMAGEBOARD_MLX_DISABLE_ADAPTER=1
+```
+
 ## §3 — MLX LoRA wiring (`training/fit_lora/*`)
 
 **State today:** `train_mlx_lora.sh` and `generate_from_mlx.sh` exist but are
