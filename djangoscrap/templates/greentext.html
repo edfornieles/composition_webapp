@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>/fit/ — greentext stories</title>
+  <style>
+    /* Yotsuba B (matches real boards.4chan.org/fit/) */
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: #EEF2FF;
+      color: #000;
+      font: 10pt 'arial', 'helvetica', sans-serif;
+    }
+    a { color: #34345C; text-decoration: none; }
+    a:hover { color: #DD0000; }
+
+    .boardnav {
+      font-size: 9pt;
+      padding: 2px 6px;
+      color: #34345C;
+    }
+    .boardnav a { color: #34345C; }
+    .boardnav .sep { color: #B7C5D9; margin: 0 1px; }
+    .boardnav b { color: #000; }
+
+    .boardhdr {
+      text-align: center;
+      padding: 6px 0 0 0;
+    }
+    .boardhdr h1 {
+      margin: 0;
+      font: bold 28px 'tahoma', 'arial', sans-serif;
+      color: #AF0A0F;
+    }
+    .boardhdr .sub {
+      font: italic 10pt 'arial', sans-serif;
+      color: #800;
+      padding: 1px 0 6px;
+    }
+
+    .threadbar {
+      padding: 4px 8px;
+      font-size: 9pt;
+      color: #34345C;
+    }
+    .threadbar .status {
+      color: #707070;
+      font-style: italic;
+      margin-left: 12px;
+    }
+
+    .wrap {
+      padding: 4px 8px 80px 8px;
+    }
+
+    hr.story-sep {
+      border: none;
+      border-bottom: 1px dashed #B7C5D9;
+      margin: 8px 0;
+    }
+
+    .post-op { padding: 6px 0; max-width: 980px; margin: 0; }
+    .posthead { font-size: 10pt; color: #000; }
+    .posthead .checkbox { color: #707070; margin-right: 2px; }
+    .posthead .subject { color: #0F0C5D; font-weight: bold; margin-right: 4px; }
+    .posthead .name { color: #117743; font-weight: bold; margin-right: 4px; }
+    .posthead .time { color: #000; margin-right: 4px; }
+    .posthead .num a { color: #000; text-decoration: none; }
+    .posthead .num a:hover { color: #DD0000; }
+
+    .body {
+      font: 10pt 'arial', 'helvetica', sans-serif;
+      color: #000;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      padding: 4px 0 0 0;
+      max-width: 760px;
+    }
+    .body .gt { color: #789922; }
+
+    .seed {
+      font-size: 9pt;
+      color: #707070;
+      font-style: italic;
+      padding-top: 4px;
+    }
+    .variant {
+      font-size: 9pt;
+      color: #999;
+      padding-top: 2px;
+    }
+
+    .statusbar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(#FFFFFF, #DCDCDC);
+      border-top: 1px solid #B7C5D9;
+      padding: 4px 12px;
+      font-size: 10pt;
+      color: #34345C;
+    }
+    .statusbar a { cursor: pointer; margin-right: 8px; }
+    .statusbar .status { color: #707070; font-style: italic; }
+    .statusbar .meta { color: #555; margin-left: 8px; font-size: 9pt; }
+
+    .new-pulse {
+      animation: pulse 1.5s ease-out;
+    }
+    @keyframes pulse {
+      0%   { background: #FFF6A8; }
+      100% { background: transparent; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="boardnav">
+    [<a href="#">a</a><span class="sep">/</span><a href="#">b</a><span class="sep">/</span><a href="#">co</a><span class="sep">/</span><b>fit</b><span class="sep">/</span><a href="#">g</a><span class="sep">/</span><a href="#">k</a><span class="sep">/</span><a href="#">lit</a><span class="sep">/</span><a href="#">r9k</a><span class="sep">/</span><a href="#">x</a>]
+    &nbsp;[<a href="/">Home</a>]
+    &nbsp;[<a href="/board/">/board/</a>]
+    &nbsp;[<a href="/chat/">/chat/</a>]
+    &nbsp;[<a href="/wall/">/wall/</a>]
+  </div>
+
+  <div class="boardhdr">
+    <h1>/fit/ — greentext stories</h1>
+    <div class="sub">be me · be 23 · still do</div>
+  </div>
+
+  <div class="threadbar">
+    [<a href="#">Catalog</a>] [<a href="#">Bottom</a>]
+    <span class="status" id="threadbarStatus">…booting</span>
+  </div>
+
+  <div class="wrap" id="wrap">
+    <div id="stories"></div>
+  </div>
+
+  <div class="statusbar">
+    <a id="toggle">[ pause ]</a>
+    <span class="status" id="status">starting…</span>
+    <span class="meta" id="meta"></span>
+  </div>
+
+<script>
+const POLL_MS = 9000;       // greentexts take longer to generate than replies
+const storiesEl = document.getElementById('stories');
+const statusEl = document.getElementById('status');
+const threadbarStatus = document.getElementById('threadbarStatus');
+const metaEl = document.getElementById('meta');
+const toggle = document.getElementById('toggle');
+
+let running = true;
+let totalTicks = 0;
+let totalStories = 0;
+
+function fmtChanTime(ts) {
+  const d = new Date(ts * 1000);
+  const pad = n => String(n).padStart(2, '0');
+  const dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  return `${pad(d.getMonth()+1)}/${pad(d.getDate())}/${String(d.getFullYear()).slice(2)}(${dows[d.getDay()]})${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function renderBody(text) {
+  return text.split("\n").map(line => {
+    if (line.trimStart().startsWith(">")) {
+      return `<span class="gt">${escHtml(line)}</span>`;
+    }
+    return escHtml(line);
+  }).join("\n");
+}
+
+function renderStory(s, isNew) {
+  let html = `<div class="post-op${isNew ? ' new-pulse' : ''}" id="p${s.post_no}">`;
+  html += `<div class="posthead">`;
+  html += `<span class="checkbox">&#9744;</span>`;
+  html += `<span class="name">Anonymous</span>`;
+  html += `<span class="time">${fmtChanTime(s.timestamp)}</span>`;
+  html += `<span class="num">No.<a href="#p${s.post_no}">${s.post_no}</a></span>`;
+  html += `</div>`;
+  html += `<div class="body">${renderBody(s.body)}</div>`;
+  if (s.seed_topic && s.seed_topic !== '(fallback exemplar)') {
+    html += `<div class="seed">topic seed: ${escHtml(s.seed_topic)}</div>`;
+  } else if (s.seed_topic === '(fallback exemplar)') {
+    html += `<div class="seed">fallback exemplar</div>`;
+  }
+  html += `<div class="variant">narrator: ${escHtml(s.anon_variant)}</div>`;
+  html += `</div>`;
+  html += `<hr class="story-sep">`;
+  return html;
+}
+
+function renderAll(state, newPostNo) {
+  storiesEl.innerHTML = state.stories.map(s => renderStory(s, s.post_no === newPostNo)).join("");
+  threadbarStatus.textContent = `stories: ${state.story_count}`;
+}
+
+async function tick() {
+  if (!running) return;
+  totalTicks++;
+  try {
+    statusEl.textContent = 'generating…';
+    const res = await fetch('/api/greentext/tick/', { method: 'POST' });
+    if (!res.ok) {
+      statusEl.textContent = 'error ' + res.status;
+      return;
+    }
+    const data = await res.json();
+    if (data.tick && data.tick.action === 'new_story') {
+      totalStories++;
+      statusEl.textContent = `new story · anon=${data.tick.variant} · ${data.tick.line_count} lines`;
+      renderAll(data.state, data.tick.post_no);
+    } else {
+      statusEl.textContent = `noop (${data.tick && data.tick.reason || 'unknown'})`;
+      renderAll(data.state, null);
+    }
+    metaEl.textContent = `ticks: ${totalTicks} · stories: ${totalStories}`;
+  } catch (e) {
+    statusEl.textContent = 'fetch error';
+  }
+}
+
+toggle.onclick = () => {
+  running = !running;
+  toggle.textContent = running ? '[ pause ]' : '[ resume ]';
+  if (running) tick();
+};
+
+// Initial state fetch
+fetch('/api/greentext/state/').then(r => r.json()).then(s => {
+  if (s.story_count > 0) renderAll(s, null);
+}).catch(() => {});
+
+// Kick off
+tick();
+setInterval(() => { if (running) tick(); }, POLL_MS);
+
+</script>
+</body>
+</html>

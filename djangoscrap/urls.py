@@ -26,6 +26,10 @@ urlpatterns = [
     path('board/', views.fit_board_page, name='fit_board'),
     path('api/fit/board-tick/', views.fit_board_tick, name='fit_board_tick'),
     path('api/fit/board-state/', views.fit_board_state, name='fit_board_state'),
+    # Greentext stream: self-generating single-OP greentext stories (be me / be 23 / …)
+    path('greentext/', views.greentext_page, name='greentext'),
+    path('api/greentext/tick/', views.greentext_tick_view, name='greentext_tick'),
+    path('api/greentext/state/', views.greentext_state_view, name='greentext_state'),
     path('service/', views.service, name='service'),
     path('portfolio/', views.portfolio, name='portfolio'),
     path('register/', views.register, name='register'),

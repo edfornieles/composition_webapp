@@ -18,6 +18,9 @@ from ._fit_operator import *
 from ._fit_board import (
     fit_board_page, fit_board_tick, fit_board_state,
 )
+from ._greentext import (
+    greentext_page, greentext_tick_view, greentext_state_view,
+)
 from ._characters import *
 from ._scrape_monitor import *
 from ._image_scrape_monitor import *
