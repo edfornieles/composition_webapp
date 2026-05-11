@@ -118,7 +118,13 @@ _CHATBOT_PHRASE_RE = re.compile(
     r"you'?re doing (?:fine|great|well|good|alright)|"
     r"keep it up|keep lifting|keep at it|keep going|"
     r"you'?ve been improving|you'?re improving|"
-    r"you'?ll get there|you got this|you'?re on the right)\b",
+    r"you'?ll get there|you got this|you'?re on the right|"
+    # Pass-3 round-2 mlx-backend coach leaks
+    r"personal growth|own growth|own way|own pace|own journey|"
+    r"keep focusing|keep working|keep grinding|no rush(?:\s+to)?|"
+    r"it'?s not a competition|not a competition|pushing myself|"
+    r"about (?:pushing|growing|strength)|focus on your(?:self)?|"
+    r"who cares\??)\b",
     re.I,
 )
 

@@ -230,26 +230,62 @@ def _generate_op_body(seed_text: str, variant_key: str, rng: random.Random) -> s
     return seed_text
 
 
+_REPLY_REF_PREFIX_RE = re.compile(r"^\s*(>>\d+)\s*[,:.\-—]?\s*")
+
+
+def _split_reply_ref(line: str) -> tuple[str, str]:
+    """Split a line into (>>NNN-prefix-or-empty, remainder). The model often
+    packs the entire echoed body onto the same line as the reply ref
+    (">>77261839, it's fine to lift heavy stuff"), so we need to peel the
+    ref off before checking the remainder for echoes."""
+    m = _REPLY_REF_PREFIX_RE.match(line)
+    if not m:
+        return "", line
+    return m.group(1), line[m.end():]
+
+
+def _normalize_for_compare(s: str) -> str:
+    """Strip emoji/punctuation/whitespace for echo comparison so '🤔it's fine'
+    matches "it's fine"."""
+    s = re.sub(r"[^\w\s']", " ", s.lower())
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
 def _strip_thread_echo(text: str, prior_bodies: list[str]) -> str:
-    """Drop any line that verbatim-matches a line from any prior post in the
-    thread (parent OR sibling reply). The earlier `_strip_parent_echo` only
-    looked at the immediate parent, which let phrases like 'You're already
-    bulking. Adding more mass is cutting' propagate across 4+ siblings."""
+    """Drop any line whose body content verbatim-matches a line from any
+    prior post in the thread (parent OR sibling reply). Handles both
+    multi-line replies AND single-line `>>NNN, <body>` packed format."""
     if not text or not prior_bodies:
         return text
-    prior_lines: set[str] = set()
+    prior_norms: set[str] = set()
     for body in prior_bodies:
         for l in (body or "").splitlines():
-            s = l.strip().lower()
-            if s and not s.startswith(">>"):
-                prior_lines.add(s)
+            _, rest = _split_reply_ref(l)
+            n = _normalize_for_compare(rest)
+            if n and len(n) >= 8:
+                prior_norms.add(n)
     kept = []
     for line in text.splitlines():
-        s = line.strip().lower()
-        if s.startswith(">>") or len(s) < 8:
+        ref, rest = _split_reply_ref(line)
+        rest_norm = _normalize_for_compare(rest)
+        if not rest.strip():
+            # Pure ">>NNN" line — keep
             kept.append(line)
             continue
-        if s in prior_lines:
+        if len(rest_norm) < 8:
+            kept.append(line)
+            continue
+        # Exact match OR a prior line is a substantial prefix/substring
+        is_echo = rest_norm in prior_norms
+        if not is_echo:
+            for pn in prior_norms:
+                if len(pn) >= 30 and pn in rest_norm:
+                    is_echo = True
+                    break
+        if is_echo:
+            if ref:
+                kept.append(ref)
             continue
         kept.append(line)
     return "\n".join(kept).strip()
