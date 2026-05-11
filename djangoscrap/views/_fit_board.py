@@ -252,43 +252,119 @@ def _normalize_for_compare(s: str) -> str:
     return s
 
 
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+def _sentence_norms(body: str) -> list[str]:
+    """Split a body into normalized sentences for echo comparison."""
+    out = []
+    for line in (body or "").splitlines():
+        _, rest = _split_reply_ref(line)
+        for sent in _SENTENCE_SPLIT_RE.split(rest):
+            n = _normalize_for_compare(sent)
+            if n and len(n) >= 20:
+                out.append(n)
+    return out
+
+
+def _shoulder(n: str, k: int = 5) -> tuple[str, str]:
+    """Return (first-k-words, last-k-words) of a normalized sentence —
+    used to catch template-collapse where opener+closer match but middle
+    varies (e.g. 'Everyone who tells me that X is either lying or doesn't
+    understand what he means', repeated with different X)."""
+    words = n.split()
+    if len(words) < k * 2 + 1:
+        return "", ""
+    return " ".join(words[:k]), " ".join(words[-k:])
+
+
 def _strip_thread_echo(text: str, prior_bodies: list[str]) -> str:
-    """Drop any line whose body content verbatim-matches a line from any
-    prior post in the thread (parent OR sibling reply). Handles both
-    multi-line replies AND single-line `>>NNN, <body>` packed format."""
+    """Drop sentences that echo any prior post in the thread. Sentence-level
+    granularity catches the common LoRA failure where two replies share the
+    first sentence but diverge in the second — line-level checks missed
+    those because the whole-line normalized strings differed."""
     if not text or not prior_bodies:
         return text
     prior_norms: set[str] = set()
+    prior_shoulders: set[tuple[str, str]] = set()
     for body in prior_bodies:
-        for l in (body or "").splitlines():
-            _, rest = _split_reply_ref(l)
-            n = _normalize_for_compare(rest)
-            if n and len(n) >= 8:
-                prior_norms.add(n)
-    kept = []
+        for n in _sentence_norms(body):
+            prior_norms.add(n)
+            head, tail = _shoulder(n)
+            if head and tail:
+                prior_shoulders.add((head, tail))
+    seen_in_reply: set[str] = set()
+    kept_lines = []
     for line in text.splitlines():
         ref, rest = _split_reply_ref(line)
-        rest_norm = _normalize_for_compare(rest)
         if not rest.strip():
-            # Pure ">>NNN" line — keep
-            kept.append(line)
+            kept_lines.append(line)
             continue
-        if len(rest_norm) < 8:
-            kept.append(line)
-            continue
-        # Exact match OR a prior line is a substantial prefix/substring
-        is_echo = rest_norm in prior_norms
-        if not is_echo:
+        sentences = _SENTENCE_SPLIT_RE.split(rest)
+        kept_sents = []
+        for sent in sentences:
+            sent_stripped = sent.strip()
+            if not sent_stripped:
+                continue
+            n = _normalize_for_compare(sent_stripped)
+            if len(n) < 20:
+                kept_sents.append(sent_stripped)
+                continue
+            if n in prior_norms or n in seen_in_reply:
+                continue
+            # Substring against prior (catches prefix-extension echoes)
+            is_echo = False
             for pn in prior_norms:
-                if len(pn) >= 30 and pn in rest_norm:
+                if len(pn) >= 30 and (pn in n or n in pn):
                     is_echo = True
                     break
-        if is_echo:
-            if ref:
-                kept.append(ref)
-            continue
-        kept.append(line)
-    return "\n".join(kept).strip()
+            # Shoulder match: same opener AND closer => template collapse
+            if not is_echo:
+                head, tail = _shoulder(n)
+                if head and tail and (head, tail) in prior_shoulders:
+                    is_echo = True
+            if is_echo:
+                continue
+            seen_in_reply.add(n)
+            kept_sents.append(sent_stripped)
+        if kept_sents:
+            body = " ".join(kept_sents)
+            kept_lines.append((ref + " " + body).strip() if ref else body)
+        elif ref:
+            kept_lines.append(ref)
+    return "\n".join(kept_lines).strip()
+
+
+_URL_RE = re.compile(r"https?://\S+", re.I)
+
+
+def _strip_fake_urls(text: str) -> str:
+    """The base model loves hallucinating youtube URLs. Strip them — real
+    /fit/ anons rarely post raw links and never made-up ones."""
+    return _URL_RE.sub("", text or "").strip()
+
+
+_SENTENCE_TERMINATORS = ".!?\""
+_VALID_TRAILERS = (".", "!", "?", "lol", "lmao", "kek", "based", "ngmi", "dyel", ":(", ":)", "...", "imo")
+
+
+def _trim_truncated_tail(text: str) -> str:
+    """If the reply ends mid-word (max_tokens cutoff), drop the last
+    fragment back to the last sentence terminator."""
+    if not text:
+        return text
+    t = text.rstrip()
+    if not t:
+        return t
+    last_word = t.split()[-1].lower().rstrip(",;:")
+    if t[-1] in _SENTENCE_TERMINATORS or last_word in _VALID_TRAILERS:
+        return t
+    # Find last sentence terminator
+    for i in range(len(t) - 1, -1, -1):
+        if t[i] in ".!?":
+            return t[: i + 1]
+    # No terminator found at all — return whole thing rather than wipe it
+    return t
 
 
 _STRAY_POSTNO_RE = re.compile(r"(?:(?<=^)|(?<=[\s.,!?]))(?<!>)(?<!>>)\b\d{7,10}\b")
@@ -402,7 +478,7 @@ def _generate_reply_body(parent_post: BoardPost, op: BoardPost, variant_key: str
     ]
     req = local_fit_model.build_request(
         messages=msgs, system=persona_system, user=user_prompt,
-        profile="chat", max_tokens=60, repetition_penalty=1.18,
+        profile="chat", max_tokens=90, repetition_penalty=1.22,
     )
     res = local_fit_model.generate(req)
     text = (res.text or "").strip()
@@ -413,7 +489,11 @@ def _generate_reply_body(parent_post: BoardPost, op: BoardPost, variant_key: str
     text = re.sub(r"^(?:user|anon|assistant|board|mode|task)\s*:\s*", "", text, flags=re.I | re.M)
     # Strip stray bare post-numbers (e.g. "77256186 yeah but...")
     text = _strip_stray_postnos(text)
-    # Strip echoes of any prior post in the thread (parent + siblings)
+    # Strip hallucinated URLs
+    text = _strip_fake_urls(text)
+    # Trim mid-word truncation from max_tokens cutoff
+    text = _trim_truncated_tail(text)
+    # Strip sentence-level echoes of any prior post in the thread
     prior_bodies = [op.body, parent_post.body] + [s.body for s in siblings]
     text = _strip_thread_echo(text, prior_bodies)
     # Cap to 4 lines
