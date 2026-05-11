@@ -222,12 +222,109 @@ def _pick_reply_variant(rng: random.Random, *, exclude: set[str]) -> str:
 
 # --- generation -----------------------------------------------------------
 
-def _generate_op_body(seed_text: str, variant_key: str, rng: random.Random) -> str:
-    """OP bodies use the seed text directly. The OP_SEEDS list is already
-    hand-written /fit/ openers; running them through the LoRA was leaking
-    TASK instructions ("1-2 lines") into the post body. The artwork values
-    a clean OP over a paraphrased one — replies do the voice work."""
-    return seed_text
+_SCAFFOLD_LINE_RE = re.compile(
+    r"^\s*(?:BOARD|MODE|TASK|TOPIC|SEED|PARENT[_ ]POST(?:[_ ]NO)?|OP[_ ]POST(?:[_ ]NO)?|"
+    r"RECENT[_ ]REPLIES[_ ]IN[_ ]THREAD|user|assistant|system|anon)\s*[:=].*$",
+    re.I,
+)
+
+
+def _strip_scaffold_lines(text: str) -> str:
+    """Drop any line that looks like the prompt scaffolding leaking back
+    into the output (`BOARD: /fit/`, `MODE: thread_op`, `TOPIC: ...`)."""
+    if not text:
+        return text
+    kept = [l for l in text.splitlines() if not _SCAFFOLD_LINE_RE.match(l)]
+    return "\n".join(kept).strip()
+
+
+def _generate_op_body(seed_text: str, variant_key: str, rng: random.Random,
+                      existing_ops: Optional[list[str]] = None) -> str:
+    """Generate an OP body in the LoRA voice, using `seed_text` as the topic
+    the post is *about* (not the literal body). Falls back to seed_text if
+    generation fails or the output is unusable — keeps the artwork from
+    going dark when the model has an off pass."""
+    from ..imageboard_ingestion import anon_zoo, local_fit_model, output_validator
+
+    existing_ops = existing_ops or []
+    variant = anon_zoo.get(variant_key)
+    persona_system = (
+        "You are an anon STARTING a new /fit/ thread. You are NOT replying. "
+        "You are NOT answering a question. You are POSTING — confessing, "
+        "complaining, mocking, asking, ranting, in /fit/ voice. "
+        "Write 1-3 short lines, board cadence, lowercase ok, abbreviations ok. "
+        "No greentext reply quotes back to anyone (this IS the OP). "
+        "No `>>NNNNNNNN` post refs. No URLs. "
+        "No therapy register, no motivational coaching, no AI disclosures. "
+        "Do NOT begin with 'Yes', 'No', 'Sure', 'Of course', 'I have a similar', "
+        "'I have the same', 'That sounds', 'Great question' — those are answers, "
+        "not OPs. Output the post body ONLY — no labels, no `BOARD:` / `MODE:` / "
+        "`TOPIC:` headers, no role names, no quoting the prompt back."
+    )
+    if variant:
+        persona_system += "\n\n" + variant.system_card_addendum
+
+    # Few-shot: show the model real /fit/ OP shapes so it stops answering.
+    fewshot = (
+        "Examples of correct OP voice (DO NOT copy these verbatim, write a new one):\n"
+        "  ex1: missed the gym 4 days in a row. talk me back in\n"
+        "  ex2: got mogged at the bus stop today. 6'3 lean kid in shorts. lost it\n"
+        "  ex3: is creatine actually worth it or am i getting memed\n"
+        "  ex4: down from 287 to 252. still high blood pressure. life is suffering\n"
+    )
+    user_prompt = (
+        f"{fewshot}\n"
+        f"Now write a fresh /fit/ OP. The topic / mood seed: {seed_text}\n\n"
+        "Output the post body only. 1-3 short lines. Anon voice, not answer voice."
+    )
+    msgs = [
+        {"role": "system", "content": persona_system},
+        {"role": "user", "content": user_prompt},
+    ]
+    req = local_fit_model.build_request(
+        messages=msgs, system=persona_system, user=user_prompt,
+        profile="chat", max_tokens=110, repetition_penalty=1.20,
+    )
+    res = local_fit_model.generate(req)
+    text = (res.text or "").strip()
+    if not text:
+        return seed_text
+    # Strip HTML / scaffold / labels / urls / stray postnos / truncation
+    text = re.sub(r"<[^>]+>", "", text)
+    text = _strip_scaffold_lines(text)
+    text = re.sub(r"^(?:user|anon|assistant|board|mode|task|op)\s*:\s*", "",
+                  text, flags=re.I | re.M)
+    text = _URL_RE.sub("", text)
+    text = _strip_stray_postnos(text)
+    # Drop any line that begins with >>NNN (OPs don't reply-ref)
+    text = "\n".join(l for l in text.splitlines()
+                     if not l.lstrip().startswith(">>"))
+    text = _trim_truncated_tail(text)
+    # De-echo against currently-open OPs to avoid two threads on the same line
+    text = _strip_thread_echo(text, existing_ops)
+    # Cap to 4 lines / 280 chars (OPs are short); re-trim after cap to avoid
+    # mid-word cut introduced by the slice.
+    lines = [l.strip() for l in text.splitlines() if l.strip()][:4]
+    text = "\n".join(lines).strip()[:280].rstrip()
+    text = _trim_truncated_tail(text)
+    if not text:
+        return seed_text
+    if _has_yeah_loop(text):
+        return seed_text
+    # Reject Q→A shaped openings ("Yes, I have a similar experience.")
+    _first_lower = text.lstrip().lower()
+    _answer_starts = (
+        "yes,", "yes ", "no,", "no ", "sure,", "sure ", "of course",
+        "i have a similar", "i have the same", "that sounds",
+        "great question", "good question", "yes i", "no i",
+        "you have to", "you should", "you can",
+    )
+    if any(_first_lower.startswith(s) for s in _answer_starts):
+        return seed_text
+    v = output_validator.validate(text, recent_outputs=existing_ops)
+    if not v.get("ok") and v.get("severity") == "hard":
+        return seed_text
+    return v.get("repaired_text") or text
 
 
 _REPLY_REF_PREFIX_RE = re.compile(r"^\s*(>>\d+)\s*[,:.\-—]?\s*")
@@ -522,11 +619,13 @@ def _new_post_no() -> int:
     return n
 
 
-def _start_thread(rng: random.Random) -> Optional[BoardThread]:
+def _start_thread(rng: random.Random,
+                  existing_ops: Optional[list[str]] = None) -> Optional[BoardThread]:
     """Pick a fresh OP seed + variant + generate body."""
     seed_subject, seed_text, image_kw = rng.choice(OP_SEEDS)
     variant_key = _pick_op_variant(rng)
-    body = _generate_op_body(seed_text, variant_key, rng)
+    body = _generate_op_body(seed_text, variant_key, rng,
+                             existing_ops=existing_ops or [])
     if not body:
         return None
     post_no = _new_post_no()
@@ -583,7 +682,8 @@ def board_tick(rng: Optional[random.Random] = None) -> dict:
         force_new = len(threads) < 2 or rng.random() < NEW_THREAD_PROBABILITY
 
         if force_new:
-            t = _start_thread(rng)
+            existing_ops = [th.op.body for th in threads]
+            t = _start_thread(rng, existing_ops=existing_ops)
             if t is None:
                 return {"action": "noop", "reason": "op_generation_empty"}
             threads.insert(0, t)
