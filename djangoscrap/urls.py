@@ -30,6 +30,7 @@ urlpatterns = [
     path('greentext/', views.greentext_page, name='greentext'),
     path('api/greentext/tick/', views.greentext_tick_view, name='greentext_tick'),
     path('api/greentext/state/', views.greentext_state_view, name='greentext_state'),
+    path('api/greentext/reset/', views.greentext_reset_view, name='greentext_reset'),
     path('service/', views.service, name='service'),
     path('portfolio/', views.portfolio, name='portfolio'),
     path('register/', views.register, name='register'),

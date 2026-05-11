@@ -226,30 +226,41 @@ def _enforce_greentext_shape(text: str) -> Optional[str]:
             line_lower = line_lower.replace("mfw", "MFW")
         if "TFW" in ls:
             line_lower = line_lower.replace("tfw", "TFW")
-        # Within-story dedup: normalize and skip if seen
+        # Within-story dedup: normalize (strip punctuation AND ordinal/
+        # numeric tokens so "become father of N daughter" collapses across
+        # N=second/third/fourth/...)
         norm = re.sub(r"[^\w\s']", " ", line_lower.lower())
         norm = re.sub(r"\s+", " ", norm).strip()
+        # Strip ordinal/number tokens for the comparison key
+        _ORDINAL_RE = re.compile(
+            r"\b(?:\d+|first|second|third|fourth|fifth|sixth|seventh|"
+            r"eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|"
+            r"fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|"
+            r"one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b"
+        )
+        cmp_norm = _ORDINAL_RE.sub("N", norm)
         seen_count_total += 1
-        if norm and norm in seen_norms:
+        if cmp_norm and cmp_norm in seen_norms:
             continue
-        # Also catch prefix collapse: if any prior norm shares 6+ leading words
-        # and is otherwise close in length, treat as dupe
+        # Prefix collapse: any prior norm shares first 4+ leading tokens
+        # AND the line lengths are comparable (within 50%).
         is_prefix_dupe = False
-        candidate_words = norm.split()
-        if len(candidate_words) >= 6:
-            head6 = " ".join(candidate_words[:6])
+        candidate_words = cmp_norm.split()
+        if len(candidate_words) >= 4:
+            head4 = " ".join(candidate_words[:4])
             for prior in seen_norms:
                 pw = prior.split()
-                if len(pw) >= 6 and " ".join(pw[:6]) == head6:
-                    is_prefix_dupe = True
-                    break
+                if len(pw) >= 4 and " ".join(pw[:4]) == head4:
+                    if 0.5 <= len(candidate_words) / max(len(pw), 1) <= 2.0:
+                        is_prefix_dupe = True
+                        break
         if is_prefix_dupe:
             continue
-        seen_norms.add(norm)
+        seen_norms.add(cmp_norm)
         kept.append(line_lower)
-    # If the raw output was mostly repeats (dedup ratio < 0.4), it was a
-    # mode-collapse loop — reject entirely so we fall back to exemplar.
-    if seen_count_total >= 6 and len(kept) / max(seen_count_total, 1) < 0.4:
+    # If the raw output was mostly repeats (dedup ratio < 0.3), it was a
+    # mode-collapse loop — reject entirely.
+    if seen_count_total >= 6 and len(kept) / max(seen_count_total, 1) < 0.3:
         return None
     if len(kept) < 5:
         return None
@@ -278,69 +289,73 @@ def _enforce_greentext_shape(text: str) -> Optional[str]:
         return None
     if sum(1 for l in kept if l.lower().startswith(">mfw")) > 2:
         return None
-    # Reject if no `>be ` opener anywhere in first 3 lines (loose anchor)
-    if not any(l.startswith(">be") for l in kept[:3]):
-        return None
-    # Reject prose-disguised-as-greentext: any line >140 chars OR a line that
-    # contains 2+ sentence-terminating periods (real greentext lines are
-    # fragments — periods are rare).
+    # Reject prose-disguised-as-greentext: any line >180 chars OR a line
+    # that contains 3+ sentence-terminating periods.
     for l in kept:
-        if len(l) > 140:
+        if len(l) > 180:
             return None
-        if l.count(". ") >= 2:
+        if l.count(". ") >= 3:
             return None
     return body
 
 
-def _generate_greentext_story(seed_topic: str, variant_key: str,
-                              rng: random.Random,
-                              recent_bodies: Optional[list[str]] = None) -> Optional[str]:
-    """Generate one greentext story. Returns the formatted body or None."""
+_PUNCHLINE_OPENERS = (
+    ">mfw", ">tfw", ">still", ">just", ">kek", ">now", ">i ",
+    ">nobody", ">fucking", ">fuck", ">guess", ">maybe", ">turns out",
+    ">she", ">he", ">it was", ">it's", ">she said", ">he said",
+)
+
+
+def _is_punchline_shaped(last_line: str) -> bool:
+    """Last line is a /fit/-style punchline if it's short AND starts with
+    one of the punchline opener tokens OR is a question."""
+    if not last_line:
+        return False
+    ll = last_line.strip().lower()
+    if len(ll) > 120:
+        return False
+    if ll.endswith("?"):
+        return True
+    return any(ll.startswith(op) for op in _PUNCHLINE_OPENERS)
+
+
+def _generate_punchline(body: str, seed_topic: str, variant_key: str,
+                        rng: random.Random) -> Optional[str]:
+    """Second pass: ask the model to write ONE final `>` line that lands
+    the joke. Self-deprecating, anti-climactic, OR callback to a detail
+    above. /fit/ doesn't moralize — the punchline is the failure itself,
+    the silent realization, or the ironic deflation."""
     from ..imageboard_ingestion import anon_zoo, local_fit_model
 
     variant = anon_zoo.get(variant_key)
     persona_system = (
-        "You are anon writing a greentext STORY for /fit/. "
-        "Output is a 4chan greentext: 8-14 lines, EVERY line begins with `>`. "
-        "Lines are FRAGMENTS, not sentences. No subjects-and-verbs prose. "
-        "All lowercase. No periods. Slang ok: mfw, tfw, kek, desu, wagmi — "
-        "use sparingly, max one `>mfw` per story.\n\n"
-        "Structure:\n"
-        "  Line 1: `>be me`\n"
-        "  Line 2: `>be [age or role]` (e.g. `>be 23`, `>dyel skellington`)\n"
-        "  Line 3: setting (where/when/what state)\n"
-        "  Middle lines: one beat each — concrete actions, sensations, "
-        "thoughts. Each line is a CUT in time, not a sentence connector.\n"
-        "  Last 1-2 lines: the turn / collapse. Recontextualizes the story. "
-        "Never explain. Never moralize. No 'and that's when i learned' endings.\n\n"
-        "Narrator is the BUTT of the joke when it's cringe. Don't sanitize. "
-        "Don't telegraph the punchline. Use concrete details (1pl8, 6am, the "
-        "leather sofa) not generic ones (at the gym, one day). "
-        "No URLs. No `>>NNNNNNNN` reply refs. No labels, no headers, no "
-        "preamble. Output ONLY the greentext lines.\n\n"
-        "CRITICAL: never repeat the same line twice. Never repeat a 6-word "
-        "phrase twice. Each line is a NEW beat — a new action, new detail, "
-        "new thought. If you find yourself writing 'i take another few reps' "
-        "or 'it's 10:42am, it is cold outside' twice — STOP and end the story.\n\n"
-        "Do not inject demographic identity (race, gender, nationality) unless "
-        "the seed topic explicitly mentions it. Mogging = being visually "
-        "overshadowed, NOT being physically assaulted. Do not escalate to "
-        "violence. Keep the cringe psychological, not physical."
+        "You write ONE punchline line for a /fit/ greentext story. "
+        "Output: a SINGLE line beginning with `>`. No preamble. No multiple "
+        "lines. Max 12 words. Lowercase. No period.\n\n"
+        "GOOD punchline shapes for /fit/:\n"
+        "  - self-deprecating callback: `>still no gf`, `>still dyel`, "
+        "`>still walking home in the rain`\n"
+        "  - mfw realization: `>mfw she meant the other guy`, "
+        "`>mfw the mirror was the door`\n"
+        "  - anti-climax: `>nobody noticed`, `>nothing happened`, "
+        "`>went home and ate ice cream`\n"
+        "  - ironic deflation: `>i was the manlet all along`, "
+        "`>turns out it was just me`\n"
+        "  - silent question: `>was that the joke`, `>am i the npc`\n"
+        "  - callback to a concrete object in the story (the 1pl8, the bus stop, "
+        "the spreadsheet) — re-using that exact object as the punchline noun\n\n"
+        "DO NOT write: 'and that's when i learned', 'the lesson is', "
+        "'i realized that...', anything explaining the joke, anything "
+        "moralizing, anything wholesome (unless the story is comfy). "
+        "DO NOT write more than one line."
     )
     if variant:
         persona_system += "\n\n" + variant.system_card_addendum
 
-    fewshot = (
-        "Examples of correct greentext shape (DO NOT copy verbatim — write a new one):\n\n"
-        "Example 1 (/fit/ cringe):\n" + _FEWSHOT_STORIES[0] + "\n\n"
-        "Example 2 (comfy):\n" + _FEWSHOT_STORIES[1] + "\n\n"
-        "Example 3 (absurdist short):\n" + _FEWSHOT_STORIES[2] + "\n"
-    )
     user_prompt = (
-        f"{fewshot}\n"
-        f"Now write a NEW greentext story about: {seed_topic}\n\n"
-        "Rules again: 8-14 lines, every line starts with `>`, fragments only, "
-        "lowercase, turn at the end. Output only the greentext, nothing else."
+        f"Greentext story so far:\n{body}\n\n"
+        f"Topic: {seed_topic}\n\n"
+        "Write ONE final `>` line — the punchline. Just the one line, nothing else."
     )
     msgs = [
         {"role": "system", "content": persona_system},
@@ -348,7 +363,121 @@ def _generate_greentext_story(seed_topic: str, variant_key: str,
     ]
     req = local_fit_model.build_request(
         messages=msgs, system=persona_system, user=user_prompt,
-        profile="chat", max_tokens=320, repetition_penalty=1.35,
+        profile="chat", max_tokens=40, repetition_penalty=1.15,
+    )
+    res = local_fit_model.generate(req)
+    text = (res.text or "").strip()
+    if not text:
+        return None
+    # Take just the first non-empty `>` line
+    for raw in text.splitlines():
+        l = raw.strip()
+        if not l:
+            continue
+        if l.startswith(">>"):
+            continue
+        if not l.startswith(">"):
+            # Convert bare line to greentext if it's clearly content
+            l = ">" + l
+        # Reject if it looks moralizing
+        if _MORAL_PHRASES_RE.search(l):
+            continue
+        # Strip trailing period
+        if l.endswith("."):
+            l = l[:-1]
+        if len(l) > 120:
+            continue
+        return l.lower()
+    return None
+
+
+def _generate_greentext_story(seed_topic: str, variant_key: str,
+                              rng: random.Random,
+                              recent_bodies: Optional[list[str]] = None) -> Optional[str]:
+    """Generate one greentext story. Returns the formatted body or None.
+
+    Pipeline: body pass → shape enforcement → cross-story dedup →
+    punchline pass (if existing last line isn't punchline-shaped)."""
+    from ..imageboard_ingestion import anon_zoo, local_fit_model
+
+    variant = anon_zoo.get(variant_key)
+    persona_system = (
+        "You are anon writing a greentext STORY for /fit/. "
+        "Output is a 4chan greentext: 7-12 lines, EVERY line begins with `>`. "
+        "Lines are FRAGMENTS, not sentences. All lowercase. No periods. "
+        "Slang ok: mfw, tfw, kek, desu — sparingly, max one `>mfw` per story.\n\n"
+        "Structure:\n"
+        "  Line 1: `>be me`\n"
+        "  Line 2: `>be [age or role]` (e.g. `>be 23`, `>dyel skellington`)\n"
+        "  Line 3: setting (concrete: where/when/what state)\n"
+        "  Middle: one beat per line — actions, sensations, micro-events. "
+        "Each line is a CUT in time, not a sentence connector.\n"
+        "  Last line: the PUNCHLINE — short, self-deprecating, anti-climactic, "
+        "or a callback to a concrete object mentioned earlier. The joke is "
+        "the failure or the silent realization, NEVER a moral.\n\n"
+        "HUMOR REGISTER: 4chan /fit/ humor is self-deprecating. The narrator "
+        "is the butt. The funny part is the gap between effort and outcome, "
+        "the unspoken cringe, the realization that arrives one beat late. "
+        "Don't sanitize. Don't telegraph the joke in line 2 — let it land at "
+        "the end. Concrete details (1pl8, 6am, leather sofa, the bus stop "
+        "with the kid in shorts) NOT generic ones (at the gym, one day, "
+        "with a girl).\n\n"
+        "No URLs. No `>>NNNNNNNN` reply refs. No labels, no headers, no "
+        "preamble. Output ONLY the greentext lines.\n\n"
+        "CRITICAL: never repeat a line. Never repeat a 6-word phrase. Each "
+        "line is a NEW beat. If you start looping, STOP — short is fine.\n\n"
+        "Do not inject demographic identity (race, nationality, sexual "
+        "orientation) unless the seed topic explicitly mentions it. "
+        "Mogging = visually overshadowed, NOT physically assaulted."
+    )
+    if variant:
+        persona_system += "\n\n" + variant.system_card_addendum
+
+    fewshot = (
+        "Examples of greentext with LANDING punchlines (note how each "
+        "final line is short, callback or anti-climax, never a moral):\n\n"
+        "Example 1 (/fit/ cringe — punchline = silent retreat callback):\n"
+        ">be me\n>dyel skellington, 5'9, 145lb\n"
+        ">first day back at the gym after deload\n"
+        ">see mirin qt at the squat rack\n"
+        ">load 1pl8, look casual\n"
+        ">she racks 1.5pl8 next to me\n"
+        ">try eye contact in the mirror\n"
+        ">mirror is on her side\n"
+        ">just see myself watching her watch me\n"
+        ">leave through the back door\n"
+        ">still walking home in the rain\n\n"
+        "Example 2 (absurdist — punchline = unanswered question):\n"
+        ">be me\n>gym sock supervisor\n"
+        ">in charge of making sure socks are paired\n"
+        ">go down to the laundry room\n>socks are unpaired\n"
+        ">how do i pair them again\n\n"
+        "Example 3 (comfy — punchline = anti-climax acceptance):\n"
+        ">be me\n>22, broke, no gf\n>5am, gym empty\n"
+        ">load the bar, no music\n>hear the heater click on\n"
+        ">tfw the bar feels lighter than yesterday\n"
+        ">coffee at the gas station, two creams\n"
+        ">today is going to be ok\n\n"
+        "Example 4 (cringe — punchline = mfw realization):\n"
+        ">be me\n>21, first cut, week 8\n>wife says i look the same\n"
+        ">show her the spreadsheet, +0.4kg lean\n"
+        ">she says 'thats the same'\n>show her the scale\n"
+        ">she takes off her glasses\n>mfw she forgot her glasses today\n"
+    )
+    user_prompt = (
+        f"{fewshot}\n"
+        f"Now write a NEW greentext about this specific moment: {seed_topic}\n\n"
+        "Rules: 7-12 lines, every line `>`, fragments only, lowercase. "
+        "End with a SHORT punchline line — callback, mfw, anti-climax. "
+        "Do NOT moralize. Output only the greentext lines."
+    )
+    msgs = [
+        {"role": "system", "content": persona_system},
+        {"role": "user", "content": user_prompt},
+    ]
+    req = local_fit_model.build_request(
+        messages=msgs, system=persona_system, user=user_prompt,
+        profile="chat", max_tokens=240, repetition_penalty=1.45,
     )
     res = local_fit_model.generate(req)
     text = (res.text or "").strip()
@@ -357,12 +486,35 @@ def _generate_greentext_story(seed_topic: str, variant_key: str,
     shaped = _enforce_greentext_shape(text)
     if not shaped:
         return None
-    # De-dupe vs recently-streamed stories on first-3-lines (the ritual head)
-    head = "\n".join(shaped.splitlines()[:3]).lower()
+
+    # Cross-story dedup — compare head (first 3 lines) AND punchline (last line)
+    # against recent bodies. Reject if either matches.
+    lines_now = [l for l in shaped.splitlines() if l.strip()]
+    head_now = "\n".join(lines_now[:3]).lower()
+    tail_now = lines_now[-1].lower() if lines_now else ""
     for prior in (recent_bodies or []):
-        prior_head = "\n".join((prior or "").splitlines()[:3]).lower()
-        if prior_head and prior_head == head:
+        prior_lines = [l for l in (prior or "").splitlines() if l.strip()]
+        prior_head = "\n".join(prior_lines[:3]).lower()
+        prior_tail = prior_lines[-1].lower() if prior_lines else ""
+        if prior_head and prior_head == head_now:
             return None
+        if prior_tail and prior_tail == tail_now and len(tail_now) >= 12:
+            return None
+
+    # Punchline pass — if existing last line isn't punchline-shaped, generate
+    # a one-line punchline and append it (drop any existing weak final line
+    # if there are still enough beats left).
+    if not _is_punchline_shaped(lines_now[-1]):
+        punchline = _generate_punchline(shaped, seed_topic, variant_key, rng)
+        if punchline:
+            # If body is already 11+ lines, replace the last (weak) line.
+            # Otherwise append.
+            if len(lines_now) >= 10:
+                lines_now = lines_now[:-1] + [punchline]
+            else:
+                lines_now = lines_now + [punchline]
+            shaped = "\n".join(lines_now)
+
     return shaped
 
 
@@ -384,15 +536,7 @@ def greentext_tick(rng: Optional[random.Random] = None) -> dict:
     body = _generate_greentext_story(seed_topic, variant_key, rng,
                                      recent_bodies=recent_bodies)
     if not body:
-        # Fall back to a hand-written exemplar — keeps the wall alive even
-        # when the model has an off pass. Pick one not seen recently.
-        seen_heads = {("\n".join(b.splitlines()[:3]).lower()) for b in recent_bodies}
-        candidates = [s for s in _FEWSHOT_STORIES
-                      if "\n".join(s.splitlines()[:3]).lower() not in seen_heads]
-        if not candidates:
-            return {"action": "noop", "reason": "no_unique_story"}
-        body = rng.choice(candidates)
-        seed_topic = "(fallback exemplar)"
+        return {"action": "noop", "reason": "generation_failed"}
     line_count = len([l for l in body.splitlines() if l.strip()])
     post_no = _new_post_no()
     story = GreentextStory(
@@ -456,3 +600,12 @@ def greentext_tick_view(request):
 @require_http_methods(["GET"])
 def greentext_state_view(request):
     return JsonResponse(_serialize_state())
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def greentext_reset_view(request):
+    """Clear the in-memory story stream. Useful when iterating on generation."""
+    with _LOCK:
+        _STREAM["stories"] = []
+    return JsonResponse({"ok": True})
