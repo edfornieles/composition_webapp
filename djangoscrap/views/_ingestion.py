@@ -4345,6 +4345,710 @@ def trim_source_borders(request, bucket_name):
 
 
 
+# Maps each "from" extension we know how to convert to a tuple:
+#   (set of file-extension matches, friendly display name)
+# Extending this is the way to add more conversion sources later.
+_CONVERT_FROM_EXTS = {
+    "webp": ({".webp"}, "WebP"),
+    "jpeg": ({".jpg", ".jpeg"}, "JPEG"),
+    # Combined entry: catches both WebP and JPEG in a single pass. The UI
+    # exposes only this one button now; the per-format entries are kept so
+    # any legacy bookmark/URL still works.
+    "auto": ({".webp", ".jpg", ".jpeg"}, "WebP/JPEG"),
+}
+
+
+def _convert_images_to_png(request, bucket_name, from_key):
+    """Generic image → .png converter. `from_key` selects which extensions
+    to scan for (see _CONVERT_FROM_EXTS). Selection-aware: if the POST
+    includes `selected` keys, only those files are converted. Originals are
+    deleted on success; alpha channel is preserved where applicable.
+
+    Why this exists: most downstream consumers (older browsers, exports,
+    image-editing apps, certain analysis pipelines) handle PNG more reliably
+    than WebP/JPEG variants. JPEG → PNG is lossless from this point forward;
+    note JPEG cannot store transparency so the resulting PNG is RGB.
+    """
+    spec = _CONVERT_FROM_EXTS.get(from_key)
+    if not spec:
+        messages.error(request, f"Unknown conversion: {from_key}")
+        return redirect("bucket_contents", bucket_name=bucket_name)
+    exts, friendly = spec
+
+    source_dir = (LOCAL_SOURCES_ROOT / bucket_name).resolve()
+    root_dir = LOCAL_SOURCES_ROOT.resolve()
+    if root_dir not in source_dir.parents or not source_dir.exists() or not source_dir.is_dir():
+        messages.error(request, "Source not found.")
+        return redirect("list_buckets")
+
+    # If the user selected specific files, narrow to those. Selected paths
+    # are relative-to-bucket strings, same as the trim/delete flows.
+    selected = set()
+    if request.method == "POST":
+        for raw in request.POST.getlist("selected"):
+            s = (raw or "").strip().lstrip("/")
+            if s:
+                selected.add(s)
+
+    converted = 0
+    failed = 0
+    skipped = 0
+    failures = []  # (rel_path, reason) for surfacing the worst offenders
+    for p in sorted(
+        _local_source_dir_media_files(source_dir),
+        key=lambda x: str(x.relative_to(source_dir)).lower(),
+    ):
+        if p.suffix.lower() not in exts:
+            continue
+        rel = str(p.relative_to(source_dir))
+        if selected and rel not in selected:
+            skipped += 1
+            continue
+        target = p.with_suffix(".png")
+        # If a .png with the same stem already exists alongside, append a
+        # disambiguating suffix instead of overwriting.
+        if target.exists():
+            stem = p.stem
+            n = 2
+            while True:
+                candidate = p.with_name(f"{stem}_{n}.png")
+                if not candidate.exists():
+                    target = candidate
+                    break
+                n += 1
+        try:
+            with Image.open(p) as im:
+                # Animated formats (webp) → take frame 0.
+                try:
+                    im.seek(0)
+                except (EOFError, AttributeError):
+                    pass
+                # Mode coercion: preserve alpha when present, promote
+                # palette/L-mode to RGB(A) so the PNG output is well-formed.
+                # JPEG has no alpha, so it lands as RGB; webp keeps alpha
+                # if it had it.
+                if im.mode in ("P", "L"):
+                    im = im.convert("RGBA" if "transparency" in im.info else "RGB")
+                elif im.mode not in ("RGB", "RGBA"):
+                    im = im.convert("RGBA")
+                im.save(target, "PNG", optimize=True)
+            try:
+                p.unlink()
+            except OSError:
+                pass
+            converted += 1
+        except (UnidentifiedImageError, OSError, ValueError) as e:
+            failed += 1
+            failures.append((rel, type(e).__name__))
+
+    if converted:
+        msg = f"Converted {converted} {friendly} → PNG"
+        if skipped:
+            msg += f" ({skipped} skipped as unselected)"
+        if failed:
+            msg += f", {failed} failed"
+        messages.success(request, msg + ".")
+    else:
+        if failed:
+            head = "; ".join(f"{rel} ({why})" for rel, why in failures[:3])
+            messages.warning(request, f"No conversions succeeded. {failed} failed: {head}")
+        elif selected:
+            messages.info(request, f"No {friendly} files in the current selection.")
+        else:
+            messages.info(request, f"No {friendly} files in this source.")
+    return redirect("bucket_contents", bucket_name=bucket_name)
+
+
+def convert_webp_to_png(request, bucket_name):
+    return _convert_images_to_png(request, bucket_name, "webp")
+
+
+def convert_jpeg_to_png(request, bucket_name):
+    return _convert_images_to_png(request, bucket_name, "jpeg")
+
+
+def convert_to_png(request, bucket_name):
+    """Combined WebP + JPEG → PNG. If the POST has no `selected` entries,
+    the underlying _convert_images_to_png() treats it as 'all files'
+    (selection set is empty → the `if selected and rel not in selected`
+    skip-check never fires), which matches the user's expectation that
+    'nothing selected = everything selected'.
+    """
+    return _convert_images_to_png(request, bucket_name, "auto")
+
+
+# ── Auto background removal ──────────────────────────────────────────────────
+# Removes connected regions of near-white or near-black pixels that touch the
+# image edges, replacing them with transparency. Uses scipy.ndimage.label to
+# find connected components in a tolerance mask, then keeps only those
+# components that touch any of the 4 corner pixels — so a black object on a
+# black background still gets cleanly cut out without punching holes through
+# black areas inside the subject.
+
+_IMAGE_EXTS_FOR_BG = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif"}
+
+
+def _remove_bg_in_place(p: Path, target: str, tolerance: int) -> tuple[bool, str]:
+    """Remove a near-white or near-black background using:
+      1) A "background-likeness" score per pixel (0..1) — high where the
+         pixel resembles the target colour. For white: min(R,G,B)/255.
+         For black: 1 - max(R,G,B)/255.
+      2) Connectivity flood-fill from the corners on a SOFT mask (score >
+         ~0.5) so the flood fully grabs the background region INCLUDING its
+         anti-aliased fringe pixels — but doesn't escape past hard edges
+         into the subject.
+      3) For edge-connected pixels: derive alpha from the score with a
+         gradient falloff, so a 90%-white fringe pixel gets alpha ≈ 25, not
+         the hard 0/255 cliff the previous version produced.
+      4) Colour decontamination: for partial-alpha pixels along the
+         soft edge, solve `observed = α·object + (1-α)·background` for the
+         object's true colour. Removes the white/black "spill" that would
+         otherwise leave a halo when composited onto a different backdrop.
+
+    Returns (changed, reason). On success the original file is deleted and
+    a sibling .png with the same stem is created.
+    """
+    try:
+        import numpy as np
+        from scipy import ndimage as ndi
+    except ImportError as e:
+        return False, f"missing dep: {e}"
+    try:
+        with Image.open(p) as im:
+            try: im.seek(0)
+            except (EOFError, AttributeError): pass
+            im = im.convert("RGBA")
+            arr = np.array(im, dtype=np.uint8)
+    except (UnidentifiedImageError, OSError, ValueError) as e:
+        return False, type(e).__name__
+
+    h, w = arr.shape[:2]
+    if h < 2 or w < 2:
+        return False, "image_too_small"
+
+    rgb_f = arr[..., :3].astype(np.float32)
+    if target == "white":
+        # 1.0 for pure white, 0.0 for any pixel with a zero channel.
+        score = rgb_f.min(axis=-1) / 255.0
+        bg_color = np.array([255.0, 255.0, 255.0], dtype=np.float32)
+    elif target == "black":
+        score = 1.0 - rgb_f.max(axis=-1) / 255.0
+        bg_color = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+    else:
+        return False, f"unknown target {target!r}"
+
+    # 2) Connectivity mask. A pixel counts as "potentially background" if its
+    #    score is above the soft threshold. We deliberately set this low
+    #    (0.5) so the flood-fill captures the full anti-aliased halo around
+    #    the subject — those pixels can then be decontaminated rather than
+    #    snapping to opaque or transparent.
+    soft_thresh = 0.5
+    soft_mask = score > soft_thresh
+    if not soft_mask.any():
+        return False, "no_bg_pixels"
+
+    labels, n = ndi.label(soft_mask)
+    if n == 0:
+        return False, "no_bg_pixels"
+
+    corner_labels = {
+        labels[0, 0], labels[0, w - 1],
+        labels[h - 1, 0], labels[h - 1, w - 1],
+    }
+    corner_labels.discard(0)
+    if not corner_labels:
+        return False, "bg_not_at_edges"
+
+    cut_region = np.isin(labels, list(corner_labels))
+    if not cut_region.any():
+        return False, "no_bg_at_corners"
+
+    # 3) Gradient alpha for cut-region pixels.
+    #
+    #    Map `score` to alpha with a configurable knee:
+    #      pure background (score=1.0)   → α=0
+    #      half-bg (score=0.5)            → α≈127 (transition zone)
+    #      barely-bg (score=`gain`)       → α=255
+    #    where `gain` controls how aggressively the cut tapers. A higher
+    #    tolerance widens the fully-transparent band; a lower one keeps more
+    #    of the fringe at higher opacity.
+    #
+    #    tolerance maps to a "full-cut" upper threshold above which alpha=0
+    #    completely. Default 25 → upper threshold ≈ 0.90 (anything ≥90% white
+    #    becomes fully transparent).
+    upper = max(0.6, 1.0 - tolerance / 255.0)   # e.g. tol=25 → 0.902
+    lower = soft_thresh                          # 0.5 (start of transition)
+    # Linear ramp from lower (α=1) to upper (α=0), then clamp.
+    new_alpha_f = 1.0 - np.clip((score - lower) / max(0.001, upper - lower), 0.0, 1.0)
+    new_alpha = (new_alpha_f * 255.0).astype(np.uint8)
+
+    original_alpha = arr[..., 3]
+    # Only modify alpha inside cut_region; preserve existing alpha elsewhere.
+    # Use the MINIMUM of original and new so we never increase opacity.
+    final_alpha = np.where(cut_region, np.minimum(original_alpha, new_alpha), original_alpha)
+
+    # 4) Colour decontamination on partial-alpha pixels in the cut region.
+    #
+    #    For each pixel where 0 < α < 1, solve
+    #      observed = α·object + (1-α)·bg
+    #    →  object = (observed - (1-α)·bg) / α
+    #
+    #    Pixels with α ≈ 1 (fully opaque) — no contamination, leave alone.
+    #    Pixels with α ≈ 0 (fully transparent) — colour doesn't matter,
+    #    but to keep the RGBA file clean we leave the original colour
+    #    underneath the transparency so accidental mat-over-different-bg
+    #    looks merely wrong, not garbage.
+    decon = cut_region & (final_alpha > 8) & (final_alpha < 248)
+    if decon.any():
+        a = final_alpha[decon].astype(np.float32) / 255.0
+        observed = rgb_f[decon]
+        # Per-pixel: (observed - (1-α)·bg) / α
+        a_col = a[:, None]
+        true_color = (observed - (1.0 - a_col) * bg_color) / np.maximum(a_col, 0.01)
+        true_color = np.clip(true_color, 0.0, 255.0)
+        arr[..., :3][decon] = true_color.astype(np.uint8)
+
+    arr[..., 3] = final_alpha
+
+    # Save as PNG.
+    target_path = p.with_suffix(".png")
+    if target_path.exists() and target_path != p:
+        stem = p.stem
+        n_dup = 2
+        while True:
+            candidate = p.with_name(f"{stem}_{n_dup}.png")
+            if not candidate.exists():
+                target_path = candidate
+                break
+            n_dup += 1
+    try:
+        Image.fromarray(arr, "RGBA").save(target_path, "PNG", optimize=True)
+    except (OSError, ValueError) as e:
+        return False, f"save_failed: {type(e).__name__}"
+    if target_path != p:
+        try: p.unlink()
+        except OSError: pass
+    return True, "ok"
+
+
+def _remove_background_action(request, bucket_name, target: str):
+    """Shared body for remove-white-bg + remove-black-bg endpoints."""
+    if target not in {"white", "black"}:
+        messages.error(request, f"Unknown background target: {target}")
+        return redirect("bucket_contents", bucket_name=bucket_name)
+
+    source_dir = (LOCAL_SOURCES_ROOT / bucket_name).resolve()
+    root_dir = LOCAL_SOURCES_ROOT.resolve()
+    if root_dir not in source_dir.parents or not source_dir.exists() or not source_dir.is_dir():
+        messages.error(request, "Source not found.")
+        return redirect("list_buckets")
+
+    # Tolerance: 0 = exact match, 255 = everything matches. 25 is a sensible
+    # default for off-white / near-black backgrounds; the user can override
+    # via the form (POST param `tolerance`).
+    try:
+        tolerance = int(request.POST.get("tolerance") or 25)
+    except ValueError:
+        tolerance = 25
+    tolerance = max(0, min(255, tolerance))
+
+    # Selection-aware (same convention as trim / convert handlers).
+    selected = set()
+    if request.method == "POST":
+        for raw in request.POST.getlist("selected"):
+            s = (raw or "").strip().lstrip("/")
+            if s:
+                selected.add(s)
+
+    changed = 0
+    failed = 0
+    skipped_unselected = 0
+    skipped_no_bg = 0
+    failures = []
+
+    for p in sorted(
+        _local_source_dir_media_files(source_dir),
+        key=lambda x: str(x.relative_to(source_dir)).lower(),
+    ):
+        if p.suffix.lower() not in _IMAGE_EXTS_FOR_BG:
+            continue
+        rel = str(p.relative_to(source_dir))
+        if selected and rel not in selected:
+            skipped_unselected += 1
+            continue
+        ok, reason = _remove_bg_in_place(p, target, tolerance)
+        if ok:
+            changed += 1
+        elif reason in {"no_bg_pixels", "no_bg_at_corners", "bg_not_at_edges"}:
+            skipped_no_bg += 1
+        else:
+            failed += 1
+            failures.append((rel, reason))
+
+    label = target.upper() + " background"
+    if changed:
+        bits = [f"Removed {label} on {changed} image{'s' if changed != 1 else ''}"]
+        if skipped_unselected:
+            bits.append(f"{skipped_unselected} skipped as unselected")
+        if skipped_no_bg:
+            bits.append(f"{skipped_no_bg} had no matching edge background")
+        if failed:
+            bits.append(f"{failed} failed")
+        messages.success(request, " · ".join(bits) + ".")
+    else:
+        if failed:
+            head = "; ".join(f"{rel} ({why})" for rel, why in failures[:3])
+            messages.warning(request, f"No backgrounds removed. {failed} failed: {head}")
+        elif selected:
+            messages.info(request, f"No images in the current selection had a removable {target} background.")
+        else:
+            messages.info(request, f"No images in this source had a removable {target} background.")
+    return redirect("bucket_contents", bucket_name=bucket_name)
+
+
+def remove_white_background(request, bucket_name):
+    return _remove_background_action(request, bucket_name, "white")
+
+
+def remove_black_background(request, bucket_name):
+    return _remove_background_action(request, bucket_name, "black")
+
+
+# ── AI-powered background removal (rembg) ─────────────────────────────────────
+# Uses pre-trained U²-Net / IS-Net / BRIA-RMBG models that understand what a
+# subject IS regardless of background colour. Handles the cases the colour-
+# threshold variants can't: same-color subject/bg (white slipper on white),
+# fuzzy fur edges, hair, glass, complex shadows.
+
+# Whitelist of model keys we expose in the UI dropdown — mapped to a friendly
+# label + short description. We don't expose the entire `sessions_names` list
+# because some (sam, isnet-anime, ben_custom) require special setup or are
+# off-domain for our use case.
+_AI_MODELS = {
+    "isnet-general-use": ("General — IS-Net", "Best all-rounder. Sharp edges, ~2s/img on CPU."),
+    "birefnet-general":  ("High quality — BiRefNet", "Slower (~5–8s/img) but best edge detail."),
+    "u2net":             ("Classic — U²-Net",    "Faster than IS-Net. The original."),
+    "u2netp":            ("Light — U²-Net small", "Fastest, lower quality. For huge batches."),
+    "u2net_human_seg":   ("Human portrait",        "Tuned for people."),
+    "silueta":           ("Silueta",               "Tight, contour-style cuts."),
+    "bria-rmbg":         ("BRIA RMBG",             "Commercial-trained model, very sharp."),
+}
+_AI_DEFAULT_MODEL = "isnet-general-use"
+
+# Lazy session cache — opening a model loads ~170 MB into RAM, so reuse it.
+# The lock prevents the "thundering herd" failure where many concurrent web
+# threads all hit a cold cache simultaneously and each start a fresh model
+# load — N × 170 MB = OOM kills the worker.
+_AI_SESSIONS = {}
+_AI_SESSIONS_LOCK = __import__("threading").Lock()
+
+
+def _get_rembg_session(model_name: str):
+    """Return (session, error_msg). On first use of a model the weights are
+    downloaded (~170 MB for isnet-general-use, more for BiRefNet). Cached
+    after that."""
+    try:
+        from rembg import new_session
+    except ImportError:
+        return None, "rembg library not installed on the server (run `pip install rembg`)."
+    if model_name not in _AI_MODELS:
+        return None, f"Unknown model: {model_name!r}"
+    sess = _AI_SESSIONS.get(model_name)
+    if sess is None:
+        with _AI_SESSIONS_LOCK:
+            sess = _AI_SESSIONS.get(model_name)  # re-check after acquiring lock
+            if sess is None:
+                try:
+                    sess = new_session(model_name)
+                    _AI_SESSIONS[model_name] = sess
+                except Exception as e:
+                    return None, f"Failed to load model {model_name}: {e}"
+    return sess, None
+
+
+def _fill_subject_holes(rgba_bytes: bytes) -> bytes:
+    """Post-process a rembg output (PNG bytes with an alpha channel): find
+    any transparent regions that are NOT connected to the image border and
+    make them opaque again. This fixes cases like a clock where the white
+    interior of the dial got cut out alongside the white background, or any
+    image where the model carved internal "holes" through the subject.
+
+    The principle: a true background pixel must be reachable from at least
+    one image edge by a path of background pixels. Anything else is a hole
+    inside the subject and should be filled.
+
+    Returns the modified PNG bytes; on any failure (e.g. dep missing) the
+    input bytes are returned unchanged.
+    """
+    try:
+        import numpy as np
+        from scipy import ndimage as ndi
+        from PIL import Image
+        import io
+    except ImportError:
+        return rgba_bytes
+    try:
+        im = Image.open(io.BytesIO(rgba_bytes))
+        if im.mode != "RGBA":
+            im = im.convert("RGBA")
+        arr = np.array(im, dtype=np.uint8)
+    except Exception:
+        return rgba_bytes
+    if arr.ndim != 3 or arr.shape[2] != 4:
+        return rgba_bytes
+    h, w = arr.shape[:2]
+    if h < 2 or w < 2:
+        return rgba_bytes
+
+    # Binary background mask: transparent pixels.
+    bg_mask = arr[..., 3] < 8  # very-transparent → "background"
+    if not bg_mask.any():
+        return rgba_bytes
+
+    # Connected components on the background.
+    labels, n = ndi.label(bg_mask)
+    if n == 0:
+        return rgba_bytes
+
+    # Which components touch any image border? Those are real background.
+    border_labels = set()
+    border_labels.update(np.unique(labels[0, :]).tolist())
+    border_labels.update(np.unique(labels[-1, :]).tolist())
+    border_labels.update(np.unique(labels[:, 0]).tolist())
+    border_labels.update(np.unique(labels[:, -1]).tolist())
+    border_labels.discard(0)  # 0 = "not in mask" sentinel
+
+    # Components that are background-coloured but DON'T touch the border are
+    # holes inside the subject. Flip those back to fully opaque.
+    if not border_labels:
+        # No background-at-edge at all → all "transparent" regions are
+        # actually internal holes; fill everything.
+        holes = bg_mask
+    else:
+        all_labels = set(range(1, n + 1))
+        hole_labels = all_labels - border_labels
+        if not hole_labels:
+            return rgba_bytes  # no internal holes — pass through
+        holes = np.isin(labels, list(hole_labels))
+
+    arr[..., 3] = np.where(holes, 255, arr[..., 3])
+    # Re-encode and return.
+    out = io.BytesIO()
+    Image.fromarray(arr, "RGBA").save(out, "PNG", optimize=True)
+    return out.getvalue()
+
+
+def _smart_cut_animated_gif(p: Path, session, alpha_matting: bool, fill_holes: bool) -> tuple[bool, str]:
+    """Run rembg over every frame of an animated GIF and write the result as
+    an animated WebP alongside (replacing the .gif). WebP preserves the soft
+    alpha that GIF's 1-bit transparency would destroy."""
+    try:
+        from rembg import remove
+        from PIL import Image
+        import io
+    except ImportError:
+        return False, "rembg/PIL unavailable"
+    try:
+        src = Image.open(p)
+    except Exception as e:
+        return False, f"open_failed: {type(e).__name__}"
+    try:
+        n_frames = getattr(src, "n_frames", 1) or 1
+    except Exception:
+        n_frames = 1
+    if n_frames <= 1:
+        return _smart_cut_still(p, session, alpha_matting, fill_holes)
+
+    frames_rgba: list = []
+    durations: list = []
+    try:
+        for i in range(n_frames):
+            src.seek(i)
+            try:
+                dur = int(src.info.get("duration", 80) or 80)
+            except Exception:
+                dur = 80
+            durations.append(max(20, dur))
+            frame_rgba = src.convert("RGBA")
+            buf = io.BytesIO()
+            frame_rgba.save(buf, "PNG")
+            try:
+                cut = remove(
+                    buf.getvalue(),
+                    session=session,
+                    alpha_matting=alpha_matting,
+                    alpha_matting_foreground_threshold=240,
+                    alpha_matting_background_threshold=10,
+                    alpha_matting_erode_size=10,
+                )
+            except Exception as e:
+                return False, f"inference_failed_frame_{i}: {type(e).__name__}: {e}"
+            if fill_holes:
+                cut = _fill_subject_holes(cut)
+            frames_rgba.append(Image.open(io.BytesIO(cut)).convert("RGBA"))
+    except Exception as e:
+        return False, f"frame_iter_failed: {type(e).__name__}: {e}"
+
+    if not frames_rgba:
+        return False, "no_frames_produced"
+
+    target_path = p.with_suffix(".webp")
+    if target_path.exists() and target_path != p:
+        stem = p.stem
+        n_dup = 2
+        while True:
+            candidate = p.with_name(f"{stem}_{n_dup}.webp")
+            if not candidate.exists():
+                target_path = candidate
+                break
+            n_dup += 1
+    try:
+        frames_rgba[0].save(
+            target_path,
+            format="WEBP",
+            save_all=True,
+            append_images=frames_rgba[1:],
+            duration=durations,
+            loop=0,
+            disposal=2,
+            lossless=False,
+            quality=92,
+            method=4,
+        )
+    except OSError as e:
+        return False, f"save_failed: {type(e).__name__}"
+    if target_path != p:
+        try: p.unlink()
+        except OSError: pass
+    return True, "ok"
+
+
+def _smart_cut_one(p: Path, session, alpha_matting: bool, fill_holes: bool) -> tuple[bool, str]:
+    """Dispatcher: animated GIFs → animated WebP; everything else → PNG."""
+    if p.suffix.lower() == ".gif":
+        return _smart_cut_animated_gif(p, session, alpha_matting, fill_holes)
+    return _smart_cut_still(p, session, alpha_matting, fill_holes)
+
+
+def _smart_cut_still(p: Path, session, alpha_matting: bool, fill_holes: bool) -> tuple[bool, str]:
+    """Single-frame branch — replaces the file with a transparent-bg PNG."""
+    try:
+        from rembg import remove
+    except ImportError:
+        return False, "rembg unavailable"
+    try:
+        with open(p, "rb") as f:
+            in_bytes = f.read()
+    except OSError as e:
+        return False, f"read_failed: {type(e).__name__}"
+    try:
+        out_bytes = remove(
+            in_bytes,
+            session=session,
+            alpha_matting=alpha_matting,
+            alpha_matting_foreground_threshold=240,
+            alpha_matting_background_threshold=10,
+            alpha_matting_erode_size=10,
+        )
+    except Exception as e:
+        return False, f"inference_failed: {type(e).__name__}: {e}"
+    if fill_holes:
+        out_bytes = _fill_subject_holes(out_bytes)
+    target_path = p.with_suffix(".png")
+    if target_path.exists() and target_path != p:
+        stem = p.stem
+        n_dup = 2
+        while True:
+            candidate = p.with_name(f"{stem}_{n_dup}.png")
+            if not candidate.exists():
+                target_path = candidate
+                break
+            n_dup += 1
+    try:
+        with open(target_path, "wb") as f:
+            f.write(out_bytes)
+    except OSError as e:
+        return False, f"save_failed: {type(e).__name__}"
+    if target_path != p:
+        try: p.unlink()
+        except OSError: pass
+    return True, "ok"
+
+
+def smart_cut_background(request, bucket_name):
+    """🤖 AI smart cut — runs every image (or the selection) through rembg.
+    Model is chosen via POST/GET `model` param; defaults to isnet-general-use.
+    Use `matting=1` in the form to enable alpha matting (slower, softer edges).
+    """
+    source_dir = (LOCAL_SOURCES_ROOT / bucket_name).resolve()
+    root_dir = LOCAL_SOURCES_ROOT.resolve()
+    if root_dir not in source_dir.parents or not source_dir.exists() or not source_dir.is_dir():
+        messages.error(request, "Source not found.")
+        return redirect("list_buckets")
+
+    model_name = (request.POST.get("model") or request.GET.get("model") or _AI_DEFAULT_MODEL).strip()
+    alpha_matting = str(request.POST.get("matting") or request.GET.get("matting") or "0").lower() in ("1", "true", "on", "yes")
+    # Default ON — most subjects benefit from internal-hole filling. Users
+    # who want raw model output (e.g. ring-shaped subjects where the centre
+    # really IS see-through) can untick the checkbox.
+    fill_holes = str(request.POST.get("fill_holes") or request.GET.get("fill_holes") or "1").lower() in ("1", "true", "on", "yes")
+
+    session, err = _get_rembg_session(model_name)
+    if err:
+        messages.error(request, f"Smart cut: {err}")
+        return redirect("bucket_contents", bucket_name=bucket_name)
+
+    # Selection-aware (same convention as other tools).
+    selected = set()
+    if request.method == "POST":
+        for raw in request.POST.getlist("selected"):
+            s = (raw or "").strip().lstrip("/")
+            if s:
+                selected.add(s)
+
+    changed = 0
+    failed = 0
+    skipped_unselected = 0
+    failures = []
+
+    for p in sorted(
+        _local_source_dir_media_files(source_dir),
+        key=lambda x: str(x.relative_to(source_dir)).lower(),
+    ):
+        if p.suffix.lower() not in _IMAGE_EXTS_FOR_BG:
+            continue
+        rel = str(p.relative_to(source_dir))
+        if selected and rel not in selected:
+            skipped_unselected += 1
+            continue
+        ok, reason = _smart_cut_one(p, session, alpha_matting, fill_holes)
+        if ok:
+            changed += 1
+        else:
+            failed += 1
+            failures.append((rel, reason))
+
+    friendly = _AI_MODELS.get(model_name, (model_name, ""))[0]
+    matting_suffix = " + alpha matting" if alpha_matting else ""
+    if fill_holes:
+        matting_suffix += " + hole fill"
+    if changed:
+        bits = [f"Smart-cut {changed} image{'s' if changed != 1 else ''} using {friendly}{matting_suffix}"]
+        if skipped_unselected:
+            bits.append(f"{skipped_unselected} skipped as unselected")
+        if failed:
+            bits.append(f"{failed} failed")
+        messages.success(request, " · ".join(bits) + ".")
+    elif failed:
+        head = "; ".join(f"{rel} ({why})" for rel, why in failures[:3])
+        messages.warning(request, f"No images cut. {failed} failed: {head}")
+    elif selected:
+        messages.info(request, "No images in the current selection.")
+    else:
+        messages.info(request, "No images in this source to cut.")
+    return redirect("bucket_contents", bucket_name=bucket_name)
+
+
 def rename_source(request, bucket_name):
     if request.method != "POST":
         return redirect("bucket_contents", bucket_name=bucket_name)

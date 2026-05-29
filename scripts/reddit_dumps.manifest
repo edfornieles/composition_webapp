@@ -1,0 +1,37 @@
+# Reddit Pushshift dump manifest for fetch_reddit_dumps.py
+#
+# Each non-comment line is one of:
+#   - a .torrent URL:  https://academictorrents.com/download/<INFOHASH>.torrent
+#   - a magnet link:   magnet:?xt=urn:btih:<INFOHASH>&dn=...
+#   - a direct HTTP:   https://<mirror>/<file>.zst
+#
+# Optional label prefix (label is ignored by aria2c, just for your notes):
+#   Menopause<TAB>magnet:?xt=urn:btih:...
+#
+# === HOW TO POPULATE THIS FILE ===
+#
+# Per-subreddit slices (recommended — small, fast):
+#   1. Go to https://academictorrents.com/
+#   2. Search for the subreddit name + "reddit" (e.g. "Menopause reddit").
+#   3. Or browse Watchful1's "subreddits24" / "subreddits23" collections.
+#   4. On each result page, copy the magnet link or .torrent URL, paste below.
+#
+# Full Pushshift bundle (~3 TB — overkill unless you want everything):
+#   - https://academictorrents.com/details/9c263fc85366c1ef8f5bb9da0203f4c8c8db75f4
+#     (Pushshift dumps 2005-2023 — verify on the page before trusting this hash)
+#
+# Arctic Shift (post-2023, HTTP):
+#   - https://arctic-shift.photon-reddit.com/download-tool
+#     Generates per-subreddit slices on demand. Copy the resulting URL here.
+#
+# === TARGET SUBREDDITS ===
+# Core: Menopause, Perimenopause, Hysterectomy, WomensHealth
+# Generational: GenX, AskWomenOver40, AskWomenOver30, AskWomen
+# Parenting: breakingmom, SAHM, Mommit, workingmoms, SingleMoms, EmptyNesters, stepparents
+# Relationships: relationship_advice, Divorce, survivinginfidelity, DeadBedrooms,
+#                dating_over_40, widows, raisedbynarcissists, narcissisticabuse, CPTSD
+# Body: xxfitness, loseit, progresspics, femalefashionadvice
+# Identity: TwoXChromosomes, childfree, AITA, TrueOffMyChest, offmychest, Fibromyalgia
+#
+# === PASTE URLS BELOW ===
+

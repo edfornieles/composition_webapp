@@ -222,8 +222,13 @@
     }
 
     function firstSentence(text) {
-        var t = (text || "").trim().replace(/\s+/g, " ");
-        if (!t) return "";
+        var raw = (text || "").trim();
+        if (!raw) return "";
+        // Greentext / be-me thoughts: preserve newlines, don't split by punctuation.
+        if (/(^|\n)\s*>/.test(raw)) {
+            return raw;
+        }
+        var t = raw.replace(/\s+/g, " ");
         var m = t.match(/.*?[.!?](?=\s|$)/);
         return (m ? m[0] : t).trim();
     }

@@ -47,3 +47,12 @@ temp/
 
 # Contracts (standalone Foundry repo)
 contracts/
+
+# Imageboard corpora (large, possibly sensitive raw data)
+corpora/imageboards/
+composition_sources_unprocessed/4chan__fit__body_discipline/
+models/fit_body_discipline*
+*.safetensors
+*.gguf
+*.sqlite3-shm
+*.sqlite3-wal

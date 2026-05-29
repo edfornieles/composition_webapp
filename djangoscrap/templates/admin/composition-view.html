@@ -3,6 +3,34 @@
 {% block content %}
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 
+<style>
+  /* Per-tile loading overlay. Sits on top of the poster/video thumb while a
+     media-generation subprocess is in flight. Toggled by JS adding/removing
+     `.is-generating` on the .comp-tile element. */
+  .comp-tile .gen-overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 10px;
+      background: rgba(0, 0, 0, 0.62);
+      color: #fff;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.15s ease;
+      z-index: 10;
+  }
+  .comp-tile.is-generating .gen-overlay { opacity: 1; }
+  .comp-tile .gen-spinner {
+      width: 38px; height: 38px; border-radius: 50%;
+      border: 3px solid rgba(255,255,255,0.22);
+      border-top-color: #ffc107;     /* matches the rendering-badge yellow */
+      animation: gen-spin 0.9s linear infinite;
+  }
+  .comp-tile .gen-label {
+      font-size: 0.78rem; font-weight: 600; letter-spacing: 0.04em;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  }
+  @keyframes gen-spin { to { transform: rotate(360deg); } }
+</style>
+
 <!-- Content Wrapper. Contains page content -->
 <div class="content-wrapper">
     <!-- Content Header (Page header) -->
@@ -200,7 +228,14 @@
                                 <div id="tileViewGrid" class="d-none" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;">
                                     {% for comp in compositions %}
                                     <div class="card shadow-sm comp-tile" data-comp-id="{{ comp.id }}">
-                                        <div style="position:relative;aspect-ratio:1/1;background:#111;overflow:hidden;">
+                                        <div class="comp-tile-thumb" style="position:relative;aspect-ratio:1/1;background:#111;overflow:hidden;">
+                                            <!-- Loading overlay shown while a media-gen subprocess is running.
+                                                 Activated by adding .is-generating to .comp-tile from JS; the
+                                                 polling loop removes it once the badges report ready/failed. -->
+                                            <div class="gen-overlay" aria-hidden="true">
+                                                <div class="gen-spinner"></div>
+                                                <div class="gen-label">Generating…</div>
+                                            </div>
                                             {% if comp.preview_video_url %}
                                             <video autoplay muted loop playsinline preload="auto"
                                                    style="width:100%;height:100%;object-fit:cover;display:block;"
@@ -217,9 +252,17 @@
                                                        title="Select {{ comp.name }}"
                                                        style="width:1.2rem;height:1.2rem;cursor:pointer;">
                                             </span>
-                                            {% if comp.ready_for_deployment %}
-                                            <span style="position:absolute;top:6px;left:6px;background:rgba(40,167,69,0.85);color:#fff;font-size:0.7rem;padding:2px 6px;border-radius:4px;">Ready</span>
-                                            {% endif %}
+                                            <button type="button"
+                                                class="tile-approve-btn"
+                                                data-comp-id="{{ comp.id }}"
+                                                data-ready-url="{% url 'set_composition_ready' comp.id %}"
+                                                data-ready="{{ comp.ready_for_deployment|yesno:'1,0' }}"
+                                                title="Mark grid as approved"
+                                                style="position:absolute;top:6px;left:6px;border:none;border-radius:4px;padding:2px 8px;font-size:0.75rem;font-weight:700;cursor:pointer;line-height:1.4;
+                                                       background:{% if comp.ready_for_deployment %}rgba(40,167,69,0.92){% else %}rgba(0,0,0,0.38){% endif %};
+                                                       color:#fff;transition:background 0.2s;">
+                                                {% if comp.ready_for_deployment %}✓ Happy{% else %}✓{% endif %}
+                                            </button>
                                             <!-- Media status badges -->
                                             <span class="media-badges" style="position:absolute;bottom:6px;left:6px;display:flex;gap:4px;">
                                                 <span class="media-badge media-badge-poster"
@@ -250,7 +293,17 @@
                                                 <a href="{{ comp.url }}" target="_blank" class="btn btn-outline-primary btn-sm" style="font-size:0.7rem;padding:2px 6px;">Open</a>
                                                 {% endif %}
                                                 <a href="{% url 'composition-edit' comp.id %}?return_page={{ compositions.number }}" class="btn btn-danger btn-sm" style="font-size:0.7rem;padding:2px 6px;">Edit</a>
-                                                <a href="{% url 'composition_generate_grid' comp.id %}" class="btn btn-outline-info btn-sm" style="font-size:0.7rem;padding:2px 6px;">Grid</a>
+                                                {% if comp.grid_id %}
+                                                <a href="{% url 'composition_folder_view' comp.grid_id %}"
+                                                   class="btn btn-outline-success btn-sm"
+                                                   style="font-size:0.7rem;padding:2px 6px;"
+                                                   title="Open grid editor for folder {{ comp.grid_id }}">Grid</a>
+                                                {% else %}
+                                                <form method="post" action="{% url 'composition_generate_grid' comp.id %}" class="m-0 d-inline">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="btn btn-outline-info btn-sm" style="font-size:0.7rem;padding:2px 6px;" title="Generate folder of 9 clones">Grid</button>
+                                                </form>
+                                                {% endif %}
                                                 <!-- Generate media dropdown -->
                                                 <div class="dropdown">
                                                     <button class="btn btn-outline-secondary btn-sm dropdown-toggle comp-gen-btn"
@@ -457,6 +510,18 @@
                     applyBadge(clipBadge,   data.assets.clip?.status   || 'none');
                     const stillRendering = ['rendering'].includes(data.assets.poster?.status) || ['rendering'].includes(data.assets.clip?.status);
                     if (!stillRendering) {
+                        // Final status arrived (ready/failed/none) — clear
+                        // the spinner overlay and bust the poster cache so
+                        // the freshly-rendered thumb appears immediately.
+                        tile.classList.remove('is-generating');
+                        const thumbImg = tile.querySelector('img');
+                        if (thumbImg && data.assets.poster?.status === 'ready' && thumbImg.src) {
+                            try {
+                                const u = new URL(thumbImg.src, location.origin);
+                                u.searchParams.set('v', Date.now().toString());
+                                thumbImg.src = u.toString();
+                            } catch (_) {}
+                        }
                         clearInterval(id);
                         polling.delete(compId);
                     }
@@ -477,8 +542,21 @@
 
             if (genBtn) { genBtn.disabled = true; genBtn.textContent = '⏳'; }
 
-            // Optimistically set badges to rendering
+            // Optimistically: set badges to rendering AND show the per-tile
+            // spinner overlay so the user has a clear visual signal that
+            // their click registered and the capture is in flight.
             if (tile) {
+                tile.classList.add('is-generating');
+                const label = tile.querySelector('.gen-label');
+                if (label) {
+                    const kindLabel = (
+                        kinds === 'poster' ? 'Generating poster…' :
+                        kinds === 'preview_10s' ? 'Generating 10s clip…' :
+                        force ? 'Regenerating media…' :
+                        'Generating media…'
+                    );
+                    label.textContent = kindLabel;
+                }
                 kinds.split(',').forEach(k => {
                     const cls = k === 'poster' ? '.media-badge-poster' : '.media-badge-clip';
                     applyBadge(tile.querySelector(cls), 'rendering');
@@ -498,18 +576,24 @@
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 if (tile) startPolling(compId, tile);
             } catch (err) {
+                // POST itself failed — clear the optimistic overlay so the
+                // user doesn't see a spinner that will never resolve.
+                if (tile) tile.classList.remove('is-generating');
                 alert('Generate failed: ' + err.message);
             } finally {
                 if (genBtn) { genBtn.disabled = false; genBtn.textContent = '⚙'; }
             }
         });
 
-        // Auto-start polling for any tile already in rendering state
+        // Auto-start polling for any tile already in rendering state. Also
+        // show the spinner overlay so a page refresh during a long capture
+        // still gives clear visual feedback that the job is in flight.
         document.querySelectorAll('.comp-tile').forEach(tile => {
             const compId = tile.dataset.compId;
             const posterStatus = tile.querySelector('.media-badge-poster')?.dataset.status;
             const clipStatus   = tile.querySelector('.media-badge-clip')?.dataset.status;
             if (posterStatus === 'rendering' || clipStatus === 'rendering') {
+                tile.classList.add('is-generating');
                 startPolling(compId, tile);
             }
         });
@@ -547,6 +631,49 @@
                     checkbox.disabled = false;
                 }
             });
+        });
+    })();
+
+    // ── Tile approve toggle ──────────────────────────────────────────────────
+    (function () {
+        const getCsrf = () => {
+            const inp = document.querySelector('input[name="csrfmiddlewaretoken"]');
+            if (inp && inp.value) return inp.value;
+            const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+            return m ? m[1] : '';
+        };
+        const applyApproveStyle = (btn, ready) => {
+            btn.style.cssText = btn.style.cssText
+                .replace(/background[^;]*;?/g, '')
+                .trimEnd();
+            btn.style.backgroundColor = ready ? 'rgba(40,167,69,0.92)' : 'rgba(0,0,0,0.38)';
+            btn.textContent = ready ? '✓ Happy' : '✓';
+            btn.dataset.ready = ready ? '1' : '0';
+        };
+        document.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.tile-approve-btn');
+            if (!btn) return;
+            e.stopPropagation();
+            const url = btn.dataset.readyUrl;
+            const isReady = btn.dataset.ready === '1';
+            const newReady = !isReady;
+            btn.disabled = true;
+            const body = new FormData();
+            if (newReady) body.append('ready_for_deployment', 'on');
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest' },
+                    body,
+                    credentials: 'same-origin',
+                });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                applyApproveStyle(btn, newReady);
+            } catch (err) {
+                alert('Could not update: ' + err.message);
+            } finally {
+                btn.disabled = false;
+            }
         });
     })();
 

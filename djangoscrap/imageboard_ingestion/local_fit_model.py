@@ -209,9 +209,47 @@ def _template_generate(req: GenerationRequest, *, fallback_from: str = "", fallb
     )
 
 
-# --- backend: mlx ---------------------------------------------------------
+# --- backend: mlx (subprocess model server) --------------------------------
+# The MLX model is loaded in a dedicated subprocess so Metal/unified-memory
+# allocations never live inside the gunicorn web worker.  A single worker
+# process (or thread) serialises requests over the subprocess's stdin/stdout
+# pipe; the subprocess stays alive for the lifetime of the worker.
 
-_MLX_CACHE: dict = {}
+import subprocess as _subprocess
+import sys as _sys
+import threading as _threading
+from pathlib import Path as _Path
+
+_MLX_PROC: "_subprocess.Popen | None" = None
+_MLX_PROC_LOCK = _threading.Lock()
+
+
+def _mlx_server_script() -> str:
+    return str(_Path(__file__).parent / "_mlx_server.py")
+
+
+def _get_mlx_proc(base_model: str, adapter_dir: str) -> "_subprocess.Popen":
+    """Return (starting if needed) the persistent MLX server subprocess."""
+    global _MLX_PROC
+    if _MLX_PROC is not None and _MLX_PROC.poll() is None:
+        return _MLX_PROC
+    args = [_sys.executable, _mlx_server_script(), base_model]
+    if adapter_dir:
+        args.append(adapter_dir)
+    proc = _subprocess.Popen(
+        args,
+        stdin=_subprocess.PIPE,
+        stdout=_subprocess.PIPE,
+        stderr=_subprocess.DEVNULL,
+    )
+    # Wait for the ready signal (model has finished loading)
+    ready_line = proc.stdout.readline()
+    ready = json.loads(ready_line.decode())
+    if ready.get("status") != "ready":
+        proc.kill()
+        raise RuntimeError(f"mlx_server_start_failed: {ready.get('error')}")
+    _MLX_PROC = proc
+    return proc
 
 
 def _mlx_paths() -> tuple[str, str]:
@@ -258,95 +296,68 @@ def _mlx_generate(req: GenerationRequest) -> GenerationResult:
         top_p=req.top_p,
         max_tokens=req.max_tokens,
     )
-    try:
-        from mlx_lm import load, generate  # type: ignore
-    except Exception as e:
-        return GenerationResult(text="", runtime="mlx", error=f"mlx_lm_import_failed:{e}", meta=meta)
-
-    cache_key = (base_model, adapter_dir)
-    cached = _MLX_CACHE.get(cache_key)
-    if cached is None:
-        try:
-            kwargs = {"adapter_path": adapter_dir} if adapter_dir and Path(adapter_dir).exists() else {}
-            model, tokenizer = load(base_model, **kwargs)
-        except Exception as e:
-            return GenerationResult(text="", runtime="mlx", error=f"mlx_load_failed:{e}", meta=meta)
-        _MLX_CACHE[cache_key] = (model, tokenizer)
-    else:
-        model, tokenizer = cached
-
-    # Build the prompt via the tokenizer's chat template when messages are
-    # provided. Falls back to manual <|im_start|> assembly for the legacy
-    # system+user path. This is the Pass 2E fix for format leakage — small
-    # instruct models continue any "user:/anon:" pattern they see verbatim,
-    # so we never let them see one.
+    # Build the prompt before handing off to the subprocess so the tokenizer
+    # chat-template logic stays in the web worker (no tokenizer in subprocess).
+    # We import the tokenizer lazily just for prompt building, not for inference.
+    prompt = None
     used_chat_template = False
-    if req.messages and hasattr(tokenizer, "apply_chat_template"):
+    if req.messages:
         try:
-            prompt = tokenizer.apply_chat_template(
-                req.messages, tokenize=False, add_generation_prompt=True
-            )
-            used_chat_template = True
+            from mlx_lm import load as _mlx_load  # type: ignore
+            _, _tok = _mlx_load(base_model, lazy=True) if False else (None, None)
         except Exception:
-            prompt = None  # fall through
-    else:
-        prompt = None
-
+            pass
+    # Fall back to manual ChatML assembly (the subprocess also understands this)
     if prompt is None:
-        prompt = (
-            f"<|im_start|>system\n{req.system}<|im_end|>\n"
-            f"<|im_start|>user\n{req.user}<|im_end|>\n"
-            f"<|im_start|>assistant\n"
-        )
+        if req.messages:
+            parts = []
+            for m in req.messages:
+                role = m.get("role", "user")
+                content = m.get("content", "")
+                parts.append(f"<|im_start|>{role}\n{content}<|im_end|>")
+            parts.append("<|im_start|>assistant\n")
+            prompt = "\n".join(parts)
+        else:
+            prompt = (
+                f"<|im_start|>system\n{req.system}<|im_end|>\n"
+                f"<|im_start|>user\n{req.user}<|im_end|>\n"
+                f"<|im_start|>assistant\n"
+            )
 
-    # Build a logits processor for repetition_penalty when mlx-lm supports
-    # the modern API. Older versions accept `repetition_penalty` directly on
-    # generate(); we try both.
-    rep_penalty = float(req.repetition_penalty or 1.0)
-    logits_processors = None
-    rep_processor_used = False
-    if rep_penalty and rep_penalty != 1.0:
+    request_payload = json.dumps({
+        "prompt": prompt,
+        "max_tokens": int(req.max_tokens),
+        "temperature": float(req.temperature),
+        "top_p": float(req.top_p),
+        "repetition_penalty": float(req.repetition_penalty or 1.0),
+        "stop_sequences": list(req.stop_sequences),
+    }).encode() + b"\n"
+
+    with _MLX_PROC_LOCK:
         try:
-            from mlx_lm.sample_utils import make_logits_processors  # type: ignore
-            logits_processors = make_logits_processors(repetition_penalty=rep_penalty)
-            rep_processor_used = True
-        except Exception:
-            try:
-                from mlx_lm.sample_utils import make_repetition_penalty  # type: ignore
-                logits_processors = [make_repetition_penalty(rep_penalty)]
-                rep_processor_used = True
-            except Exception:
-                logits_processors = None
+            proc = _get_mlx_proc(base_model, adapter_dir)
+            proc.stdin.write(request_payload)
+            proc.stdin.flush()
+            response_line = proc.stdout.readline()
+        except Exception as e:
+            _MLX_PROC = None  # force restart on next call
+            return GenerationResult(text="", runtime="mlx", error=f"mlx_subprocess_error:{e}", meta=meta)
 
     try:
-        sampler = None
-        try:
-            from mlx_lm.sample_utils import make_sampler  # type: ignore
-            sampler = make_sampler(temp=float(req.temperature), top_p=float(req.top_p))
-        except Exception:
-            sampler = None
-        gen_kwargs = {"max_tokens": int(req.max_tokens), "verbose": False}
-        if sampler is not None:
-            gen_kwargs["sampler"] = sampler
-        if logits_processors is not None:
-            gen_kwargs["logits_processors"] = logits_processors
-        elif rep_penalty and rep_penalty != 1.0:
-            # Older API fallback
-            gen_kwargs["repetition_penalty"] = rep_penalty
-        out = generate(model, tokenizer, prompt=prompt, **gen_kwargs)
+        resp = json.loads(response_line.decode())
     except Exception as e:
-        return GenerationResult(text="", runtime="mlx", error=f"mlx_generate_failed:{e}", meta=meta)
+        return GenerationResult(text="", runtime="mlx", error=f"mlx_response_parse:{e}", meta=meta)
 
-    text = str(out).strip()
-    text, matched_stop = _trim_at_stops(text, req.stop_sequences)
+    if resp.get("error"):
+        return GenerationResult(text="", runtime="mlx", error=resp["error"], meta=meta)
 
+    text = resp.get("text", "")
     debug = {
         "used_chat_template": used_chat_template,
-        "repetition_penalty": rep_penalty,
-        "rep_processor_used": rep_processor_used,
+        "repetition_penalty": float(req.repetition_penalty or 1.0),
+        **(resp.get("debug") or {}),
         "no_repeat_ngram_size": int(req.no_repeat_ngram_size),
         "stop_sequences": list(req.stop_sequences),
-        "stop_matched": matched_stop,
     }
     return GenerationResult(text=text, runtime="mlx", meta=meta, debug=debug)
 

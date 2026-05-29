@@ -358,6 +358,175 @@
             from { transform: rotateY(0deg); }
             to   { transform: rotateY(360deg); }
         }
+        /* Same spin, opposite direction. Used by the "Rotate (reverse)"
+           overlay effect — visually distinct from rotate_3d because the
+           image rotates left-to-right instead of right-to-left, which
+           pairs well with rotate_3d when two folders are layered. */
+        @keyframes overlaySpinContinuousReverse {
+            from { transform: rotateY(0deg); }
+            to   { transform: rotateY(-360deg); }
+        }
+        /* Vertical spin — top-to-bottom forward tumble around the X axis.
+           Used by the "Rotate (vertical)" overlay effect. Visually a
+           card-flip-forward rather than a barrel-roll. The back face needs
+           scaleY(-1) (not scaleX) so the image reads correctly when seen
+           from behind during the back half of the rotation. */
+        @keyframes overlaySpinContinuousVertical {
+            from { transform: rotateX(0deg); }
+            to   { transform: rotateX(360deg); }
+        }
+        /* ── TEXT LAYERS — Paik / Ashley TV-opera-inspired typography ─── */
+        .text-layers-container {
+            z-index: 95;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .text-layer {
+            position: absolute;
+            white-space: nowrap;
+            font-family: "Inter", sans-serif;
+            font-weight: 700;
+            color: #fff;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+            user-select: none;
+            line-height: 1.1;
+            letter-spacing: 0.01em;
+            opacity: 0;
+            transition: opacity 0.2s linear;
+            -webkit-font-smoothing: antialiased;
+        }
+        /* z-target slot stacking: above-bg ≈ 50, above-fg ≈ 80, above-overlay ≈ 95, top ≈ 200 */
+        .text-layer.zt-above-bg      { z-index: 50; }
+        .text-layer.zt-above-fg      { z-index: 80; }
+        .text-layer.zt-above-overlay { z-index: 95; }
+        .text-layer.zt-top           { z-index: 200; }
+        .text-layer.visible          { opacity: 1; }
+        /* Anchors */
+        .text-layer.anchor-left   { transform-origin: left center;   text-align: left; }
+        .text-layer.anchor-right  { transform-origin: right center;  text-align: right; }
+        .text-layer.anchor-center { transform-origin: center center; text-align: center; }
+        /* Preset: flash — fade in, hold, fade out (TV title card) */
+        @keyframes tl-flash {
+            0%   { opacity: 0; }
+            10%  { opacity: 1; }
+            85%  { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        .text-layer.preset-flash { animation: tl-flash var(--tl-dur,4s) linear forwards; }
+        /* Preset: flicker — Paik CRT glitch */
+        @keyframes tl-flicker {
+            0%, 100%   { opacity: 1; }
+            8%   { opacity: 0.25; }
+            10%  { opacity: 1; }
+            18%  { opacity: 0.65; }
+            20%  { opacity: 1; }
+            45%  { opacity: 0.1; }
+            48%  { opacity: 1; }
+            68%  { opacity: 0.4; }
+            70%  { opacity: 1; }
+            91%  { opacity: 0.2; }
+            93%  { opacity: 1; }
+        }
+        .text-layer.preset-flicker { animation: tl-flicker 0.8s infinite linear; }
+        /* Preset: scroll-band — right→left horizontal ticker */
+        @keyframes tl-scrollband {
+            from { transform: translate(100vw, -50%); }
+            to   { transform: translate(-100%, -50%); }
+        }
+        .text-layer.preset-scroll-band {
+            top: 50%; left: 0; transform: translateY(-50%);
+            animation: tl-scrollband var(--tl-dur, 12s) linear infinite;
+        }
+        /* Preset: scroll-up — bottom→top (Ashley credits) */
+        @keyframes tl-scrollup {
+            from { transform: translate(-50%, 100vh); }
+            to   { transform: translate(-50%, -100%); }
+        }
+        .text-layer.preset-scroll-up {
+            left: 50%;
+            animation: tl-scrollup var(--tl-dur, 18s) linear infinite;
+        }
+        /* Preset: bounce — text bounces L↔R across the screen */
+        @keyframes tl-bounce-x {
+            0%   { left: 0%;  transform: translateY(-50%) scaleX(1); }
+            10%  { transform: translateY(-50%) scaleX(1.1); }
+            12%  { transform: translateY(-50%) scaleX(0.95); }
+            14%  { transform: translateY(-50%) scaleX(1); }
+            50%  { left: calc(100% - var(--tl-width, 200px)); transform: translateY(-50%) scaleX(1); }
+            60%  { transform: translateY(-50%) scaleX(1.1); }
+            62%  { transform: translateY(-50%) scaleX(0.95); }
+            64%  { transform: translateY(-50%) scaleX(1); }
+            100% { left: 0%; transform: translateY(-50%) scaleX(1); }
+        }
+        .text-layer.preset-bounce {
+            top: 50%;
+            animation: tl-bounce-x var(--tl-dur, 6s) cubic-bezier(0.45,0,0.55,1) infinite;
+        }
+        /* Preset: glitch — random horizontal slice displacement */
+        @keyframes tl-glitch {
+            0%, 100% { clip-path: inset(0 0 0 0); transform: translate(0,0); }
+            8%  { clip-path: inset(20% 0 30% 0); transform: translate(4px,0); }
+            12% { clip-path: inset(60% 0 10% 0); transform: translate(-3px,0); }
+            22% { clip-path: inset(0 0 0 0); transform: translate(0,0); }
+            42% { clip-path: inset(40% 0 50% 0); transform: translate(3px,0); }
+            48% { clip-path: inset(0 0 0 0); transform: translate(0,0); }
+            66% { clip-path: inset(70% 0 10% 0); transform: translate(-4px,0); }
+            72% { clip-path: inset(0 0 0 0); transform: translate(0,0); }
+        }
+        .text-layer.preset-glitch { animation: tl-glitch 1.2s steps(1) infinite; }
+        /* Preset: rgb-shift — chromatic aberration via text-shadow */
+        @keyframes tl-rgbshift {
+            0%, 100% { text-shadow: -2px 0 #f0f, 2px 0 #0ff; }
+            50%      { text-shadow:  2px 0 #f0f, -2px 0 #0ff; }
+        }
+        .text-layer.preset-rgb-shift { animation: tl-rgbshift 0.18s linear infinite; }
+        /* Preset: strobe — square-wave alpha pulse */
+        @keyframes tl-strobe {
+            0%, 49%   { opacity: 1; }
+            50%, 100% { opacity: 0; }
+        }
+        .text-layer.preset-strobe { animation: tl-strobe 0.5s steps(1) infinite; }
+        /* Preset: drop-in — fall from top with bounce settle */
+        @keyframes tl-dropin {
+            0%   { transform: translate(-50%, -200%); }
+            60%  { transform: translate(-50%, 10%); }
+            75%  { transform: translate(-50%, -5%); }
+            85%  { transform: translate(-50%, 3%); }
+            100% { transform: translate(-50%, 0%); }
+        }
+        .text-layer.preset-drop-in {
+            left: 50%;
+            animation: tl-dropin var(--tl-dur, 1.5s) cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+        /* Preset: typewriter & karaoke render via JS (per-char timing) — base style only */
+        .text-layer.preset-typewriter, .text-layer.preset-karaoke { white-space: pre-wrap; }
+        .text-layer .tl-tw-cursor {
+            display: inline-block; width: 0.5ch; margin-left: 1px;
+            background: currentColor; animation: tl-tw-blink 0.8s steps(1) infinite;
+        }
+        @keyframes tl-tw-blink { 50% { opacity: 0; } }
+        .text-layer .tl-tw-hidden { visibility: hidden; }
+        .text-layer.preset-karaoke {
+            color: #ffd84c;
+            text-shadow: 0 2px 0 #000, 0 0 10px rgba(0,0,0,0.7);
+            font-size: 5vh !important;
+            letter-spacing: 0.03em;
+            text-align: center;
+        }
+        .text-layer.preset-karaoke .tl-word { display: inline-block; transition: color 0.05s linear; padding: 0 0.15em; }
+        .text-layer.preset-karaoke .tl-word.active { color: #fff; }
+        .text-layer.preset-karaoke .tl-word.done   { color: rgba(255, 216, 76, 0.55); }
+        .tl-karaoke-ball {
+            position: absolute;
+            width: 1.2em; height: 1.2em;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 30%, #fff 0%, #ffd84c 60%, #b07c00 100%);
+            box-shadow: 0 0 12px rgba(255, 216, 76, 0.8);
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            will-change: transform, left, top;
+        }
+
         @keyframes overlaySpinFrontHalf {
             0%   { transform: perspective(1600px) rotateY(-90deg); }
             22%  { transform: perspective(1600px) rotateY(0deg); }
@@ -834,6 +1003,46 @@
             0% { transform: scale(0.12); opacity: 1; }
             100% { transform: scale(6.2); opacity: 1; }
         }
+        /* Zoom-forward: speeding-into-the-screen feel. Layers start as a tiny
+           dot at center and accelerate outward at a much higher final scale than
+           the tunnel modes, with motion blur ramping in near the end so the
+           image streaks past like hyperspace. */
+        @keyframes zoomForwardExpand {
+            0%   { transform: scale(0.04); opacity: 0; filter: blur(0); }
+            6%   { opacity: 1; }
+            55%  { filter: blur(0); }
+            85%  { opacity: 0.85; }
+            100% { transform: scale(7); opacity: 0; filter: blur(14px); }
+        }
+        /* Large-screen variant: lower peak scale and softer blur so the image
+           reads cleanly on a 55"+ display instead of smearing into noise. */
+        @keyframes zoomForwardExpandLarge {
+            0%   { transform: scale(0.04); opacity: 0; filter: blur(0); }
+            6%   { opacity: 1; }
+            60%  { filter: blur(0); }
+            88%  { opacity: 0.85; }
+            100% { transform: scale(5.5); opacity: 0; filter: blur(7px); }
+        }
+        /* Slow / large-screen variant: long hold at readable scale, very gentle
+           terminal blur — images drift past rather than streak. */
+        @keyframes zoomForwardExpandSlow {
+            0%   { transform: scale(0.06); opacity: 0; filter: blur(0); }
+            8%   { opacity: 1; }
+            65%  { filter: blur(0); }
+            90%  { opacity: 0.88; }
+            100% { transform: scale(4.5); opacity: 0; filter: blur(5px); }
+        }
+        /* Fullscreen variant: tighter peak scale and gentler blur because at
+           4K+ resolution each layer at scale 4.5 paints ~17000×10000 px — the
+           GPU thrashes textures and flickers. Smaller peak keeps total
+           composited pixels manageable. */
+        @keyframes zoomForwardExpandFullscreen {
+            0%   { transform: scale(0.06); opacity: 0; filter: blur(0); }
+            10%  { opacity: 1; }
+            70%  { filter: blur(0); }
+            92%  { opacity: 0.9; }
+            100% { transform: scale(3.5); opacity: 0; filter: blur(4px); }
+        }
         @keyframes tunnelBurstExplode {
             0% {
                 transform: translate(var(--burst-from-x, 0%), var(--burst-from-y, 0%))
@@ -1293,6 +1502,421 @@
             mix-blend-mode: multiply;
             will-change: opacity;
         }
+        .cube-room {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            transform-style: preserve-3d;
+            perspective: 1100px;
+            will-change: transform, filter;
+        }
+        .cube-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            transform-style: preserve-3d;
+            will-change: transform;
+        }
+        .cube-face {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 44vmin;
+            height: 44vmin;
+            margin-top: -22vmin;
+            margin-left: -22vmin;
+            transform-style: preserve-3d;
+            backface-visibility: hidden;
+            overflow: hidden;
+            will-change: transform, opacity;
+        }
+        .cube-face-media,
+        .cube-face-media img,
+        .cube-face-media video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .cube-face-shade {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            mix-blend-mode: multiply;
+            will-change: opacity;
+        }
+        .road-stage {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            perspective: 820px;
+            /* Vanishing point aligned with the horizon (where sky meets
+             * landscape at y=50%) so the road's apex converges exactly
+             * at the visible horizon, not hidden behind the sky. */
+            perspective-origin: 50% 50%;
+            background: #000;
+        }
+        .road-sky {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 50%;
+            overflow: hidden;
+        }
+        .road-sky-media,
+        .road-sky-media img,
+        .road-sky-media video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .road-landscape-band {
+            position: absolute;
+            top: 50%;
+            bottom: 0;
+            overflow: hidden;
+        }
+        .road-landscape-band.left {
+            left: 0;
+            width: 50%;
+            /* Triangle pointing toward vanishing point near horizon-centre */
+            clip-path: polygon(0% 0%, 100% 0%, 0% 100%);
+        }
+        .road-landscape-band.right {
+            right: 0;
+            width: 50%;
+            clip-path: polygon(0% 0%, 100% 0%, 100% 100%);
+        }
+        .road-landscape-media,
+        .road-landscape-media img,
+        .road-landscape-media video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        /* Road surface — the centre inverted-V that scrolls toward viewer.
+         * Stays at viewport width (no off-screen extension); its triangle
+         * clip-path projects to an inverted-V from horizon vanishing point
+         * to the viewport bottom corners.
+         *
+         * Rotation 75° (was 80°) is a less aggressive tilt — perspective
+         * compression near the horizon is gentler, so distant tiles stay
+         * substantial rectangles instead of squashed thin lines. Surface
+         * height retuned: 0.5H / cos(75°) ≈ 1.93H, so 193% places the
+         * rotated top edge exactly at the horizon line at y=50%. */
+        .road-surface {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 193%;
+            transform: rotateX(75deg);
+            transform-origin: 50% 100%;
+            overflow: hidden;
+            pointer-events: none;
+            clip-path: polygon(50% 0%, 50% 0%, 100% 100%, 0% 100%);
+        }
+        /* Left + right ground — 2D side panels in the bottom corners.
+         * (We attempted true 3D-coplanar bands via rotateX + clip-path,
+         * but CSS clip-on-transform doesn't reliably project where the
+         * math says it should — the rendered output looks broken.)
+         *
+         * Instead: simple 2D triangles flanking the road. The diagonal
+         * edge of each triangle goes from horizon-centre to a viewport
+         * bottom corner, exactly tracing the road's left/right edge in
+         * screen space — so the seam between road and land is invisible
+         * even though the underlying maths is different.                */
+        /* Distant mountains — CSS-only silhouette ridge running across
+         * the whole viewport just above the horizon. No source image
+         * required; the gradient fills the clip-path. Sits BEHIND the
+         * foreground land bands in DOM order so it reads as further
+         * mountains receding into the distance. */
+        .road-mountains-distant {
+            position: absolute;
+            top: 38%;
+            bottom: 47%;          /* ends just above the road's horizon */
+            left: 0;
+            right: 0;
+            pointer-events: none;
+            background: linear-gradient(
+                180deg,
+                rgba(80, 30, 110, 0.85) 0%,
+                rgba(150, 70, 175, 0.7) 60%,
+                rgba(190, 90, 200, 0.55) 100%
+            );
+            clip-path: polygon(
+                0% 100%,    /* baseline-left at viewport-left */
+                4%  55%,
+                10% 100%,
+                16% 30%,
+                23% 100%,
+                30% 50%,
+                38% 100%,
+                46% 18%,    /* tall peak, just left of centre */
+                54% 100%,
+                62% 35%,
+                70% 100%,
+                77% 55%,
+                85% 100%,
+                92% 40%,
+                100% 100%   /* baseline-right at viewport-right */
+            );
+            /* Soft glow gives a synthwave-distance haze. */
+            filter: blur(0.5px) drop-shadow(0 0 6px rgba(180, 60, 200, 0.6));
+        }
+        /* Land bands now extend ABOVE the horizon line into the sky
+         * region, so the clip-path can carve mountain peaks rising up
+         * out of the horizon. Each band spans viewport y = 35% to 100%
+         * (height 65%); the horizon line at viewport 50% sits at the
+         * band's local y = (50-35)/65 = 23.08%. Mountain peaks sit
+         * above that baseline (local y < 23%); the closing edge of the
+         * polygon traces the road's diagonal edge from horizon-centre
+         * down to the viewport's bottom corner.
+         *
+         * Neon drop-shadow on the clip-path edge gives the synthwave
+         * outline glow around the peaks; a vertical gradient overlay
+         * (::after) shades from bright peak-tops to darker valleys for
+         * a sense of depth and lighting. */
+        .road-ground-band {
+            position: absolute;
+            top: 35%;
+            bottom: 0;
+            width: 50%;
+            overflow: visible;    /* so the neon glow extends past the clip edge */
+            filter:
+                drop-shadow(0 0 3px rgba(255, 80, 200, 0.9))
+                drop-shadow(0 0 12px rgba(255, 80, 200, 0.5))
+                drop-shadow(0 0 24px rgba(120, 60, 200, 0.4));
+        }
+        /* Depth shading: a soft top-to-bottom gradient layered over the
+         * image, suggesting lit mountain ridges fading to shadowed
+         * valleys at the foot of the road. */
+        .road-ground-band::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: linear-gradient(
+                180deg,
+                rgba(255, 200, 220, 0.18) 0%,    /* highlight at peak */
+                rgba(0, 0, 0, 0.0) 18%,           /* clear mid */
+                rgba(20, 0, 40, 0.25) 60%,        /* darker mid-low */
+                rgba(0, 0, 20, 0.55) 100%         /* deep at foot */
+            );
+            z-index: 1;
+        }
+        .road-ground-band.left {
+            left: 0;
+            clip-path: polygon(
+                /* Mountain ridge — baseline at local y=23% (horizon).
+                 * Peaks rise to local y as low as 6% (≈ viewport 38%). */
+                0%   23%,
+                7%   17%,
+                13%  23%,
+                21%  10%,
+                30%  23%,
+                39%  16%,
+                47%  23%,
+                55%   6%,
+                63%  23%,
+                72%  14%,
+                81%  23%,
+                89%  19%,
+                95%  23%,
+                100% 23%,    /* meets horizon-centre */
+                0%   100%    /* viewport bottom-left; closing edge is the road's left diagonal */
+            );
+        }
+        .road-ground-band.right {
+            right: 0;
+            clip-path: polygon(
+                0%   23%,    /* horizon-centre */
+                5%   19%,
+                11%  23%,
+                19%   8%,
+                28%  23%,
+                37%  15%,
+                45%  23%,
+                53%  11%,
+                61%  23%,
+                70%  17%,
+                79%  23%,
+                87%  13%,
+                93%  23%,
+                100% 23%,
+                100% 100%    /* viewport bottom-right; closing edge is the road's right diagonal */
+            );
+        }
+        .road-ground-media,
+        .road-ground-media img,
+        .road-ground-media video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        /* Full-width strip so tiles span from the vanishing point at the
+         * horizon out to the bottom screen corners — the perspective rotation
+         * on .road-surface does the "expand outward as they approach" work. */
+        .road-strip {
+            position: absolute;
+            /* Shifted up by one tile (= 50vmin, the .road-tile height) so
+             * that the topmost tile sits ABOVE the surface's apex as a
+             * buffer. Without this, the strip is anchored at top:0 and
+             * as it translates down via translateY(phase), the apex area
+             * (surface y=0 to y=phase) becomes empty until the next
+             * recycle "fills" it — which is what the eye reads as a jump.
+             * With the buffer, the surface's top is always covered by
+             * tile content, and recycled tiles slide in from clipped-
+             * above-apex (giving their images time to mount before
+             * they're visible). */
+            top: -100vmin;
+            left: 0;
+            right: 0;
+            will-change: transform;
+        }
+        /* Fixed-height tiles in vmin so a closer tile doesn't balloon to the
+         * full viewport height when the strip is full-width. */
+        /* Tile height bumped to 50vmin (was 32) — each image now occupies
+         * roughly half the viewport's smaller dimension before perspective
+         * scaling, so even after the road's perspective compression the
+         * image stays a substantial trackable rectangle. Combined with the
+         * much slower per-tile scroll cadence (≈ 5 seconds per tile), the
+         * eye can lock onto a single image and watch it travel from the
+         * horizon all the way to passing under the viewer. */
+        .road-tile {
+            position: relative;
+            width: 100%;
+            height: 50vmin;
+            overflow: hidden;
+        }
+        .road-tile-media,
+        .road-tile-media img,
+        .road-tile-media video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        /* Soft haze at the horizon to sell the depth */
+        .road-haze {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 48%;
+            height: 12%;
+            pointer-events: none;
+            background: linear-gradient(180deg,
+                rgba(0,0,0,0) 0%,
+                rgba(20,20,28,0.35) 45%,
+                rgba(0,0,0,0) 100%);
+            mix-blend-mode: soft-light;
+        }
+        /* ── Eye-wake composition ───────────────────────────────────────
+         * Black screen with periodic blinks. The eye-shape is a CSS
+         * clip-path: ellipse animated from 0% vertical-radius (closed)
+         * to ~25% (fully open). When fully closed between blinks, the
+         * background image swaps to a new random pick from the pool,
+         * so each blink reveals what the dreamer-of-the-screen "sees".
+         *
+         * A soft inset shadow at the lid edges sells the eyelid-shadow
+         * vignette as the eye opens; the underlying image fills the
+         * full viewport, only the elliptical aperture shows. */
+        .eye-stage {
+            position: absolute;
+            inset: 0;
+            background: #000;
+            overflow: hidden;
+        }
+        .eye-image {
+            position: absolute;
+            inset: 0;
+            clip-path: ellipse(50% 0% at 50% 50%);
+            -webkit-clip-path: ellipse(50% 0% at 50% 50%);
+            will-change: clip-path;
+            box-shadow: inset 0 0 90px rgba(0, 0, 0, 0.65),
+                        inset 0 0 24px rgba(0, 0, 0, 0.45);
+        }
+        .eye-image img,
+        .eye-image video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        /* ── Slot-machine composition ───────────────────────────────────
+         * ONE full-viewport reel that spins fast (images flash past) then
+         * decelerates to land cleanly on a single centered image. Each
+         * tile fills the entire viewport when stopped, so the result of
+         * each spin is one big image at rest. */
+        .slot-stage {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        .slot-reel {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        .slot-reel-strip {
+            position: absolute;
+            /* Buffer one tile above the reel so the recycle is invisible
+             * (same buffer-tile pattern as the road-trip composition). */
+            top: -100vh;
+            left: 0;
+            right: 0;
+            will-change: transform;
+        }
+        .slot-tile {
+            position: relative;
+            width: 100%;
+            height: 100vh;       /* one tile = full viewport */
+            overflow: hidden;
+        }
+        .slot-tile-media,
+        .slot-tile-media img,
+        .slot-tile-media video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        /* Subtle vignette on top/bottom edges during the spin sells the
+         * mechanical feel — symbols rushing past darken slightly as they
+         * approach the screen edges. */
+        .slot-reel::before,
+        .slot-reel::after {
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 12%;
+            pointer-events: none;
+            z-index: 5;
+        }
+        .slot-reel::before {
+            top: 0;
+            background: linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%);
+        }
+        .slot-reel::after {
+            bottom: 0;
+            background: linear-gradient(0deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%);
+        }
         .triple-cylinder-cluster {
             position: absolute;
             inset: 0;
@@ -1431,15 +2055,23 @@
             </defs>
         </svg>
         <div class="layer overlay-layer" id="overlayLayer"></div>
+        <!-- Text layers — preset-driven typographic overlays
+             (Nam June Paik / Robert Ashley TV-opera-inspired). Populated
+             from the `text-layers-data` JSON below; one .text-layer div per
+             configured entry, layered by data-z-target. -->
+        <div class="layer text-layers-container" id="textLayersContainer" aria-hidden="true"></div>
         <a class="click-through hidden" id="clickThroughLink" href="javascript:void(0)" aria-label="Linked composition destination">Linked composition destination</a>
     </div>
 
-    {% if composition.audio_file and not muted %}
-    <audio id="compositionAudio" class="composition-audio-hidden" src="{{ composition.audio_file.url }}" autoplay loop preload="auto"></audio>
+    {% if composition_audio_url and not muted %}
+    <audio id="compositionAudio" class="composition-audio-hidden" src="{{ composition_audio_url }}" autoplay loop preload="auto"></audio>
     {% endif %}
 
     {{ background_assets|json_script:"bg-assets" }}
     {{ foreground_assets|json_script:"fg-assets" }}
+    {{ road_ground_left_assets|json_script:"road-ground-left-assets" }}
+    {{ road_ground_right_assets|json_script:"road-ground-right-assets" }}
+    {{ road_sky_assets|json_script:"road-sky-assets" }}
     {{ composition_type|json_script:"composition-type" }}
     {{ composition_transition|json_script:"composition-transition" }}
     {{ composition_background_transition|json_script:"composition-background-transition" }}
@@ -1462,17 +2094,24 @@
     {{ overlay_landscape_only|json_script:"overlay-landscape-only" }}
     {{ overlay_speed|json_script:"overlay-speed" }}
     {{ overlay_scale|json_script:"overlay-scale" }}
+    {{ overlay_opacity|json_script:"overlay-opacity" }}
+    {{ color_layer_enabled|json_script:"color-layer-enabled" }}
+    {{ color_layer_color|json_script:"color-layer-color" }}
+    {{ color_layer_opacity|json_script:"color-layer-opacity" }}
+    {{ color_layer_target|json_script:"color-layer-target" }}
     {{ overlay_rotate|json_script:"overlay-rotate" }}
     {{ overlay_effect|json_script:"overlay-effect" }}
     {{ overlay_fit|json_script:"overlay-fit" }}
     {{ overlay_frame_margin|json_script:"overlay-frame-margin" }}
+    {{ text_layers|json_script:"text-layers-data" }}
     {{ composition.page_url|default_if_none:""|json_script:"composition-page-link" }}
     {{ auto_link_delay_seconds|json_script:"composition-auto-link-delay" }}
     {{ random_link_enabled|json_script:"composition-random-link-enabled" }}
     {{ random_links|json_script:"composition-random-links" }}
     {{ render_mode|json_script:"composition-render-mode" }}
+    {{ still_capture|json_script:"composition-still-capture" }}
 
-    <script src="/static/admin/js/composition_shared_renderer.js"></script>
+    <script src="/static/admin/js/composition_shared_renderer.js?v=9"></script>
     <script>
         let bgAssets = JSON.parse(document.getElementById("bg-assets").textContent || "[]");
         const fgAssets = JSON.parse(document.getElementById("fg-assets").textContent || "[]");
@@ -1508,6 +2147,54 @@
         const backgroundSourceCount = Number(JSON.parse(document.getElementById("composition-bg-source-count").textContent || "0")) || 0;
         const overlayAssets = JSON.parse(document.getElementById("overlay-assets").textContent || "[]");
         const overlaySpeed = Number(JSON.parse(document.getElementById("overlay-speed").textContent || "1")) || 1;
+        const overlayOpacity = (() => {
+            const raw = Number(JSON.parse(document.getElementById("overlay-opacity")?.textContent || "1"));
+            if (!Number.isFinite(raw)) return 1;
+            return Math.max(0, Math.min(1, raw));
+        })();
+        const colorLayerEnabled = (() => {
+            try {
+                return Boolean(JSON.parse(document.getElementById("color-layer-enabled")?.textContent || "false"));
+            } catch (_) { return false; }
+        })();
+        const colorLayerColor = (() => {
+            try {
+                const v = String(JSON.parse(document.getElementById("color-layer-color")?.textContent || "\"#000000\""));
+                return /^#[0-9a-fA-F]{3,8}$/.test(v) ? v : "#000000";
+            } catch (_) { return "#000000"; }
+        })();
+        const colorLayerOpacity = (() => {
+            const raw = Number(JSON.parse(document.getElementById("color-layer-opacity")?.textContent || "0.3"));
+            if (!Number.isFinite(raw)) return 0.3;
+            return Math.max(0, Math.min(1, raw));
+        })();
+        const colorLayerTarget = (() => {
+            try {
+                const v = String(JSON.parse(document.getElementById("color-layer-target")?.textContent || "\"background\""));
+                return v === "overlay" ? "overlay" : "background";
+            } catch (_) { return "background"; }
+        })();
+        function applyColorTintLayer() {
+            const stage = document.querySelector(".stage");
+            if (!stage) return;
+            const prior = document.getElementById("colorTintLayer");
+            if (prior) prior.remove();
+            if (!colorLayerEnabled || colorLayerOpacity <= 0) return;
+            const div = document.createElement("div");
+            div.id = "colorTintLayer";
+            div.style.position = "absolute";
+            div.style.inset = "0";
+            div.style.pointerEvents = "none";
+            div.style.background = colorLayerColor;
+            div.style.opacity = String(colorLayerOpacity);
+            // Layer stack: background=1, splitScreen=4, composition stages=5,
+            // foreground=20, overlay=30. "Above background" means above every
+            // bg/stage/foreground layer but below the overlay (z=25). "Above
+            // overlay" means above the overlay too (z=35).
+            div.style.zIndex = colorLayerTarget === "overlay" ? "35" : "25";
+            stage.appendChild(div);
+        }
+        applyColorTintLayer();
         const overlayScale = Number(JSON.parse(document.getElementById("overlay-scale").textContent || "1")) || 1;
         const overlayRotate = Boolean(JSON.parse(document.getElementById("overlay-rotate").textContent || "false"));
         const overlayEffect = JSON.parse(document.getElementById("overlay-effect").textContent || "\"none\"");
@@ -1532,6 +2219,10 @@
         const randomLinkEnabled = Boolean(JSON.parse(document.getElementById("composition-random-link-enabled").textContent || "false"));
         const randomLinks = JSON.parse(document.getElementById("composition-random-links").textContent || "[]");
         const renderMode = Boolean(JSON.parse(document.getElementById("composition-render-mode").textContent || "false"));
+        // True only when Playwright is capturing a single-frame *poster*. The
+        // 10s / 45s video captures use render=1 but NOT capture=still, so
+        // motion-modes (eye-wake blinks, etc.) keep animating.
+        const stillCaptureMode = Boolean(JSON.parse(document.getElementById("composition-still-capture").textContent || "false"));
         const compositionRuntime = (() => {
             if (!window.__compositionRuntimeState) {
                 window.__compositionRuntimeState = { intervals: new Set() };
@@ -1761,7 +2452,9 @@
         // Limit concurrent video-heavy mounts (tunnel-burst, strobe, etc.) so Chrome
         // does not overload HW video decode + compositing — avoids black frames and
         // horizontal "torn" band glitches on stacked blend/filter layers.
-        const MAX_ACTIVE_VIDEO_SLOTS = 10;
+        // Grid iframes share the host process's GPU decoder pool. Cap tightly so
+        // 9 simultaneous iframes don't collectively exhaust Chrome's ~10-20 limit.
+        const MAX_ACTIVE_VIDEO_SLOTS = (window !== window.top) ? 2 : 10;
         let _videoSlotsInUse = 0;
         const _videoSlotWaiters = [];
         const withVideoMountSlot = (runTask) => {
@@ -1799,8 +2492,19 @@
             };
         }
 
+        // Folder/grid iframes pass ?lite=1 to opt into thumbnail-only rendering.
+        // The single-threaded dev server can't sustain 8+ concurrent video cycles;
+        // jitter and broken-image fallbacks kick in within ~30s. Thumbnails are
+        // ~100KB instead of multi-MB MP4s and look nearly identical at 1/8-screen
+        // cell sizes — eliminates the bottleneck without touching standalone pages.
+        const liteMode = location.search && location.search.indexOf("lite=1") >= 0;
+
         function resolveRenderableAsset(asset) {
             if (!asset) return asset;
+            if (liteMode && asset.kind === "video") {
+                const fallback = toVideoFallbackAsset(asset);
+                if (fallback && fallback !== asset) return fallback;
+            }
             return asset;
         }
 
@@ -2085,6 +2789,33 @@
                     if (!el.isConnected) return;
                     if (el.readyState < 2) mountVideoFallbackImage("video_stall");
                 }, 2200);
+                // Autoplay can resolve while currentTime stays at 0 — Chrome's autoplay
+                // policy or a re-mount race can leave a muted-but-stalled video frozen
+                // at frame 0. Re-kick play() if currentTime hasn't advanced after a
+                // reasonable settle window. Bounded by deadline so we don't poll forever.
+                let stuckPollLastT = -1;
+                let stuckPollMisses = 0;
+                const stuckPoll = setInterval(() => {
+                    if (!el.isConnected) { clearInterval(stuckPoll); return; }
+                    if (el.readyState < 2) return;
+                    if (el.paused) { el.play().catch(() => {}); return; }
+                    const t = el.currentTime;
+                    if (t > 0.05 && t !== stuckPollLastT) {
+                        stuckPollLastT = t;
+                        stuckPollMisses = 0;
+                        return;
+                    }
+                    if (t === stuckPollLastT) {
+                        stuckPollMisses += 1;
+                        if (stuckPollMisses >= 4) {
+                            try { el.load(); } catch (_) {}
+                            el.play().catch(() => {});
+                            stuckPollMisses = 0;
+                        }
+                    }
+                    stuckPollLastT = t;
+                }, 500);
+                setTimeout(() => clearInterval(stuckPoll), 30000);
                 if (applyFilters) applyVisualFilter(el);
                 fireMounted();
             } else {
@@ -2235,7 +2966,28 @@
                     if (onReady) onReady();
                 });
                 probe.onerror = () => imgSettle(() => {
-                    if (onReady) onReady();
+                    // Image probe failed — common for files whose extension lies about
+                    // their real format (e.g. .gif that's actually an MP4 container).
+                    // Retry as video so the asset still renders instead of leaving an
+                    // empty layer.
+                    const videoAsset = { ...renderAsset, kind: "video" };
+                    const vProbe = document.createElement("video");
+                    vProbe.muted = true;
+                    vProbe.playsInline = true;
+                    vProbe.preload = "auto";
+                    let vSettled = false;
+                    const vSettle = (mount) => {
+                        if (vSettled) return;
+                        vSettled = true;
+                        if (mount) mountAsset(container, videoAsset, applyFilters, assetOptions);
+                        if (onReady) onReady();
+                    };
+                    vProbe.addEventListener("loadeddata", () => vSettle(true), { once: true });
+                    vProbe.addEventListener("canplay", () => vSettle(true), { once: true });
+                    vProbe.addEventListener("error", () => vSettle(false), { once: true });
+                    setTimeout(() => vSettle(false), 2500);
+                    vProbe.src = renderAsset.url;
+                    vProbe.load();
                 });
                 probe.src = renderAsset.url;
             }
@@ -2255,11 +3007,89 @@
             stage.innerHTML = '<div style="color:#c8c8c8;font:14px/1.55 system-ui,sans-serif;padding:28px;max-width:480px;text-align:center;"><strong style="color:#eee;display:block;margin-bottom:10px;">No media for this composition</strong><span style="opacity:.85">Background sources are missing on disk, empty, or filtered out (for example “landscape only” with no landscape clips). Add media under Source Library and assign sources in Edit composition.</span></div>';
         }
 
+        // Shared helper for layer-spawning compositions (tunnel, zoom, swirl, etc).
+        // Pins the working asset pool to a capped subset and preloads every image
+        // into a hidden DOM holder so the browser keeps decoded bitmaps live.
+        // Required for large pools (e.g. /hellono/ has ~1500 assets): random
+        // sampling from the full pool means every spawn is a cache miss, the
+        // single-threaded dev server gets flooded, and layers animate over blank
+        // frames. Capping + preload turns every spawn into a guaranteed cache hit.
+        function preparePinnedAssetPool(sourceAssets, options) {
+            const opts = options || {};
+            const cap = opts.cap || 32;
+            const holderId = opts.holderId || "pinnedAssetPreloadHolder";
+            const fallbackMs = opts.fallbackMs || 1500;
+            const onReady = opts.onReady || (() => {});
+            // Pin the pool: if larger than cap, take a random sample (Fisher-Yates).
+            let pool;
+            if (!sourceAssets || sourceAssets.length === 0) {
+                pool = [];
+            } else if (sourceAssets.length <= cap) {
+                pool = sourceAssets;
+            } else {
+                const indices = sourceAssets.map((_, i) => i);
+                for (let i = 0; i < cap; i++) {
+                    const j = i + Math.floor(Math.random() * (indices.length - i));
+                    const tmp = indices[i]; indices[i] = indices[j]; indices[j] = tmp;
+                }
+                pool = indices.slice(0, cap).map(i => sourceAssets[i]);
+            }
+            // Replace any leftover holder from a prior composition setup.
+            const existing = document.getElementById(holderId);
+            if (existing) existing.remove();
+            const holder = document.createElement("div");
+            holder.id = holderId;
+            holder.style.cssText = "position:absolute;left:-99999px;top:-99999px;width:1px;height:1px;overflow:hidden;pointer-events:none;";
+            document.body.appendChild(holder);
+            // Resolve video assets to their thumbnail fallbacks (the image versions),
+            // then preload only the image kinds — videos can't be cached this way.
+            const imagePool = pool
+                .map(a => (a && a.kind === "video") ? (toVideoFallbackAsset(a) || a) : a)
+                .filter(a => a && a.kind === "image" && a.url);
+            if (imagePool.length === 0) {
+                // Defer to a microtask so callers that do `const pool = prepare(...)`
+                // have their const assigned before onReady fires — otherwise the
+                // onReady callback hits the temporal dead zone.
+                queueMicrotask(onReady);
+                return pool;
+            }
+            let loaded = 0;
+            let started = false;
+            const maybeReady = () => {
+                if (started) return;
+                started = true;
+                onReady();
+            };
+            const fallbackTimer = setTimeout(maybeReady, fallbackMs);
+            imagePool.forEach(asset => {
+                const img = document.createElement("img");
+                img.decoding = "async";
+                img.onload = img.onerror = () => {
+                    loaded++;
+                    if (loaded >= imagePool.length) {
+                        clearTimeout(fallbackTimer);
+                        maybeReady();
+                    }
+                };
+                img.src = asset.url;
+                holder.appendChild(img);
+            });
+            return pool;
+        }
+
+        // Returns true when the current document is in any fullscreen state.
+        // Used by zoom/tunnel modes to lower layer caps and peak scales at 4K+
+        // where the GPU can't keep up with default settings.
+        function isFullscreenActive() {
+            return !!(document.fullscreenElement || document.webkitFullscreenElement);
+        }
+
         function normalizeTransitionMode(value) {
             const raw = String(value || "none").toLowerCase().trim();
             const compact = raw.replace(/[\s_-]+/g, "");
             if (compact === "crossfade") return "crossfade";
             if (compact === "fade") return "fade";
+            if (compact === "melt") return "melt";
             return "none";
         }
 
@@ -2306,6 +3136,19 @@
             }
             const mountAt = (i, rerollBudget = 3) => {
                 idx = i;
+                // Hard-cap: prune stale layers that cleanup callbacks missed.
+                // requestAnimationFrame is throttled to ≤1 fps (or frozen) in
+                // background/hidden tabs, so layers accumulate indefinitely without
+                // this guard. Each cycle removes all but the most-recently-appended
+                // child before mounting the next one, bounding the DOM to 2 nodes
+                // maximum (current + incoming) regardless of tab state.
+                while (container.children.length > 1) {
+                    const excess = container.children[0];
+                    excess.querySelectorAll("video").forEach((v) => {
+                        try { v.pause(); v.removeAttribute("src"); v.load(); } catch (_) {}
+                    });
+                    excess.remove();
+                }
                 const hasCurrent = container.children && container.children.length > 0;
                 if (!shouldTransition || !hasCurrent) {
                     if (!hasCurrent) {
@@ -2388,16 +3231,37 @@
             };
             mountAt(idx);
             if (assets.length === 1) return;
-            setInterval(() => {
-                // Use pickIndex so we naturally skip assets already known to be
-                // broken, and route through mountAt so the reroll-on-broken
-                // behaviour applies to every tick, not just the first mount.
+            // Lite mode (folder-grid iframes): 8 simultaneous iframes cycling on the
+            // single-threaded dev server saturate it and produce half-rendered images
+            // (truncated responses), broken images, and jitter. Previews don't need
+            // motion — they need each cell to *correctly show one frame* of what the
+            // composition will look like. Skip cycling entirely; click into a cell
+            // for the full animation. Standalone pages keep their normal cycling.
+            if (liteMode) return;
+            let _cycleCount = 0;
+            const liteMultiplier = liteMode ? 3 : 1;
+            const cycleMs = Math.max(350, Math.floor(intervalMs * liteMultiplier / compositionSpeed));
+            const startupJitter = liteMode ? Math.floor(Math.random() * 2500) : 0;
+            const tick = () => {
+                _cycleCount++;
+                // Periodically clear broken-asset tracking so temporarily-unavailable
+                // files (network hiccup, remounted drive) are retried automatically
+                // instead of being blacklisted for the lifetime of the page. Lite
+                // mode resets more often since request failures are the main culprit
+                // there, not genuinely broken files. Standalone pages reset every
+                // 12 cycles (was 500) so transient failures under heavy parallel
+                // composition load — e.g. rotating-cube-strobe pegging the video
+                // decoder — recover within a minute instead of blacklisting an
+                // asset for the lifetime of the page.
+                const resetEvery = liteMode ? 30 : 12;
+                if (_cycleCount % resetEvery === 0) brokenIndices.clear();
                 const next = pickIndex(idx);
                 if (next === idx && assets.length > 1 && brokenIndices.size >= assets.length) {
                     return;
                 }
                 mountAt(next);
-            }, Math.max(350, Math.floor(intervalMs / compositionSpeed)));
+            };
+            setTimeout(() => { setInterval(tick, cycleMs); }, startupJitter);
         }
 
         function setupQuadMode() {
@@ -2506,7 +3370,19 @@
                             node.style.transition = "opacity 220ms linear";
                             node.style.opacity = "0";
                             setTimeout(() => {
-                                if (node && node.parentElement === cell) node.remove();
+                                if (!node) return;
+                                // Explicitly release the stale <video>'s decoder
+                                // before pulling it from the DOM. Chrome holds GPU
+                                // decoder resources until pause + src clear + load,
+                                // so without this the pool exhausts after dozens of
+                                // swaps and new cells render solid black.
+                                try {
+                                    node.querySelectorAll("video").forEach((v) => {
+                                        try { v.pause(); } catch (_) {}
+                                        try { v.removeAttribute("src"); v.load(); } catch (_) {}
+                                    });
+                                } catch (_) {}
+                                if (node.parentElement === cell) node.remove();
                             }, 320);
                         });
                         if (onReady) onReady(true);
@@ -2600,15 +3476,27 @@
             stage.style.display = "grid";
             const stageW = Math.max(1, window.innerWidth || 1);
             const stageH = Math.max(1, window.innerHeight || 1);
+            // Tighter cap for superfine-flux: 8320 tiles × 2 layers = 16,640 mounted
+            // img elements, with hundreds re-mounted per beat. Drop to 4200 so worst
+            // case is ~4,200 imgs (single layer, see useFrontLayer below).
             const maxTileCells =
-                variant === "square-superfine" || isSuperfineFluxVariant
-                    ? 8320
-                    : variant === "square-fine" || isFineFluxVariant
-                        ? 2080
-                        : 520;
+                isSuperfineFluxVariant
+                    ? 4200
+                    : variant === "square-superfine"
+                        ? 8320
+                        : variant === "square-fine" || isFineFluxVariant
+                            ? 2080
+                            : 520;
+            // Skip the blended frontLayer for superfine-flux. Tiles are tiny (10px)
+            // so the screen-blend effect contributes almost nothing visually, but
+            // it doubles DOM size and doubles the remount cost on every tick.
+            const useFrontLayer = !isSuperfineFluxVariant;
             const minTilePx = 18;
             const minTilePxFine = 10;
-            const minTilePxSuperfine = 5;
+            // Was 5 — produced ~12k tiles on a 1920×1080 viewport, which combined
+            // with the flux-tick + microShift mutations saturated the main thread.
+            // 10px keeps the grid visually superfine but ~4× fewer tiles (~3.2k).
+            const minTilePxSuperfine = 10;
             let tileW = Math.max(minTilePx, Math.floor(Math.sqrt((stageW * stageH) / 380)));
             let tileH = tileW;
             let mashCols = Math.max(1, Math.ceil(stageW / tileW));
@@ -2780,18 +3668,25 @@
                 const backLayer = document.createElement("div");
                 backLayer.style.position = "absolute";
                 backLayer.style.inset = "0";
-                const frontLayer = document.createElement("div");
-                frontLayer.style.position = "absolute";
-                frontLayer.style.inset = "0";
-                frontLayer.style.mixBlendMode = "screen";
-                frontLayer.style.opacity = isAnyFluxVariant ? "0.45" : (0.35 + Math.random() * 0.35).toFixed(2);
+                let frontLayer;
+                if (useFrontLayer) {
+                    frontLayer = document.createElement("div");
+                    frontLayer.style.position = "absolute";
+                    frontLayer.style.inset = "0";
+                    frontLayer.style.mixBlendMode = "screen";
+                    frontLayer.style.opacity = isAnyFluxVariant ? "0.45" : (0.35 + Math.random() * 0.35).toFixed(2);
+                } else {
+                    // Alias: code paths that touch frontLayer/frontSlot collapse to
+                    // operating on the back layer. Tile keeps a single mounted img.
+                    frontLayer = backLayer;
+                }
                 tile.appendChild(backLayer);
-                tile.appendChild(frontLayer);
+                if (useFrontLayer) tile.appendChild(frontLayer);
                 fragment.appendChild(tile);
                 const backSlot = i % mashPoolSize;
-                const frontSlot = (i + 2) % mashPoolSize;
+                const frontSlot = useFrontLayer ? ((i + 2) % mashPoolSize) : backSlot;
                 mountMashLayer(backLayer, pool[backSlot], row, col);
-                mountMashLayer(frontLayer, pool[frontSlot], row, col);
+                if (useFrontLayer) mountMashLayer(frontLayer, pool[frontSlot], row, col);
                 tiles.push({ tile, backLayer, frontLayer, row, col, backSlot, frontSlot });
             }
             stage.appendChild(fragment);
@@ -2799,13 +3694,15 @@
             const remountMashTileFull = (state) => {
                 if (!state) return;
                 mountMashLayer(state.backLayer, pool[state.backSlot], state.row, state.col);
-                mountMashLayer(state.frontLayer, pool[state.frontSlot], state.row, state.col);
+                if (useFrontLayer) {
+                    mountMashLayer(state.frontLayer, pool[state.frontSlot], state.row, state.col);
+                }
             };
 
             const remountMashTileChaos = (state, isMajor = false) => {
                 if (!state) return;
                 mountMashLayer(state.backLayer, pool[state.backSlot], state.row, state.col);
-                if (isMajor || Math.random() > 0.55) {
+                if (useFrontLayer && (isMajor || Math.random() > 0.55)) {
                     mountMashLayer(state.frontLayer, pool[state.frontSlot], state.row, state.col);
                 }
             };
@@ -2924,17 +3821,26 @@
                     st.tile.style.opacity = "1";
                 });
                 beginFluxReign();
+                // Superfine-flux was ticking every ~72-155ms which combined with the
+                // tile-count + microShift saturated main-thread work. Pushing the
+                // floor up keeps the visual motion but gives the browser room to
+                // composite and paint each tick cleanly.
                 const fluxTickMs =
                     variant === "square-superfine-flux"
-                        ? Math.max(72, Math.floor(155 / Math.max(0.35, compositionSpeed)))
+                        ? Math.max(180, Math.floor(300 / Math.max(0.35, compositionSpeed)))
                         : Math.max(140, Math.floor(260 / Math.max(0.35, compositionSpeed)));
                 setInterval(fluxTick, fluxTickMs);
             }
 
             const microShift = () => {
                 if (!tiles.length) return;
-                const fluxChaosBoost = variant === "square-superfine-flux" ? 2.05 : 1;
-                const updatesPerBeat = Math.min(260, Math.max(10, Math.floor(tiles.length * 0.075 * fluxChaosBoost)));
+                // Cap was 260 with a 2.05x boost for superfine-flux, which meant
+                // up to 260 fresh img mounts per beat on top of fluxTick. Clamp
+                // tighter so each beat does meaningful work without flooding the
+                // browser's layout/paint pipeline.
+                const fluxChaosBoost = variant === "square-superfine-flux" ? 1.2 : 1;
+                const beatCap = variant === "square-superfine-flux" ? 100 : 260;
+                const updatesPerBeat = Math.min(beatCap, Math.max(10, Math.floor(tiles.length * 0.05 * fluxChaosBoost)));
                 for (let i = 0; i < updatesPerBeat; i++) {
                     const state = tiles[Math.floor(Math.random() * tiles.length)];
                     refreshTile(state, false);
@@ -3036,17 +3942,17 @@
             let cursor = 0;
             let layerDepth = 1;
             const nextAsset = () => {
-                if (compositionSourcePlaybackMode === "random" && bgAssets.length > 1) {
-                    let nextIndex = Math.floor(Math.random() * bgAssets.length);
+                if (compositionSourcePlaybackMode === "random" && tunnelAssetPool.length > 1) {
+                    let nextIndex = Math.floor(Math.random() * tunnelAssetPool.length);
                     if (nextIndex === cursor) {
-                        nextIndex = (nextIndex + 1) % bgAssets.length;
+                        nextIndex = (nextIndex + 1) % tunnelAssetPool.length;
                     }
                     cursor = nextIndex;
                 } else {
-                    cursor = cursor % bgAssets.length;
+                    cursor = cursor % tunnelAssetPool.length;
                 }
-                const asset = bgAssets[cursor];
-                if (compositionSourcePlaybackMode === "random" && bgAssets.length > 1) {
+                const asset = tunnelAssetPool[cursor];
+                if (compositionSourcePlaybackMode === "random" && tunnelAssetPool.length > 1) {
                     // keep current cursor as previous value to reduce repeats
                 } else {
                     cursor += 1;
@@ -3059,7 +3965,11 @@
             const spawnMs = isNoTransition
                 ? Math.max(isPsychedelicTunnel ? 220 : 140, Math.floor(durationSec * 1000 * 0.42))
                 : Math.max(isPsychedelicTunnel ? 150 : 110, Math.floor((isPsychedelicTunnel ? 220 : 340) / speed));
-            const maxActiveLayers = isPsychedelicTunnel ? 11 : 14;
+            // Fullscreen drops layer cap to reduce GPU texture pressure at 4K+.
+            const isFullscreen = isFullscreenActive();
+            const maxActiveLayers = isFullscreen
+                ? (isPsychedelicTunnel ? 7 : 9)
+                : (isPsychedelicTunnel ? 11 : 14);
 
             const spawnLayer = (warmOffsetMs = 0) => {
                 const activeCount = stage.querySelectorAll(".tunnel-layer").length;
@@ -3088,20 +3998,237 @@
                     layer.style.mixBlendMode = Math.random() > 0.58 ? "screen" : (Math.random() > 0.46 ? "color-dodge" : "lighten");
                 }
                 stage.appendChild(layer);
-                mountAsset(layer, nextAsset());
-                layer.addEventListener("animationend", () => {
+                // Tunnel layers live ~0.5-2s and stack many in parallel. Streaming MP4s
+                // can't reach playable readyState in that window (especially behind the
+                // single-threaded dev server), so the layer animates away empty. Use the
+                // pre-rendered thumbnail instead — instant render, zero GPU decoder cost,
+                // and the expanding-ring animation is what carries the visual anyway.
+                const rawAsset = nextAsset();
+                const tunnelAsset = (rawAsset && rawAsset.kind === "video")
+                    ? (toVideoFallbackAsset(rawAsset) || rawAsset)
+                    : rawAsset;
+                mountAsset(layer, tunnelAsset);
+                let removed = false;
+                const removeLayer = () => {
+                    if (removed) return;
+                    removed = true;
                     layer.remove();
-                }, { once: true });
+                };
+                layer.addEventListener("animationend", removeLayer, { once: true });
+                // Safety net: tunnelExpandNoFade ends at opacity:1 with fill-mode:forwards.
+                // If animationend doesn't fire (background-tab rAF throttle, GPU stall,
+                // event-loop hiccup), layers freeze at full-bright state and accumulate.
+                // With screen/color-dodge/lighten blend modes, stacked frozen layers
+                // saturate the canvas to white. Subtract warmOffsetMs because warm
+                // layers started partway through; the prior `+ warmOffsetMs` inflated
+                // zombie-cleanup time and blocked new spawns.
+                const safetyMs = Math.max(250, Math.ceil(layerDurationSec * 1000 - warmOffsetMs + 750));
+                setTimeout(removeLayer, safetyMs);
             };
 
-            const warmLeadMs = 3000;
-            const warmLayers = Math.min(maxActiveLayers, Math.max(1, Math.ceil(warmLeadMs / Math.max(1, spawnMs))));
-            for (let i = warmLayers; i >= 1; i--) {
-                const offsetMs = Math.min(i * spawnMs, Math.floor(durationSec * 1000 * 0.94));
-                spawnLayer(offsetMs);
+            const startLoop = () => {
+                // Lite-mode folder previews (?lite=1): nine iframes all
+                // running the tunnel's continuous spawn-and-animate loop
+                // saturate Chrome's compositor — cells go blank within
+                // seconds. The expand-to-scale(1.6) animation also leaves
+                // layers in a magnified, off-centre state at their end.
+                // Bypass the whole spawn loop and just show ONE static
+                // image filling the cell: a stable thumbnail of the
+                // composition's source pool, no animation, no churn.
+                if (liteMode) {
+                    const liteLayer = document.createElement("div");
+                    liteLayer.className = "tunnel-layer";
+                    liteLayer.style.animation = "none";
+                    liteLayer.style.transform = "scale(1)";
+                    liteLayer.style.opacity = "1";
+                    liteLayer.style.zIndex = "1";
+                    stage.appendChild(liteLayer);
+                    const rawAsset = nextAsset();
+                    const liteAsset = (rawAsset && rawAsset.kind === "video")
+                        ? (toVideoFallbackAsset(rawAsset) || rawAsset)
+                        : rawAsset;
+                    if (liteAsset) mountAsset(liteLayer, liteAsset);
+                    return;
+                }
+                const warmLeadMs = 3000;
+                const warmLayers = Math.min(maxActiveLayers, Math.max(1, Math.ceil(warmLeadMs / Math.max(1, spawnMs))));
+                for (let i = warmLayers; i >= 1; i--) {
+                    const offsetMs = Math.min(i * spawnMs, Math.floor(durationSec * 1000 * 0.94));
+                    spawnLayer(offsetMs);
+                }
+                spawnLayer(0);
+                setInterval(spawnLayer, spawnMs);
+            };
+
+            const tunnelAssetPool = preparePinnedAssetPool(bgAssets, {
+                cap: 32,
+                holderId: "tunnelPreloadHolder",
+                fallbackMs: 1500,
+                onReady: startLoop,
+            });
+        }
+
+        // Zoom-forward: assets accelerate from a centred dot to a huge final
+        // scale (~7x) with terminal motion blur. The eye reads it as the viewer
+        // rushing forward through a stream of frames. Builds on the tunnelStage
+        // + tunnel-layer infrastructure but uses its own keyframe and slightly
+        // looser layer cap.
+        function setupZoomForwardMode(slowMode = false) {
+            document.getElementById("backgroundLayer").classList.add("hidden");
+            document.getElementById("foregroundLayer").classList.add("hidden");
+            document.getElementById("tunnelGrid").classList.add("hidden");
+            document.getElementById("splitScreen").classList.add("hidden");
+            document.getElementById("splitScreenHorizontal").classList.add("hidden");
+            document.getElementById("psychedelicStage").classList.add("hidden");
+            document.getElementById("kaleidoStage").classList.add("hidden");
+            document.getElementById("scrollStage").classList.add("hidden");
+            document.getElementById("strobeStage").classList.add("hidden");
+            const stage = document.getElementById("tunnelStage");
+            stage.classList.remove("hidden");
+            stage.innerHTML = "";
+            if (!bgAssets.length) {
+                showTunnelStageNoMedia();
+                return;
             }
-            spawnLayer(0);
-            setInterval(spawnLayer, spawnMs);
+            stage.style.background = "#000";
+            let cursor = 0;
+            let layerDepth = 1;
+            const nextAsset = () => {
+                if (compositionSourcePlaybackMode === "random" && zoomAssetPool.length > 1) {
+                    let nextIndex = Math.floor(Math.random() * zoomAssetPool.length);
+                    if (nextIndex === cursor) nextIndex = (nextIndex + 1) % zoomAssetPool.length;
+                    cursor = nextIndex;
+                } else {
+                    cursor = cursor % zoomAssetPool.length;
+                }
+                const asset = zoomAssetPool[cursor];
+                if (compositionSourcePlaybackMode !== "random" || zoomAssetPool.length <= 1) cursor += 1;
+                return asset;
+            };
+            const speed = Math.max(0.25, compositionSpeed);
+            // Large screens (55"+ monitors, projectors) need a slower flight and
+            // softer terminal blur — the eye has more real estate to track each
+            // frame so the small-screen pace reads as frantic.
+            const isLargeScreen = !slowMode && window.screen.width >= 1920 && window.devicePixelRatio <= 1;
+            // Fullscreen overrides everything: at 4K+ the GPU can't keep up
+            // with peak scale 4.5+, so use a tighter profile (lower peak, fewer
+            // concurrent layers, slightly slower) regardless of slow/large mode.
+            const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
+            const animName = isFullscreen
+                ? "zoomForwardExpandFullscreen"
+                : slowMode
+                    ? "zoomForwardExpandSlow"
+                    : isLargeScreen ? "zoomForwardExpandLarge" : "zoomForwardExpand";
+            // Per-layer flight duration; speed slider compresses it. Floor keeps
+            // the motion readable on very fast settings.
+            const durationSec = isFullscreen
+                ? Math.max(2.4, 4.0 / speed)
+                : slowMode
+                    ? Math.max(2.0, 3.5 / speed)
+                    : isLargeScreen ? Math.max(1.2, 2.4 / speed) : Math.max(0.85, 1.7 / speed);
+            // Tight spawn rate so the canvas is always populated mid-flight.
+            const spawnMs = Math.max(85, Math.floor((durationSec * 1000) / 12));
+            // Cap must exceed steady-state population (durationSec / spawnInterval)
+            // or spawns get blocked and layers expire in batches, causing pulses.
+            // Fullscreen uses a lower cap to reduce GPU texture pressure at 4K.
+            const maxActiveLayers = isFullscreen ? 9 : slowMode ? 18 : isLargeScreen ? 16 : 18;
+
+            const spawnLayer = (warmOffsetMs = 0) => {
+                if (stage.querySelectorAll(".tunnel-layer").length >= maxActiveLayers) return;
+                const layer = document.createElement("div");
+                layer.className = "tunnel-layer";
+                layer.style.animationName = animName;
+                // Slight per-layer jitter — duration and rotation — so streaks
+                // don't appear in perfect lockstep.
+                const jitterDur = durationSec * (0.85 + Math.random() * 0.3);
+                layer.style.animationDuration = `${jitterDur.toFixed(3)}s`;
+                layer.style.animationIterationCount = "1";
+                layer.style.animationFillMode = "forwards";
+                layer.style.animationTimingFunction = "cubic-bezier(0.45, 0.05, 0.55, 0.95)";
+                if (warmOffsetMs > 0) {
+                    layer.style.animationDelay = `-${Math.floor(warmOffsetMs)}ms`;
+                }
+                // Tiny random rotation breaks the "static photo zooming" feel
+                // and reads as forward-motion roll.
+                const rot = (-6 + Math.random() * 12).toFixed(2);
+                layer.style.setProperty("--zoom-rot", `${rot}deg`);
+                layer.style.transformOrigin = "50% 50%";
+                layer.style.rotate = `${rot}deg`;
+                layer.style.zIndex = String(layerDepth++);
+                // Large screens get a wider vignette feather so the rectangular
+                // corners don't ghost at the edges of a big display.
+                const vignetteMask = isLargeScreen
+                    ? "radial-gradient(ellipse at center, #000 22%, rgba(0,0,0,0.85) 50%, rgba(0,0,0,0.35) 75%, transparent 92%)"
+                    : "radial-gradient(ellipse at center, #000 28%, rgba(0,0,0,0.85) 55%, rgba(0,0,0,0.35) 80%, transparent 96%)";
+                layer.style.webkitMaskImage = vignetteMask;
+                layer.style.maskImage = vignetteMask;
+                layer.style.webkitMaskRepeat = "no-repeat";
+                layer.style.maskRepeat = "no-repeat";
+                stage.appendChild(layer);
+                // Use thumbnails for videos: at 7x scale + motion blur the video
+                // frame is barely perceptible, and the dev server can't stream
+                // 16 concurrent MP4s in any case.
+                const rawAsset = nextAsset();
+                const zoomAsset = (rawAsset && rawAsset.kind === "video")
+                    ? (toVideoFallbackAsset(rawAsset) || rawAsset)
+                    : rawAsset;
+                mountAsset(layer, zoomAsset);
+                let removed = false;
+                const removeLayer = () => {
+                    if (removed) return;
+                    removed = true;
+                    layer.remove();
+                };
+                layer.addEventListener("animationend", removeLayer, { once: true });
+                // Safety net for dropped animationend events. Warm layers already
+                // started partway through their animation, so subtract warmOffsetMs
+                // rather than adding it — otherwise zombie layers block new spawns.
+                const remainingMs = Math.max(200, jitterDur * 1000 - warmOffsetMs + 600);
+                setTimeout(removeLayer, Math.ceil(remainingMs));
+            };
+
+            const startLoop = () => {
+                // Lite-mode folder previews — same rationale as setupTunnelMode:
+                // nine iframes running the zoom's continuous spawn-and-animate
+                // loop saturate Chrome's compositor (each layer scales from a
+                // dot up to ~7×), cells freeze, and the previews go blank.
+                // Bypass the whole spawn pipeline and show ONE static image
+                // filling the cell — a stable thumbnail of what the
+                // composition's source pool looks like.
+                if (liteMode) {
+                    const liteLayer = document.createElement("div");
+                    liteLayer.className = "tunnel-layer";
+                    liteLayer.style.animation = "none";
+                    liteLayer.style.transform = "scale(1)";
+                    liteLayer.style.opacity = "1";
+                    liteLayer.style.zIndex = "1";
+                    stage.appendChild(liteLayer);
+                    const rawAsset = nextAsset();
+                    const liteAsset = (rawAsset && rawAsset.kind === "video")
+                        ? (toVideoFallbackAsset(rawAsset) || rawAsset)
+                        : rawAsset;
+                    if (liteAsset) mountAsset(liteLayer, liteAsset);
+                    return;
+                }
+                // Warm-up: pre-fill the full animation pipeline so there are no
+                // gaps on first render. Cover 90% of the animation duration so
+                // staggered layers span the entire flight from dot to exit.
+                const warmLeadMs = Math.floor(durationSec * 1000 * 0.90);
+                const warmLayers = Math.min(maxActiveLayers, Math.max(1, Math.ceil(warmLeadMs / Math.max(1, spawnMs))));
+                for (let i = warmLayers; i >= 1; i--) {
+                    const offsetMs = Math.min(i * spawnMs, Math.floor(durationSec * 1000 * 0.92));
+                    spawnLayer(offsetMs);
+                }
+                spawnLayer(0);
+                setInterval(spawnLayer, spawnMs);
+            };
+
+            const zoomAssetPool = preparePinnedAssetPool(bgAssets, {
+                cap: 32,
+                holderId: "zoomPreloadHolder",
+                fallbackMs: 1500,
+                onReady: startLoop,
+            });
         }
 
         function setupTunnelDoubleMode() {
@@ -3124,15 +4251,16 @@
                 pane.style.background = "#000";
                 pane.innerHTML = "";
             });
-            const leftPool = bgAssets;
-            const rightPool = fgAssets.length ? fgAssets : bgAssets;
-            if (!leftPool.length || !rightPool.length) return;
+            if (!bgAssets.length || !(fgAssets.length || bgAssets.length)) return;
 
             const isNoTransition = normalizeTransitionMode(compositionBackgroundTransition) === "none";
             const durationSec = Math.max(0.9, 2.4 / compositionSpeed);
             const spawnMs = isNoTransition
                 ? Math.max(120, Math.floor(durationSec * 1000 * 0.42))
                 : Math.max(120, Math.floor(340 / compositionSpeed));
+            // Fullscreen drops layer cap per pane to reduce GPU pressure at 4K+.
+            const isFullscreen = isFullscreenActive();
+            const maxActiveLayers = isFullscreen ? 8 : 12;
 
             const runPaneTunnel = (pane, pool) => {
                 let cursor = 0;
@@ -3149,7 +4277,6 @@
                     if (!(compositionSourcePlaybackMode === "random" && pool.length > 1)) cursor += 1;
                     return asset;
                 };
-                const maxActiveLayers = 12;
                 const spawnLayer = (warmOffsetMs = 0) => {
                     if (pane.querySelectorAll(".tunnel-layer").length >= maxActiveLayers) return;
                     const layer = document.createElement("div");
@@ -3164,9 +4291,43 @@
                     }
                     layer.style.zIndex = String(layerDepth++);
                     pane.appendChild(layer);
-                    mountAsset(layer, nextAsset());
-                    layer.addEventListener("animationend", () => layer.remove(), { once: true });
+                    const rawAsset = nextAsset();
+                    const tunnelAsset = (rawAsset && rawAsset.kind === "video")
+                        ? (toVideoFallbackAsset(rawAsset) || rawAsset)
+                        : rawAsset;
+                    mountAsset(layer, tunnelAsset);
+                    let removed = false;
+                    const removeLayer = () => {
+                        if (removed) return;
+                        removed = true;
+                        layer.remove();
+                    };
+                    layer.addEventListener("animationend", removeLayer, { once: true });
+                    // Subtract warmOffsetMs so warm layers clean up on time
+                    // (previously added it, causing zombie-layer pileup).
+                    const safetyMs = Math.max(250, Math.ceil(durationSec * 1000 - warmOffsetMs + 750));
+                    setTimeout(removeLayer, safetyMs);
                 };
+                // Lite-mode folder previews: same fix as setupTunnelMode/
+                // setupZoomForwardMode. Bypass the dual-pane spawn loop and
+                // show one static image per pane — the cell still
+                // communicates "this is a split-tunnel composition" via
+                // the dual half-width thumbnails.
+                if (liteMode) {
+                    const liteLayer = document.createElement("div");
+                    liteLayer.className = "tunnel-layer";
+                    liteLayer.style.animation = "none";
+                    liteLayer.style.transform = "scale(1)";
+                    liteLayer.style.opacity = "1";
+                    liteLayer.style.zIndex = "1";
+                    pane.appendChild(liteLayer);
+                    const rawAsset = nextAsset();
+                    const liteAsset = (rawAsset && rawAsset.kind === "video")
+                        ? (toVideoFallbackAsset(rawAsset) || rawAsset)
+                        : rawAsset;
+                    if (liteAsset) mountAsset(liteLayer, liteAsset);
+                    return;
+                }
                 const warmLeadMs = 3000;
                 const warmLayers = Math.min(maxActiveLayers, Math.max(1, Math.ceil(warmLeadMs / Math.max(1, spawnMs))));
                 for (let i = warmLayers; i >= 1; i--) {
@@ -3177,8 +4338,20 @@
                 setInterval(spawnLayer, spawnMs);
             };
 
-            runPaneTunnel(leftPane, leftPool);
-            runPaneTunnel(rightPane, rightPool);
+            // Pin both pools (16 each — total 32 preloaded) and start each pane
+            // only when its pool is preloaded.
+            const leftPool = preparePinnedAssetPool(bgAssets, {
+                cap: 16,
+                holderId: "tunnelDoubleLeftHolder",
+                fallbackMs: 1500,
+                onReady: () => runPaneTunnel(leftPane, leftPool),
+            });
+            const rightPool = preparePinnedAssetPool(fgAssets.length ? fgAssets : bgAssets, {
+                cap: 16,
+                holderId: "tunnelDoubleRightHolder",
+                fallbackMs: 1500,
+                onReady: () => runPaneTunnel(rightPane, rightPool),
+            });
         }
 
         function setupMashFineDoubleMode() {
@@ -3619,51 +4792,23 @@
             let cursor = 0;
             let layerDepth = 1;
             const nextAsset = () => {
-                if (compositionSourcePlaybackMode === "random" && bgAssets.length > 1) {
-                    let nextIndex = Math.floor(Math.random() * bgAssets.length);
-                    if (nextIndex === cursor) nextIndex = (nextIndex + 1) % bgAssets.length;
+                if (compositionSourcePlaybackMode === "random" && burstAssetPool.length > 1) {
+                    let nextIndex = Math.floor(Math.random() * burstAssetPool.length);
+                    if (nextIndex === cursor) nextIndex = (nextIndex + 1) % burstAssetPool.length;
                     cursor = nextIndex;
                 } else {
-                    cursor = cursor % bgAssets.length;
+                    cursor = cursor % burstAssetPool.length;
                 }
-                const asset = bgAssets[cursor];
-                if (compositionSourcePlaybackMode !== "random" || bgAssets.length <= 1) cursor += 1;
+                const asset = burstAssetPool[cursor];
+                if (compositionSourcePlaybackMode !== "random" || burstAssetPool.length <= 1) cursor += 1;
                 return asset;
             };
 
-            // Persistent base layer so the stage is never blank between bursts.
-            const baseLayer = document.createElement("div");
-            baseLayer.style.position = "absolute";
-            baseLayer.style.inset = "0";
-            baseLayer.style.zIndex = "0";
-            baseLayer.style.opacity = "0.55";
-            baseLayer.style.filter = "saturate(1.15) contrast(1.05)";
-            stage.appendChild(baseLayer);
-            mountAssetWhenReady(baseLayer, nextAsset(), () => {}, true, {
-                waitForVideoReady: true,
-                videoReadyTimeoutMs: 1800,
-            });
-            const baseSwapMs = Math.max(2200, Math.floor(4200 / Math.max(0.25, compositionSpeed)));
-            setInterval(() => {
-                const fresh = document.createElement("div");
-                fresh.style.position = "absolute";
-                fresh.style.inset = "0";
-                fresh.style.zIndex = "0";
-                fresh.style.opacity = "0";
-                fresh.style.transition = "opacity 0.9s ease";
-                fresh.style.filter = "saturate(1.15) contrast(1.05)";
-                stage.insertBefore(fresh, stage.firstChild);
-                mountAssetWhenReady(fresh, nextAsset(), () => {
-                    requestAnimationFrame(() => { fresh.style.opacity = "0.55"; });
-                    setTimeout(() => {
-                        if (baseLayer.parentNode) baseLayer.remove();
-                    }, 950);
-                }, true, { waitForVideoReady: true, videoReadyTimeoutMs: 1800 });
-            }, baseSwapMs);
-
             const speed = Math.max(0.25, compositionSpeed);
             const spawnMs = Math.max(110, Math.floor(240 / speed));
-            const MAX_TUNNEL_BURST_LAYERS = 12;
+            // Fullscreen drops burst-layer cap to reduce GPU pressure at 4K+.
+            const isFullscreen = isFullscreenActive();
+            const MAX_TUNNEL_BURST_LAYERS = isFullscreen ? 8 : 12;
             const spawnBurstLayer = () => {
                 const burstCount = stage.querySelectorAll(".tunnel-burst-layer").length;
                 if (burstCount >= MAX_TUNNEL_BURST_LAYERS) return;
@@ -3705,10 +4850,70 @@
                 layer.addEventListener("animationend", () => layer.remove(), { once: true });
             };
 
-            spawnBurstLayer();
-            spawnBurstLayer();
-            spawnBurstLayer();
-            setInterval(spawnBurstLayer, spawnMs);
+            const startLoop = () => {
+                // Lite-mode folder previews: skip burst spawning + base
+                // swap interval — just show a single solid base image
+                // filling the cell. Same rationale as the other spawn-
+                // loop compositions.
+                if (liteMode) {
+                    const liteLayer = document.createElement("div");
+                    liteLayer.style.position = "absolute";
+                    liteLayer.style.inset = "0";
+                    liteLayer.style.zIndex = "0";
+                    liteLayer.style.opacity = "1";
+                    stage.appendChild(liteLayer);
+                    const rawAsset = nextAsset();
+                    const liteAsset = (rawAsset && rawAsset.kind === "video")
+                        ? (toVideoFallbackAsset(rawAsset) || rawAsset)
+                        : rawAsset;
+                    if (liteAsset) mountAsset(liteLayer, liteAsset);
+                    return;
+                }
+                // Persistent base layer so the stage is never blank between bursts.
+                const baseLayer = document.createElement("div");
+                baseLayer.style.position = "absolute";
+                baseLayer.style.inset = "0";
+                baseLayer.style.zIndex = "0";
+                baseLayer.style.opacity = "0.55";
+                baseLayer.style.filter = "saturate(1.15) contrast(1.05)";
+                stage.appendChild(baseLayer);
+                mountAssetWhenReady(baseLayer, nextAsset(), () => {}, true, {
+                    waitForVideoReady: true,
+                    videoReadyTimeoutMs: 1800,
+                });
+                let currentBase = baseLayer;
+                const baseSwapMs = Math.max(2200, Math.floor(4200 / Math.max(0.25, compositionSpeed)));
+                setInterval(() => {
+                    const outgoing = currentBase;
+                    const fresh = document.createElement("div");
+                    fresh.style.position = "absolute";
+                    fresh.style.inset = "0";
+                    fresh.style.zIndex = "0";
+                    fresh.style.opacity = "0";
+                    fresh.style.transition = "opacity 0.9s ease";
+                    fresh.style.filter = "saturate(1.15) contrast(1.05)";
+                    stage.insertBefore(fresh, stage.firstChild);
+                    currentBase = fresh;
+                    mountAssetWhenReady(fresh, nextAsset(), () => {
+                        requestAnimationFrame(() => { fresh.style.opacity = "0.55"; });
+                        setTimeout(() => {
+                            if (outgoing.parentNode) outgoing.remove();
+                        }, 950);
+                    }, true, { waitForVideoReady: true, videoReadyTimeoutMs: 1800 });
+                }, baseSwapMs);
+
+                spawnBurstLayer();
+                spawnBurstLayer();
+                spawnBurstLayer();
+                setInterval(spawnBurstLayer, spawnMs);
+            };
+
+            const burstAssetPool = preparePinnedAssetPool(bgAssets, {
+                cap: 32,
+                holderId: "tunnelBurstHolder",
+                fallbackMs: 1500,
+                onReady: startLoop,
+            });
         }
 
         function setupSwirlMode() {
@@ -3730,20 +4935,23 @@
             let cursor = 0;
             let layerDepth = 1;
             const nextAsset = () => {
-                if (compositionSourcePlaybackMode === "random" && bgAssets.length > 1) {
-                    let nextIndex = Math.floor(Math.random() * bgAssets.length);
-                    if (nextIndex === cursor) nextIndex = (nextIndex + 1) % bgAssets.length;
+                if (compositionSourcePlaybackMode === "random" && swirlAssetPool.length > 1) {
+                    let nextIndex = Math.floor(Math.random() * swirlAssetPool.length);
+                    if (nextIndex === cursor) nextIndex = (nextIndex + 1) % swirlAssetPool.length;
                     cursor = nextIndex;
                 } else {
-                    cursor = cursor % bgAssets.length;
+                    cursor = cursor % swirlAssetPool.length;
                 }
-                const asset = bgAssets[cursor];
-                if (compositionSourcePlaybackMode !== "random" || bgAssets.length <= 1) cursor += 1;
+                const asset = swirlAssetPool[cursor];
+                if (compositionSourcePlaybackMode !== "random" || swirlAssetPool.length <= 1) cursor += 1;
                 return asset;
             };
 
             const speed = Math.max(0.25, compositionSpeed);
             const spawnMs = Math.max(70, Math.floor(150 / speed));
+            // Fullscreen slows spawn rate to reduce GPU pressure on 4K+ displays.
+            const isFullscreen = isFullscreenActive();
+            const effectiveSpawnMs = isFullscreen ? Math.floor(spawnMs * 1.6) : spawnMs;
             const spawnSwirlLayer = () => {
                 const layer = document.createElement("div");
                 layer.className = "swirl-layer";
@@ -3769,11 +4977,20 @@
                 layer.addEventListener("animationend", () => layer.remove(), { once: true });
             };
 
-            spawnSwirlLayer();
-            spawnSwirlLayer();
-            spawnSwirlLayer();
-            spawnSwirlLayer();
-            setInterval(spawnSwirlLayer, spawnMs);
+            const startLoop = () => {
+                spawnSwirlLayer();
+                spawnSwirlLayer();
+                spawnSwirlLayer();
+                spawnSwirlLayer();
+                setInterval(spawnSwirlLayer, effectiveSpawnMs);
+            };
+
+            const swirlAssetPool = preparePinnedAssetPool(bgAssets, {
+                cap: 32,
+                holderId: "swirlPreloadHolder",
+                fallbackMs: 1500,
+                onReady: startLoop,
+            });
         }
 
         function setupMirrorRotateMode() {
@@ -3858,6 +5075,120 @@
             }
         }
 
+        // Kaleido modes paint the SAME asset into N cells (4 for quad, 8 for octa).
+        // Mounting a separate <video> per cell creates N simultaneous GPU decoders
+        // for the same clip, which exhausts Chrome's decoder pool after a few swap
+        // cycles — symptom: cells turn solid black mid-session. Decode the video
+        // exactly once into a master element, then mirror its frames into the
+        // remaining cells via <canvas> + requestVideoFrameCallback. Images bypass
+        // this entirely (no decoder cost).
+        const _kaleidoMirrorState = new WeakMap();
+        function _stopKaleidoMaster(masterCell) {
+            const state = _kaleidoMirrorState.get(masterCell);
+            if (!state) return;
+            state.stopped = true;
+            if (state.video) {
+                try { state.video.pause(); } catch (_) {}
+                try { state.video.removeAttribute("src"); state.video.load(); } catch (_) {}
+            }
+            _kaleidoMirrorState.delete(masterCell);
+        }
+        function mountKaleidoCellsShared(cells, asset) {
+            if (!Array.isArray(cells) || !cells.length) return;
+            if (cells.length === 1) {
+                mountKaleidoCell(cells[0], asset);
+                return;
+            }
+            const master = cells[0];
+            const mirrors = cells.slice(1);
+            // Tear down prior shared state and any leftover videos in cells.
+            _stopKaleidoMaster(master);
+            cells.forEach((c) => {
+                if (!c) return;
+                c.querySelectorAll("video").forEach((v) => {
+                    try { v.pause(); } catch (_) {}
+                    try { v.removeAttribute("src"); v.load(); } catch (_) {}
+                });
+                c.innerHTML = "";
+            });
+            if (!asset) return;
+            const renderAsset = (typeof resolveRenderableAsset === "function")
+                ? resolveRenderableAsset(asset) : asset;
+            if (!renderAsset || !renderAsset.url) return;
+            if (renderAsset.kind !== "video") {
+                cells.forEach((c) => {
+                    const img = document.createElement("img");
+                    img.src = renderAsset.url;
+                    img.alt = renderAsset.name || "";
+                    c.appendChild(img);
+                });
+                return;
+            }
+            // Video path: one master decoder, N-1 canvas mirrors.
+            const video = document.createElement("video");
+            video.src = renderAsset.url;
+            video.autoplay = true;
+            video.loop = true;
+            video.muted = true;
+            video.defaultMuted = true;
+            video.playsInline = true;
+            video.preload = "auto";
+            video.setAttribute("playsinline", "");
+            video.setAttribute("muted", "");
+            video.setAttribute("webkit-playsinline", "");
+            video.controls = false;
+            master.appendChild(video);
+            video.play().catch(() => {});
+            const canvases = mirrors.map((c) => {
+                const canvas = document.createElement("canvas");
+                canvas.style.width = "100%";
+                canvas.style.height = "100%";
+                canvas.style.display = "block";
+                c.appendChild(canvas);
+                return { canvas, ctx: canvas.getContext("2d") };
+            });
+            const state = { video, canvases, stopped: false };
+            _kaleidoMirrorState.set(master, state);
+            const useRVFC = typeof video.requestVideoFrameCallback === "function";
+            const drawFrame = () => {
+                if (state.stopped || !video.isConnected) return;
+                const vw = video.videoWidth, vh = video.videoHeight;
+                if (vw && vh) {
+                    canvases.forEach(({ canvas, ctx }) => {
+                        if (!canvas.isConnected || !ctx) return;
+                        if (canvas.width !== vw || canvas.height !== vh) {
+                            canvas.width = vw;
+                            canvas.height = vh;
+                        }
+                        try { ctx.drawImage(video, 0, 0, vw, vh); } catch (_) {}
+                    });
+                }
+                if (useRVFC) {
+                    try { video.requestVideoFrameCallback(drawFrame); } catch (_) { requestAnimationFrame(drawFrame); }
+                } else {
+                    requestAnimationFrame(drawFrame);
+                }
+            };
+            if (useRVFC) {
+                try { video.requestVideoFrameCallback(drawFrame); } catch (_) { requestAnimationFrame(drawFrame); }
+            } else {
+                requestAnimationFrame(drawFrame);
+            }
+            video.addEventListener("error", () => {
+                state.stopped = true;
+                const fb = (typeof toVideoFallbackAsset === "function")
+                    ? toVideoFallbackAsset(renderAsset) : null;
+                if (fb && fb.kind === "image" && fb.url && fb !== renderAsset) {
+                    cells.forEach((c) => {
+                        c.innerHTML = "";
+                        const img = document.createElement("img");
+                        img.src = fb.url;
+                        c.appendChild(img);
+                    });
+                }
+            }, { once: true });
+        }
+
         function setupKaleidoQuadMode() {
             hideAllCompStages("kaleidoQuadStage");
             const stage = document.getElementById("kaleidoQuadStage");
@@ -3890,7 +5221,7 @@
 
             const swap = () => {
                 const asset = pickAsset();
-                cells.forEach((c) => mountKaleidoCell(c, asset));
+                mountKaleidoCellsShared(cells, asset);
             };
             swap();
             if (bgAssets.length > 1) {
@@ -3930,7 +5261,7 @@
 
             const swap = () => {
                 const asset = pickAsset();
-                cells.forEach((c) => mountKaleidoCell(c, asset));
+                mountKaleidoCellsShared(cells, asset);
             };
             swap();
             if (bgAssets.length > 1) {
@@ -4982,6 +6313,14 @@
                         const sat = (satMin + Math.random() * (satMax - satMin)).toFixed(3);
                         const bright = (brightMin + Math.random() * (brightMax - brightMin)).toFixed(3);
                         layer.style.filter = `hue-rotate(${hue}deg) saturate(${sat}) brightness(${bright})`;
+                        // Lite-mode folder previews: mount one frame on each
+                        // of the four psychedelic layers (so the cell shows
+                        // a representative tinted blend of the source pool)
+                        // but stop scheduling further steps — no churn of
+                        // mountAssetWhenReady / filter swaps. The four
+                        // mixed-blend-mode layers stay frozen at their
+                        // initial composited frame.
+                        if (liteMode) return;
                         const wait = delayBase + Math.floor(Math.random() * psyProfile.randomDelay);
                         const effectiveSpeed = Math.max(0.25, compositionSpeed * psyProfile.speedMultiplier);
                         setTimeout(step, Math.max(psyProfile.minWait, Math.floor(wait / effectiveSpeed)));
@@ -5061,21 +6400,31 @@
             stage.innerHTML = "";
             if (!bgAssets.length) return;
 
+            // Lite mode (folder grid iframes pass ?lite=1): this page is one of
+            // 9 simultaneous iframes — full-throttle card spawning saturates the
+            // browser and freezes the grid. Slow cadence and cap card count.
+            const liteScroll = !!(location.search && location.search.indexOf("lite=1") >= 0);
+
             let cursor = 0;
             const nextAsset = () => {
-                if (compositionSourcePlaybackMode === "random" && bgAssets.length > 1) {
-                    let nextIndex = Math.floor(Math.random() * bgAssets.length);
-                    if (nextIndex === cursor) nextIndex = (nextIndex + 1) % bgAssets.length;
+                if (compositionSourcePlaybackMode === "random" && scrollAssetPool.length > 1) {
+                    let nextIndex = Math.floor(Math.random() * scrollAssetPool.length);
+                    if (nextIndex === cursor) nextIndex = (nextIndex + 1) % scrollAssetPool.length;
                     cursor = nextIndex;
                 } else {
-                    cursor = cursor % bgAssets.length;
+                    cursor = cursor % scrollAssetPool.length;
                 }
-                const asset = bgAssets[cursor];
+                const asset = scrollAssetPool[cursor];
                 if (compositionSourcePlaybackMode !== "random") cursor += 1;
                 return asset;
             };
 
             const spawnCard = () => {
+                // Hard cap so slow swaps don't stack DOM nodes until the iframe
+                // locks up — especially important in lite mode (9 iframes share
+                // one browser).
+                const activeCap = liteScroll ? 4 : 16;
+                if (stage.querySelectorAll(".scroll-card").length >= activeCap) return;
                 const card = document.createElement("div");
                 card.className = "scroll-card";
                 const depthFactor = 0.55 + Math.random() * 0.9;
@@ -5111,13 +6460,24 @@
                 }, { once: true });
             };
 
-            spawnCard();
-            spawnCard();
-            spawnCard();
-            spawnCard();
-            const durationMs = Math.max(650, Math.floor((4.8 / Math.pow(compositionSpeed, 1.85)) * 1000));
-            const spawnMs = Math.max(70, Math.floor(durationMs * 0.14));
-            setInterval(spawnCard, spawnMs);
+            const startLoop = () => {
+                // Fewer initial spawns in lite mode so we don't burst-load N gifs
+                // simultaneously across 9 iframes.
+                const seedCount = liteScroll ? 2 : 4;
+                for (let i = 0; i < seedCount; i++) spawnCard();
+                const durationMs = Math.max(650, Math.floor((4.8 / Math.pow(compositionSpeed, 1.85)) * 1000));
+                let spawnMs = Math.max(70, Math.floor(durationMs * 0.14));
+                // 4x slower cadence in lite mode (still feels alive without thrashing).
+                if (liteScroll) spawnMs = Math.max(280, spawnMs * 4);
+                setInterval(spawnCard, spawnMs);
+            };
+
+            const scrollAssetPool = preparePinnedAssetPool(bgAssets, {
+                cap: 32,
+                holderId: "socialScrollPreloadHolder",
+                fallbackMs: 1500,
+                onReady: startLoop,
+            });
         }
 
         function setupStrobeMode() {
@@ -5150,7 +6510,12 @@
                 return asset;
             };
 
-            const strobeMs = Math.max(42, Math.floor(82 / Math.max(0.25, compositionSpeed)));
+            // Lite mode (folder grid iframes pass ?lite=1): 9 strobing iframes at
+            // 42-82ms cadence saturate one browser process and freeze the grid.
+            // Slow the cadence way down so the preview stays alive.
+            const liteStrobe = !!(location.search && location.search.indexOf("lite=1") >= 0);
+            let strobeMs = Math.max(42, Math.floor(82 / Math.max(0.25, compositionSpeed)));
+            if (liteStrobe) strobeMs = Math.max(420, strobeMs * 8);
             let swapBusy = false;
             const tick = () => {
                 if (swapBusy) return;
@@ -5202,7 +6567,9 @@
             const rightPool = fgAssets.length ? fgAssets : bgAssets;
             if (!leftPool.length || !rightPool.length) return;
 
-            const strobeMs = Math.max(42, Math.floor(82 / Math.max(0.25, compositionSpeed)));
+            const liteStrobe2 = !!(location.search && location.search.indexOf("lite=1") >= 0);
+            let strobeMs = Math.max(42, Math.floor(82 / Math.max(0.25, compositionSpeed)));
+            if (liteStrobe2) strobeMs = Math.max(420, strobeMs * 8);
             let leftCursor = 0;
             let rightCursor = 0;
             let leftLast = -1;
@@ -6478,6 +7845,979 @@
             }, Math.max(1000, Math.floor(2200 / Math.max(0.25, compositionSpeed))));
         }
 
+        function setupRotatingCubeMode() {
+            document.getElementById("backgroundLayer").classList.remove("hidden");
+            document.getElementById("foregroundLayer").classList.add("hidden");
+            document.getElementById("tunnelGrid").classList.add("hidden");
+            document.getElementById("tunnelStage").classList.add("hidden");
+            document.getElementById("splitScreen").classList.add("hidden");
+            document.getElementById("splitScreenHorizontal").classList.add("hidden");
+            document.getElementById("psychedelicStage").classList.add("hidden");
+            document.getElementById("kaleidoStage").classList.add("hidden");
+            document.getElementById("scrollStage").classList.add("hidden");
+            document.getElementById("centerShiftStage").classList.add("hidden");
+            document.getElementById("strobeStage").classList.add("hidden");
+            document.getElementById("prismStage").classList.add("hidden");
+            document.getElementById("sleepStage").classList.add("hidden");
+            document.getElementById("waveStage").classList.add("hidden");
+            document.getElementById("angerStage").classList.add("hidden");
+            document.getElementById("anxietyStage").classList.add("hidden");
+            const stage = document.getElementById("boxStage");
+            stage.classList.remove("hidden");
+            stage.innerHTML = "";
+            stage.style.background = "transparent";
+            const backgroundPool = bgAssets;
+            // Mirror cylinder-room: prefer foreground sources for the cube faces,
+            // fall back to background pool if no foreground supplied.
+            const cubePool = fgAssets.length ? fgAssets : bgAssets;
+            if (!cubePool.length) return;
+
+            if (backgroundPool.length) {
+                cycleAssets("backgroundLayer", backgroundPool, 2200);
+            } else {
+                document.getElementById("backgroundLayer").innerHTML = "";
+            }
+
+            let cursor = 0;
+            const pickFaceAsset = (blocked = new Set(), avoidIdx = -1) => {
+                if (!cubePool.length) return { asset: null, idx: -1 };
+                if (cubePool.length === 1) return { asset: cubePool[0], idx: 0 };
+                const deny = new Set(blocked);
+                if (avoidIdx >= 0) deny.add(avoidIdx);
+                let candidates = [];
+                for (let i = 0; i < cubePool.length; i++) {
+                    if (!deny.has(i)) candidates.push(i);
+                }
+                if (!candidates.length) {
+                    for (let i = 0; i < cubePool.length; i++) {
+                        if (i !== avoidIdx) candidates.push(i);
+                    }
+                }
+                if (!candidates.length) candidates = [0];
+                let pickedIdx = candidates[0];
+                if (compositionSourcePlaybackMode === "random") {
+                    pickedIdx = candidates[Math.floor(Math.random() * candidates.length)];
+                } else {
+                    const start = cursor % cubePool.length;
+                    for (let off = 0; off < cubePool.length; off++) {
+                        const probe = (start + off) % cubePool.length;
+                        if (candidates.includes(probe)) {
+                            pickedIdx = probe;
+                            break;
+                        }
+                    }
+                    cursor = pickedIdx + 1;
+                }
+                return { asset: cubePool[pickedIdx], idx: pickedIdx };
+            };
+
+            const room = document.createElement("div");
+            room.className = "cube-room";
+            stage.appendChild(room);
+
+            const ring = document.createElement("div");
+            ring.className = "cube-ring";
+            room.appendChild(ring);
+
+            // 6 faces of the cube: each placed half-edge from the centre.
+            // Face size in CSS is 44vmin, so half = 22vmin.
+            const halfVmin = 22;
+            const faceSpecs = [
+                { name: "front",  transform: `translateZ(${halfVmin}vmin)` },
+                { name: "back",   transform: `rotateY(180deg) translateZ(${halfVmin}vmin)` },
+                { name: "right",  transform: `rotateY(90deg) translateZ(${halfVmin}vmin)` },
+                { name: "left",   transform: `rotateY(-90deg) translateZ(${halfVmin}vmin)` },
+                { name: "top",    transform: `rotateX(90deg) translateZ(${halfVmin}vmin)` },
+                { name: "bottom", transform: `rotateX(-90deg) translateZ(${halfVmin}vmin)` },
+            ];
+
+            const faces = [];
+            for (let i = 0; i < faceSpecs.length; i++) {
+                const spec = faceSpecs[i];
+                const face = document.createElement("div");
+                face.className = "cube-face";
+                face.style.transform = spec.transform;
+
+                const media = document.createElement("div");
+                media.className = "cube-face-media";
+
+                const shade = document.createElement("div");
+                shade.className = "cube-face-shade";
+                // Slightly darker shades for top/bottom & back to suggest depth.
+                let baseDarkness = 0.18;
+                if (spec.name === "top" || spec.name === "bottom") baseDarkness = 0.28;
+                if (spec.name === "back") baseDarkness = 0.34;
+                shade.style.background = `linear-gradient(135deg, rgba(0,0,0,${(baseDarkness * 0.55).toFixed(3)}), rgba(0,0,0,${baseDarkness.toFixed(3)}))`;
+                shade.style.opacity = "0.55";
+
+                face.appendChild(media);
+                face.appendChild(shade);
+                ring.appendChild(face);
+
+                const blocked = new Set(faces.map((f) => f.idx).filter((idx) => idx >= 0));
+                const picked = pickFaceAsset(blocked, -1);
+                if (picked.asset) mountAssetWhenReady(media, picked.asset);
+                faces.push({ media, shade, spec, idx: picked.idx });
+            }
+
+            // Apply an initial isometric ring rotation SYNCHRONOUSLY so the
+            // cube looks like a cube from the very first paint — otherwise
+            // the side/top/bottom faces sit edge-on (90° from camera) and
+            // render as zero-width slivers until the setInterval tick fires
+            // (~90ms in). That race is what Playwright was capturing for the
+            // poster: only the front face visible, looking like "one slightly
+            // angled image" instead of a cube.
+            room.style.transform = `perspective(1100px)`;
+            ring.style.transform = `rotateX(-22deg) rotateY(-32deg)`;
+            // Seed face shading too so the initial paint isn't flat-uniform.
+            faces.forEach((f) => {
+                const seedYaw = -32 * Math.PI / 180;
+                let facing;
+                switch (f.spec.name) {
+                    case "front":  facing = Math.cos(seedYaw); break;
+                    case "back":   facing = -Math.cos(seedYaw); break;
+                    case "right":  facing = Math.sin(seedYaw); break;
+                    case "left":   facing = -Math.sin(seedYaw); break;
+                    default:       facing = 0;
+                }
+                const litness = (facing + 1) / 2;
+                f.shade.style.opacity = (0.7 - litness * 0.5).toFixed(3);
+            });
+
+            // In render mode (?render=1 → Playwright capturing the poster
+            // frame), freeze the ring at its initial angle so the poster
+            // always shows a recognisable 3-face cube. No setInterval, no
+            // race against the capture.
+            if (renderMode) return;
+
+            // Continuous rotation: yaw on Y, gentle pitch on X.
+            // compositionSpeed (0.25..3) modulates how fast the cube spins.
+            setInterval(() => {
+                const tSec = Date.now() / 1000;
+                const spinY = tSec * 30 * Math.max(0.25, compositionSpeed); // deg/sec
+                const tiltX = -18 + Math.sin(tSec * 0.25) * 12;
+                room.style.transform = `perspective(1100px)`;
+                ring.style.transform = `rotateX(${tiltX.toFixed(2)}deg) rotateY(${(spinY % 360).toFixed(2)}deg)`;
+                // Tweak per-face shading based on facing toward camera.
+                // Approximate facing by composing yaw + face normal direction.
+                const yawRad = (spinY * Math.PI) / 180;
+                faces.forEach((f) => {
+                    let facing;
+                    switch (f.spec.name) {
+                        case "front":  facing = Math.cos(yawRad); break;
+                        case "back":   facing = -Math.cos(yawRad); break;
+                        case "right":  facing = Math.sin(yawRad); break;
+                        case "left":   facing = -Math.sin(yawRad); break;
+                        default:       facing = 0; // top/bottom: roughly constant under small pitch
+                    }
+                    const litness = (facing + 1) / 2; // 0..1
+                    f.shade.style.opacity = (0.7 - litness * 0.5).toFixed(3);
+                });
+            }, Math.max(50, Math.floor(90 / Math.max(0.25, compositionSpeed))));
+
+            // Periodically swap one face's asset for variety.
+            setInterval(() => {
+                const face = faces[Math.floor(Math.random() * faces.length)];
+                const blocked = new Set(
+                    faces.filter((f) => f !== face).map((f) => f.idx).filter((idx) => idx >= 0)
+                );
+                const picked = pickFaceAsset(blocked, face.idx);
+                if (!picked.asset) return;
+                face.idx = picked.idx;
+                mountAssetWhenReady(face.media, picked.asset);
+            }, Math.max(1000, Math.floor(2400 / Math.max(0.25, compositionSpeed))));
+        }
+
+        function setupRotatingCubeStrobeMode() {
+            // Same geometry / rotation as setupRotatingCubeMode but each face's
+            // image strobes rapidly (per-face asset swap on a ~strobeMs cadence)
+            // instead of swapping one face every couple of seconds.
+            document.getElementById("backgroundLayer").classList.remove("hidden");
+            document.getElementById("foregroundLayer").classList.add("hidden");
+            document.getElementById("tunnelGrid").classList.add("hidden");
+            document.getElementById("tunnelStage").classList.add("hidden");
+            document.getElementById("splitScreen").classList.add("hidden");
+            document.getElementById("splitScreenHorizontal").classList.add("hidden");
+            document.getElementById("psychedelicStage").classList.add("hidden");
+            document.getElementById("kaleidoStage").classList.add("hidden");
+            document.getElementById("scrollStage").classList.add("hidden");
+            document.getElementById("centerShiftStage").classList.add("hidden");
+            document.getElementById("strobeStage").classList.add("hidden");
+            document.getElementById("prismStage").classList.add("hidden");
+            document.getElementById("sleepStage").classList.add("hidden");
+            document.getElementById("waveStage").classList.add("hidden");
+            document.getElementById("angerStage").classList.add("hidden");
+            document.getElementById("anxietyStage").classList.add("hidden");
+            const stage = document.getElementById("boxStage");
+            stage.classList.remove("hidden");
+            stage.innerHTML = "";
+            stage.style.background = "transparent";
+            const backgroundPool = bgAssets;
+            const cubePool = fgAssets.length ? fgAssets : bgAssets;
+            if (!cubePool.length) return;
+
+            if (backgroundPool.length) {
+                cycleAssets("backgroundLayer", backgroundPool, 2200);
+            } else {
+                document.getElementById("backgroundLayer").innerHTML = "";
+            }
+
+            let cursor = 0;
+            // Strobe picker: per-face, just grab the next asset. Avoid an
+            // immediate self-repeat on the same face but don't try to keep
+            // every face distinct — strobing is meant to flicker fast.
+            const pickFaceAssetStrobe = (avoidIdx = -1) => {
+                if (!cubePool.length) return { asset: null, idx: -1 };
+                if (cubePool.length === 1) return { asset: cubePool[0], idx: 0 };
+                let pickedIdx;
+                if (compositionSourcePlaybackMode === "random") {
+                    do {
+                        pickedIdx = Math.floor(Math.random() * cubePool.length);
+                    } while (pickedIdx === avoidIdx && cubePool.length > 1);
+                } else {
+                    pickedIdx = cursor % cubePool.length;
+                    if (pickedIdx === avoidIdx && cubePool.length > 1) {
+                        pickedIdx = (pickedIdx + 1) % cubePool.length;
+                    }
+                    cursor = pickedIdx + 1;
+                }
+                return { asset: cubePool[pickedIdx], idx: pickedIdx };
+            };
+
+            const room = document.createElement("div");
+            room.className = "cube-room";
+            stage.appendChild(room);
+
+            const ring = document.createElement("div");
+            ring.className = "cube-ring";
+            room.appendChild(ring);
+
+            const halfVmin = 22;
+            const faceSpecs = [
+                { name: "front",  transform: `translateZ(${halfVmin}vmin)` },
+                { name: "back",   transform: `rotateY(180deg) translateZ(${halfVmin}vmin)` },
+                { name: "right",  transform: `rotateY(90deg) translateZ(${halfVmin}vmin)` },
+                { name: "left",   transform: `rotateY(-90deg) translateZ(${halfVmin}vmin)` },
+                { name: "top",    transform: `rotateX(90deg) translateZ(${halfVmin}vmin)` },
+                { name: "bottom", transform: `rotateX(-90deg) translateZ(${halfVmin}vmin)` },
+            ];
+
+            const faces = [];
+            for (let i = 0; i < faceSpecs.length; i++) {
+                const spec = faceSpecs[i];
+                const face = document.createElement("div");
+                face.className = "cube-face";
+                face.style.transform = spec.transform;
+
+                const media = document.createElement("div");
+                media.className = "cube-face-media";
+
+                const shade = document.createElement("div");
+                shade.className = "cube-face-shade";
+                let baseDarkness = 0.18;
+                if (spec.name === "top" || spec.name === "bottom") baseDarkness = 0.28;
+                if (spec.name === "back") baseDarkness = 0.34;
+                shade.style.background = `linear-gradient(135deg, rgba(0,0,0,${(baseDarkness * 0.55).toFixed(3)}), rgba(0,0,0,${baseDarkness.toFixed(3)}))`;
+                shade.style.opacity = "0.55";
+
+                face.appendChild(media);
+                face.appendChild(shade);
+                ring.appendChild(face);
+
+                const picked = pickFaceAssetStrobe(-1);
+                if (picked.asset) mountAssetWhenReady(media, picked.asset);
+                // swapBusy keeps each face from queueing up mounts when assets
+                // are slow to decode — strobing skips a tick instead of piling up.
+                faces.push({ media, shade, spec, idx: picked.idx, swapBusy: false });
+            }
+
+            // Seed the ring with an isometric angle synchronously (see the
+            // non-strobe cube for the full reasoning). Without this the
+            // poster capture grabs a zero-rotation cube with only the front
+            // face visible — the bug that produced the "single slightly
+            // angled image" poster.
+            room.style.transform = `perspective(1100px)`;
+            ring.style.transform = `rotateX(-22deg) rotateY(-32deg)`;
+            faces.forEach((f) => {
+                const seedYaw = -32 * Math.PI / 180;
+                let facing;
+                switch (f.spec.name) {
+                    case "front":  facing = Math.cos(seedYaw); break;
+                    case "back":   facing = -Math.cos(seedYaw); break;
+                    case "right":  facing = Math.sin(seedYaw); break;
+                    case "left":   facing = -Math.sin(seedYaw); break;
+                    default:       facing = 0;
+                }
+                const litness = (facing + 1) / 2;
+                f.shade.style.opacity = (0.7 - litness * 0.5).toFixed(3);
+            });
+
+            // Render-mode bypass: freeze the cube at the seed angle and
+            // skip both the rotation interval and the per-face strobing.
+            // Strobing during a Playwright capture is meaningless (we want
+            // a single sharp frame, not a flicker) and an unmounted-mid-swap
+            // face could otherwise be the one captured.
+            if (renderMode) return;
+
+            // Continuous rotation (same as non-strobe cube).
+            setInterval(() => {
+                const tSec = Date.now() / 1000;
+                const spinY = tSec * 30 * Math.max(0.25, compositionSpeed);
+                const tiltX = -18 + Math.sin(tSec * 0.25) * 12;
+                room.style.transform = `perspective(1100px)`;
+                ring.style.transform = `rotateX(${tiltX.toFixed(2)}deg) rotateY(${(spinY % 360).toFixed(2)}deg)`;
+                const yawRad = (spinY * Math.PI) / 180;
+                faces.forEach((f) => {
+                    let facing;
+                    switch (f.spec.name) {
+                        case "front":  facing = Math.cos(yawRad); break;
+                        case "back":   facing = -Math.cos(yawRad); break;
+                        case "right":  facing = Math.sin(yawRad); break;
+                        case "left":   facing = -Math.sin(yawRad); break;
+                        default:       facing = 0;
+                    }
+                    const litness = (facing + 1) / 2;
+                    f.shade.style.opacity = (0.7 - litness * 0.5).toFixed(3);
+                });
+            }, Math.max(50, Math.floor(90 / Math.max(0.25, compositionSpeed))));
+
+            // === Per-face strobing ===
+            // Slower base cadence than setupStrobeMode (200ms vs 82ms)
+            // because rotating-cube-strobe runs SIX faces in parallel:
+            // at the old 82ms rate that was 73 mounts/sec, which choked
+            // Chrome's video decoder slots on video-heavy source pools
+            // and starved the background cycleAssets timer of resources
+            // (the background would appear to "break" after ~30 seconds
+            // as its own asset loads started timing out and getting
+            // blacklisted). 200ms × 6 faces = 30 mounts/sec — still
+            // unmistakably strobe-paced but well within the browser's
+            // sustainable decode budget.
+            const liteStrobe = !!(location.search && location.search.indexOf("lite=1") >= 0);
+            let strobeMs = Math.max(120, Math.floor(200 / Math.max(0.25, compositionSpeed)));
+            if (liteStrobe) strobeMs = Math.max(600, strobeMs * 4);
+
+            // Stagger each face's strobe phase a bit so swaps aren't all
+            // pinned to the same animation frame (cheaper for the GPU).
+            faces.forEach((f, fi) => {
+                const startOffset = Math.floor((strobeMs / faces.length) * fi);
+                setTimeout(() => {
+                    setInterval(() => {
+                        if (f.swapBusy) return;
+                        f.swapBusy = true;
+                        const picked = pickFaceAssetStrobe(f.idx);
+                        if (!picked.asset) { f.swapBusy = false; return; }
+                        f.idx = picked.idx;
+                        mountAssetWhenReady(
+                            f.media,
+                            picked.asset,
+                            () => { f.swapBusy = false; },
+                            true,
+                            {
+                                waitForVideoReady: true,
+                                strictVideoReady: false,
+                                videoReadyTimeoutMs: 1100,
+                                onBroken: () => { f.swapBusy = false; },
+                            },
+                        );
+                    }, strobeMs);
+                }, startOffset);
+            });
+        }
+
+        function setupEyeWakeMode() {
+            // Black screen with periodic eye-shaped blinks. Between
+            // blinks the screen is fully dark (clip-path ellipse with
+            // vertical-radius 0). A blink animates the radius up to
+            // ~25% (eye fully open showing the image), holds briefly,
+            // then animates back to 0 (eye closes). When the eye is
+            // fully closed, the underlying image swaps to a fresh
+            // random pick — so each new blink reveals a different
+            // image, like a sleeper's flickering dreams.
+            document.getElementById("backgroundLayer").classList.add("hidden");
+            document.getElementById("foregroundLayer").classList.add("hidden");
+            document.getElementById("tunnelGrid").classList.add("hidden");
+            document.getElementById("tunnelStage").classList.add("hidden");
+            document.getElementById("splitScreen").classList.add("hidden");
+            document.getElementById("splitScreenHorizontal").classList.add("hidden");
+            document.getElementById("psychedelicStage").classList.add("hidden");
+            document.getElementById("kaleidoStage").classList.add("hidden");
+            document.getElementById("scrollStage").classList.add("hidden");
+            document.getElementById("centerShiftStage").classList.add("hidden");
+            document.getElementById("strobeStage").classList.add("hidden");
+            document.getElementById("prismStage").classList.add("hidden");
+            document.getElementById("sleepStage").classList.add("hidden");
+            document.getElementById("waveStage").classList.add("hidden");
+            document.getElementById("angerStage").classList.add("hidden");
+            document.getElementById("anxietyStage").classList.add("hidden");
+
+            const stage = document.getElementById("boxStage");
+            stage.classList.remove("hidden");
+            stage.innerHTML = "";
+            stage.style.background = "#000";
+
+            // Two pools: if BOTH background and foreground source folders
+            // are populated, the picker alternates between them per blink
+            // (blink 1 → bg image, blink 2 → fg image, blink 3 → bg, …)
+            // so two distinct image worlds flicker through. If only one
+            // pool is populated, every blink draws from it.
+            const bgPool = (bgAssets && bgAssets.length) ? bgAssets : [];
+            const fgPool = (fgAssets && fgAssets.length) ? fgAssets : [];
+            const alternate = bgPool.length > 0 && fgPool.length > 0;
+            const singlePool = bgPool.length ? bgPool : fgPool;
+            if (!bgPool.length && !fgPool.length) return;
+
+            const eyeStage = document.createElement("div");
+            eyeStage.className = "eye-stage";
+            stage.appendChild(eyeStage);
+
+            const eyeImage = document.createElement("div");
+            eyeImage.className = "eye-image";
+            eyeStage.appendChild(eyeImage);
+
+            let pickCounter = 0;
+            const pickAsset = () => {
+                if (alternate) {
+                    const usePool = (pickCounter % 2 === 0) ? bgPool : fgPool;
+                    pickCounter += 1;
+                    return usePool[Math.floor(Math.random() * usePool.length)];
+                }
+                return singlePool[Math.floor(Math.random() * singlePool.length)];
+            };
+
+            // Mount the first image while the eye is closed so the very
+            // first blink reveals something interesting (no flash of
+            // empty content).
+            const first = pickAsset();
+            if (first) mountAssetWhenReady(eyeImage, first);
+
+            // Eye-shape coordinates. The opening expands the vertical
+            // radius from 0 (closed) to OPEN_RY (fully open). The
+            // horizontal radius narrows slightly when fully open for an
+            // almond-eye shape rather than a perfect circle.
+            const CLOSED_PATH = "ellipse(50% 0% at 50% 50%)";
+            const OPEN_PATH   = "ellipse(46% 28% at 50% 50%)";
+
+            // ONLY when Playwright is capturing a single-frame poster
+            // (?render=1&capture=still), lock the eye open on one image
+            // so the poster isn't a black eyelid square. For the 10s /
+            // 45s video captures (?render=1 without capture=still) the
+            // blink cycle must run — otherwise the preview video shows
+            // a frozen open eye for ten seconds.
+            if (renderMode && stillCaptureMode) {
+                eyeImage.style.clipPath = OPEN_PATH;
+                eyeImage.style.webkitClipPath = OPEN_PATH;
+                return;
+            }
+
+            const speed = Math.max(0.25, compositionSpeed);
+
+            // A single blink: open → hold → close. Returns when the eye
+            // is fully closed again so the caller can swap assets.
+            const blink = (openMs, holdMs, closeMs, done) => {
+                // Opening
+                eyeImage.style.transition = `clip-path ${openMs}ms cubic-bezier(0.22, 0.61, 0.36, 1), -webkit-clip-path ${openMs}ms cubic-bezier(0.22, 0.61, 0.36, 1)`;
+                eyeImage.style.clipPath = OPEN_PATH;
+                eyeImage.style.webkitClipPath = OPEN_PATH;
+                setTimeout(() => {
+                    // Closing (after hold)
+                    eyeImage.style.transition = `clip-path ${closeMs}ms cubic-bezier(0.55, 0, 0.78, 0.4), -webkit-clip-path ${closeMs}ms cubic-bezier(0.55, 0, 0.78, 0.4)`;
+                    eyeImage.style.clipPath = CLOSED_PATH;
+                    eyeImage.style.webkitClipPath = CLOSED_PATH;
+                    setTimeout(() => { if (done) done(); }, closeMs + 40);
+                }, openMs + holdMs);
+            };
+
+            // The wake cycle: starts with a few quick, sleepy half-
+            // blinks (eye flutters open briefly), then a longer wider
+            // gaze, then back to slow flutters. Each pass uses a fresh
+            // image. The whole loop restarts after a long-dark pause
+            // — like falling back asleep, then re-waking.
+            const wakeCycle = () => {
+                // Beat sequence: each entry is [openMs, holdMs, closeMs, gapAfterMs]
+                // Values get scaled by 1/speed so the composition's
+                // speed slider controls how snappy the whole cycle is.
+                const scale = (v) => Math.max(40, Math.round(v / speed));
+                const beats = [
+                    // Sleepy flutters: dreamy, slow-motion eyelid drift
+                    [scale(700), scale(450), scale(900), scale(2800)],
+                    [scale(800), scale(550), scale(1000), scale(2400)],
+                    [scale(650), scale(380), scale(850), scale(3200)],
+                    // Half-awake: longer openings, eye lingering on the image
+                    [scale(1200), scale(2200), scale(1100), scale(3000)],
+                    [scale(1050), scale(2800), scale(1200), scale(3400)],
+                    // Wide-awake gaze: a long held look
+                    [scale(1500), scale(5500), scale(1400), scale(4800)],
+                    // Falling back: heavier eyelids, longer dark between
+                    [scale(900), scale(800), scale(1400), scale(4500)],
+                    [scale(750), scale(450), scale(1200), scale(6500)],
+                ];
+                let i = 0;
+                const step = () => {
+                    if (i >= beats.length) {
+                        // Long dark before the cycle repeats — extended
+                        // "deep sleep" period (~6 s at speed=1) before
+                        // the next round of slow blinks begins.
+                        setTimeout(wakeCycle, Math.max(3500, scale(6000)));
+                        return;
+                    }
+                    const [openMs, holdMs, closeMs, gapMs] = beats[i++];
+                    blink(openMs, holdMs, closeMs, () => {
+                        // Eye is closed — swap to a fresh asset before
+                        // the next blink reveals it.
+                        const nextAsset = pickAsset();
+                        if (nextAsset) mountAssetWhenReady(eyeImage, nextAsset);
+                        setTimeout(step, gapMs);
+                    });
+                };
+                // Start with a beat of darkness so the page-loaded eye
+                // doesn't snap open immediately — sets a "drowsy" tone.
+                setTimeout(step, scale(1800));
+            };
+            wakeCycle();
+        }
+
+        function setupSlotMachineMode() {
+            // ONE full-viewport reel that spins fast then decelerates to
+            // land on a single centered image. Each tile fills the entire
+            // viewport when stopped — so each spin cycle resolves to one
+            // big image showing for the pause-after-stop duration.
+            document.getElementById("backgroundLayer").classList.add("hidden");
+            document.getElementById("foregroundLayer").classList.add("hidden");
+            document.getElementById("tunnelGrid").classList.add("hidden");
+            document.getElementById("tunnelStage").classList.add("hidden");
+            document.getElementById("splitScreen").classList.add("hidden");
+            document.getElementById("splitScreenHorizontal").classList.add("hidden");
+            document.getElementById("psychedelicStage").classList.add("hidden");
+            document.getElementById("kaleidoStage").classList.add("hidden");
+            document.getElementById("scrollStage").classList.add("hidden");
+            document.getElementById("centerShiftStage").classList.add("hidden");
+            document.getElementById("strobeStage").classList.add("hidden");
+            document.getElementById("prismStage").classList.add("hidden");
+            document.getElementById("sleepStage").classList.add("hidden");
+            document.getElementById("waveStage").classList.add("hidden");
+            document.getElementById("angerStage").classList.add("hidden");
+            document.getElementById("anxietyStage").classList.add("hidden");
+
+            const stage = document.getElementById("boxStage");
+            stage.classList.remove("hidden");
+            stage.innerHTML = "";
+            stage.style.background = "transparent";
+
+            const pool = (bgAssets && bgAssets.length)
+                ? bgAssets
+                : ((fgAssets && fgAssets.length) ? fgAssets : []);
+            if (!pool.length) return;
+
+            const slotStage = document.createElement("div");
+            slotStage.className = "slot-stage";
+            stage.appendChild(slotStage);
+
+            const pickAsset = () => pool[Math.floor(Math.random() * pool.length)];
+
+            // Lite mode (folder grid iframes pass ?lite=1): 9 simultaneous reel
+            // animations at 18000px/sec each, with continuous mountAssetWhenReady
+            // calls during slowdown, saturate the browser and freeze the grid.
+            // Replace the full reel with a single tile that swaps every ~3s —
+            // visually conveys "this is a slot-machine composition" without
+            // burning the whole browser process.
+            const liteSlot = !!(location.search && location.search.indexOf("lite=1") >= 0);
+            if (liteSlot) {
+                const tile = document.createElement("div");
+                tile.className = "slot-tile";
+                tile.style.position = "absolute";
+                tile.style.inset = "0";
+                const media = document.createElement("div");
+                media.className = "slot-tile-media";
+                media.style.position = "absolute";
+                media.style.inset = "0";
+                tile.appendChild(media);
+                slotStage.appendChild(tile);
+                const swapStill = () => {
+                    const a = pickAsset();
+                    if (a) mountAssetWhenReady(media, a);
+                };
+                swapStill();
+                setInterval(swapStill, 3000);
+                return;
+            }
+
+            const reel = document.createElement("div");
+            reel.className = "slot-reel";
+            slotStage.appendChild(reel);
+
+            const strip = document.createElement("div");
+            strip.className = "slot-reel-strip";
+            reel.appendChild(strip);
+
+            // Pre-build a strip of N full-viewport tiles. Treadmill recycle
+            // cycles the bottom tile back to the top with a new asset.
+            const TILE_COUNT = 8;
+            const tiles = [];
+            for (let i = 0; i < TILE_COUNT; i++) {
+                const tile = document.createElement("div");
+                tile.className = "slot-tile";
+                const media = document.createElement("div");
+                media.className = "slot-tile-media";
+                tile.appendChild(media);
+                strip.appendChild(tile);
+                const asset = pickAsset();
+                if (asset) mountAssetWhenReady(media, asset);
+                tiles.push({ tile, media });
+            }
+
+            // Cycle timings. The visual rhythm:
+            //   • Spin fast for SPIN_PHASE_MS at SPIN_SPEED px/sec
+            //   • Decelerate over SLOW_DURATION_MS, landing on a clean
+            //     tile boundary (so one image is exactly centered)
+            //   • Pause on the landed image for PAUSE_AFTER_STOP_MS
+            //   • Loop
+            const SPIN_SPEED_BASE = 18000;         // px/sec at compositionSpeed = 1 — a violent blur
+            const SPIN_PHASE_MS    = 1600;
+            const SLOW_DURATION_MS = 1600;
+            const PAUSE_AFTER_STOP_MS = 2400;
+
+            // Reel state machine
+            const state = {
+                phase: 0,                    // current modular phase in [0, tileH)
+                cumulativePhase: 0,          // total phase ever advanced (for clean-landing math)
+                speed: 0,                    // px/sec during the spinning phase
+                mode: "stopped",             // "spinning" | "slowing" | "stopped"
+                slowStartTime: 0,
+                slowDuration: 0,
+                slowStartCumulative: 0,      // cumulative phase when slowing began
+                slowDistance: 0,             // how much cumulative phase the slowdown must cover
+            };
+
+            let cycleTimers = [];
+            const clearTimers = () => {
+                cycleTimers.forEach((t) => clearTimeout(t));
+                cycleTimers = [];
+            };
+
+            const tileHeightPx = () => (
+                tiles[0] && tiles[0].tile.getBoundingClientRect().height
+            ) || 0;
+
+            const startCycle = () => {
+                clearTimers();
+                const speed = Math.max(0.25, compositionSpeed);
+                state.mode = "spinning";
+                state.speed = SPIN_SPEED_BASE * speed;
+                // After the spin phase, transition to deceleration. The
+                // deceleration computes an exact target so the strip lands
+                // on a clean tile boundary (one image centered).
+                cycleTimers.push(setTimeout(() => {
+                    if (state.mode !== "spinning") return;
+                    const tileH = tileHeightPx() || 1;
+                    state.slowStartTime = performance.now();
+                    state.slowDuration = SLOW_DURATION_MS;
+                    state.slowStartCumulative = state.cumulativePhase + state.phase;
+                    // Travel at least a few tiles during the slow-down so
+                    // the eye registers the deceleration. Round up so the
+                    // final cumulative phase is exactly an integer
+                    // multiple of tileH — guarantees a centered image.
+                    const minSlowTiles = 5;
+                    const startFracTiles = state.slowStartCumulative / tileH;
+                    const endTileIndex = Math.ceil(startFracTiles) + minSlowTiles;
+                    const targetCumulative = endTileIndex * tileH;
+                    state.slowDistance = targetCumulative - state.slowStartCumulative;
+                    state.mode = "slowing";
+                }, SPIN_PHASE_MS));
+                // After the slowdown completes, pause then restart.
+                const totalCycleMs = SPIN_PHASE_MS + SLOW_DURATION_MS + PAUSE_AFTER_STOP_MS;
+                cycleTimers.push(setTimeout(startCycle, totalCycleMs));
+            };
+            startCycle();
+
+            let lastFrameTs = performance.now();
+            const animate = (ts) => {
+                const dt = Math.min(64, ts - lastFrameTs) / 1000;
+                lastFrameTs = ts;
+                const tileH = tileHeightPx();
+
+                if (tileH > 0) {
+                    let advance = 0;
+                    if (state.mode === "spinning") {
+                        advance = state.speed * dt;
+                    } else if (state.mode === "slowing") {
+                        const elapsed = ts - state.slowStartTime;
+                        const t = Math.min(1, elapsed / state.slowDuration);
+                        // Ease-out cubic — fast at start, slow to a stop.
+                        const eased = 1 - (1 - t) * (1 - t) * (1 - t);
+                        const desiredCumulative = state.slowStartCumulative + state.slowDistance * eased;
+                        const currentCumulative = state.cumulativePhase + state.phase;
+                        advance = desiredCumulative - currentCumulative;
+                        if (t >= 1) {
+                            state.mode = "stopped";
+                            // Final snap: ensure we're exactly on a tile
+                            // boundary (float drift over the cumulative
+                            // total can leave us off by a sub-pixel).
+                            const target = state.slowStartCumulative + state.slowDistance;
+                            advance = target - currentCumulative;
+                        }
+                    }
+
+                    if (advance > 0) {
+                        state.phase += advance;
+                        state.cumulativePhase += 0; // cumulative tracked via recycle below
+                        while (state.phase >= tileH) {
+                            const last = tiles.pop();
+                            if (!last) break;
+                            strip.insertBefore(last.tile, strip.firstChild);
+                            tiles.unshift(last);
+                            // During the high-speed spin the strip can recycle
+                            // 15-20 tiles per second; calling mountAssetWhenReady
+                            // that fast pegs the browser's image-load queue and
+                            // hurts the spin's frame rate. At that speed images
+                            // blur together anyway, so just cycle the initial 8
+                            // tiles and only fetch fresh random assets during the
+                            // slowing phase — the final landed image will still
+                            // be a fresh pick.
+                            if (state.mode !== "spinning") {
+                                const newAsset = pickAsset();
+                                if (newAsset) mountAssetWhenReady(last.media, newAsset);
+                            }
+                            state.phase -= tileH;
+                            state.cumulativePhase += tileH;
+                        }
+                        strip.style.transform = `translateY(${state.phase.toFixed(2)}px)`;
+                    }
+                }
+
+                requestAnimationFrame(animate);
+            };
+            requestAnimationFrame(animate);
+        }
+
+        function setupRoadTripMode() {
+            // Driving down a road: foreground sources tile the road that
+            // scrolls toward the viewer; background sources fill the sky;
+            // overlay sources fill the landscape panels on left/right.
+            document.getElementById("backgroundLayer").classList.add("hidden");
+            document.getElementById("foregroundLayer").classList.add("hidden");
+            document.getElementById("tunnelGrid").classList.add("hidden");
+            document.getElementById("tunnelStage").classList.add("hidden");
+            document.getElementById("splitScreen").classList.add("hidden");
+            document.getElementById("splitScreenHorizontal").classList.add("hidden");
+            document.getElementById("psychedelicStage").classList.add("hidden");
+            document.getElementById("kaleidoStage").classList.add("hidden");
+            document.getElementById("scrollStage").classList.add("hidden");
+            document.getElementById("centerShiftStage").classList.add("hidden");
+            document.getElementById("strobeStage").classList.add("hidden");
+            document.getElementById("prismStage").classList.add("hidden");
+            document.getElementById("sleepStage").classList.add("hidden");
+            document.getElementById("waveStage").classList.add("hidden");
+            document.getElementById("angerStage").classList.add("hidden");
+            document.getElementById("anxietyStage").classList.add("hidden");
+            const stage = document.getElementById("boxStage");
+            stage.classList.remove("hidden");
+            stage.innerHTML = "";
+            stage.style.background = "transparent";
+
+            // Pool assignment — road-trip slot semantics:
+            //   bg sources       → road tiles (the road itself)
+            //   fg slot 1        → left ground (side panel)
+            //   fg slot 2        → right ground (side panel)
+            //   fg slots 3+4     → sky
+            // Fall back gracefully if a slot is empty.
+            const readArr = (id) => {
+                try { return JSON.parse(document.getElementById(id).textContent || "[]"); }
+                catch (e) { return []; }
+            };
+            const groundLeftSplit = readArr("road-ground-left-assets");
+            const groundRightSplit = readArr("road-ground-right-assets");
+            const skySplit = readArr("road-sky-assets");
+            const roadPool = (bgAssets && bgAssets.length)
+                ? bgAssets
+                : ((fgAssets && fgAssets.length) ? fgAssets : []);
+            const groundLeftPool = groundLeftSplit.length
+                ? groundLeftSplit
+                : (groundRightSplit.length ? groundRightSplit : (fgAssets || []));
+            const groundRightPool = groundRightSplit.length
+                ? groundRightSplit
+                : (groundLeftSplit.length ? groundLeftSplit : (fgAssets || []));
+            const skyPool = skySplit.length ? skySplit : roadPool;
+            if (!roadPool.length && !groundLeftPool.length && !groundRightPool.length) return;
+
+            // ── Stage scaffolding ──────────────────────────────────────────
+            const roadStage = document.createElement("div");
+            roadStage.className = "road-stage";
+            stage.appendChild(roadStage);
+
+            // Sky band (top 50%)
+            const sky = document.createElement("div");
+            sky.className = "road-sky";
+            const skyMedia = document.createElement("div");
+            skyMedia.className = "road-sky-media";
+            sky.appendChild(skyMedia);
+            roadStage.appendChild(sky);
+
+            // Distant mountains — CSS-only silhouette ridge layered
+            // BEHIND the foreground land bands. Gives the synthwave
+            // depth (multiple ridges receding into the distance) with
+            // no extra source folder required.
+            const distantMountains = document.createElement("div");
+            distantMountains.className = "road-mountains-distant";
+            roadStage.appendChild(distantMountains);
+
+            // Left + right ground bands — flat side panels with one image
+            // each (swaps periodically). The triangle clip-path makes them
+            // visually meet the road's edges; no skew, so the image lays
+            // calmly inside the triangle without warped angles.
+            const groundLeft = document.createElement("div");
+            groundLeft.className = "road-ground-band left";
+            const groundLeftMedia = document.createElement("div");
+            groundLeftMedia.className = "road-ground-media";
+            groundLeft.appendChild(groundLeftMedia);
+            roadStage.appendChild(groundLeft);
+
+            const groundRight = document.createElement("div");
+            groundRight.className = "road-ground-band right";
+            const groundRightMedia = document.createElement("div");
+            groundRightMedia.className = "road-ground-media";
+            groundRight.appendChild(groundRightMedia);
+            roadStage.appendChild(groundRight);
+
+            // Haze band over the horizon — sells the depth
+            const haze = document.createElement("div");
+            haze.className = "road-haze";
+            roadStage.appendChild(haze);
+
+            // Road surface — rotated 80° so its top recedes into the distance
+            const surface = document.createElement("div");
+            surface.className = "road-surface";
+            roadStage.appendChild(surface);
+
+            // Strip of tiles inside the rotated surface
+            const strip = document.createElement("div");
+            strip.className = "road-strip";
+            surface.appendChild(strip);
+
+            // ── Asset picker factory ───────────────────────────────────────
+            const makePicker = (pool) => {
+                let cursor = 0;
+                let lastIdx = -1;
+                return () => {
+                    if (!pool.length) return null;
+                    if (pool.length === 1) return pool[0];
+                    let pickedIdx;
+                    if (compositionSourcePlaybackMode === "random") {
+                        do {
+                            pickedIdx = Math.floor(Math.random() * pool.length);
+                        } while (pickedIdx === lastIdx && pool.length > 1);
+                    } else {
+                        pickedIdx = cursor % pool.length;
+                        if (pickedIdx === lastIdx && pool.length > 1) {
+                            pickedIdx = (pickedIdx + 1) % pool.length;
+                        }
+                        cursor = pickedIdx + 1;
+                    }
+                    lastIdx = pickedIdx;
+                    return pool[pickedIdx];
+                };
+            };
+            const pickRoad = makePicker(roadPool);
+            const pickGroundLeft = makePicker(groundLeftPool);
+            const pickGroundRight = makePicker(groundRightPool);
+            const pickSky = makePicker(skyPool);
+
+            // ── Road tiles (the perspective-warped strip) ─────────────────
+            const TILE_COUNT = 18;
+            const roadTiles = [];
+            for (let i = 0; i < TILE_COUNT; i++) {
+                const tile = document.createElement("div");
+                tile.className = "road-tile";
+                const media = document.createElement("div");
+                media.className = "road-tile-media";
+                tile.appendChild(media);
+                strip.appendChild(tile);
+                const asset = pickRoad();
+                if (asset) mountAssetWhenReady(media, asset);
+                roadTiles.push({ tile, media });
+            }
+            // Per-tile opacity fade was causing the perceived "jumping":
+            // it was applied by array index (index 0 ≈ 18%, index 1 ≈ 52%,
+            // index 2+ = 100%), so on every recycle each tile's opacity
+            // stepped DOWN one notch as its array index changed. With the
+            // buffer-tile (.road-strip's top: -50vmin), the apex is always
+            // physically covered and emerges smoothly without needing the
+            // fade. The horizon haze div .road-haze still gives the
+            // distance-haze look, applied in screen space so it doesn't
+            // move with the tiles.
+            const applyRoadFade = () => { /* intentional no-op */ };
+
+            // Sky + ground initial mounts (single image per side).
+            const a0 = pickSky();
+            if (a0) mountAssetWhenReady(skyMedia, a0);
+            const aL = pickGroundLeft();
+            if (aL) mountAssetWhenReady(groundLeftMedia, aL);
+            const aR = pickGroundRight();
+            if (aR) mountAssetWhenReady(groundRightMedia, aR);
+
+            // ── Road scroll loop ──────────────────────────────────────────
+            let tileHeightPx = 0;
+            const measureTile = () => {
+                const probe = roadTiles[0] && roadTiles[0].tile;
+                if (!probe) return 0;
+                const h = probe.getBoundingClientRect().height;
+                if (h > 0) tileHeightPx = h;
+                return tileHeightPx;
+            };
+
+            let phase = 0;
+            let lastFrameTs = performance.now();
+            const scrollLoop = (ts) => {
+                const dt = Math.min(64, ts - lastFrameTs) / 1000;
+                lastFrameTs = ts;
+                if (!tileHeightPx) measureTile();
+                const speed = Math.max(0.25, compositionSpeed);
+                // ~2.5 tiles/sec at speed=1 — matches the zoom-forward
+                // composition's visceral pace (≈ 1.7 s per layer-flight
+                // in that mode; here ≈ 0.4 s per tile horizon→viewer).
+                // The 100vmin (= 2-tile) buffer above the apex gives
+                // each recycled tile two full cycles to mount its image
+                // before it slides into view, so even at this speed
+                // there's no asset-loading flash and the motion reads
+                // as a continuous fast cruise rather than a strobe.
+                const pxPerSec = tileHeightPx * 2.5 * speed;
+                phase += pxPerSec * dt;
+                while (tileHeightPx > 0 && phase >= tileHeightPx) {
+                    const bottom = roadTiles.pop();
+                    if (bottom) {
+                        const asset = pickRoad();
+                        if (asset) mountAssetWhenReady(bottom.media, asset);
+                        strip.insertBefore(bottom.tile, strip.firstChild);
+                        roadTiles.unshift(bottom);
+                        applyRoadFade();
+                    }
+                    phase -= tileHeightPx;
+                }
+                strip.style.transform = `translateY(${phase.toFixed(2)}px)`;
+                requestAnimationFrame(scrollLoop);
+            };
+            requestAnimationFrame((ts) => { lastFrameTs = ts; scrollLoop(ts); });
+
+            // Sky drifts slowly on its own timer.
+            setInterval(() => {
+                const a = pickSky();
+                if (a) mountAssetWhenReady(skyMedia, a);
+            }, Math.max(3500, Math.floor(8000 / Math.max(0.25, compositionSpeed))));
+
+            // Ground panels swap occasionally — slow enough that they feel
+            // like distinct landscape vistas rather than a flicker.
+            setInterval(() => {
+                const a = pickGroundLeft();
+                if (a) mountAssetWhenReady(groundLeftMedia, a);
+            }, Math.max(2500, Math.floor(5500 / Math.max(0.25, compositionSpeed))));
+            setInterval(() => {
+                const a = pickGroundRight();
+                if (a) mountAssetWhenReady(groundRightMedia, a);
+            }, Math.max(2700, Math.floor(6000 / Math.max(0.25, compositionSpeed))));
+
+            const onResize = () => { tileHeightPx = 0; measureTile(); };
+            window.addEventListener("resize", onResize, { passive: true });
+        }
+
         function setupTripleCylinderRoomMode() {
             document.getElementById("backgroundLayer").classList.remove("hidden");
             document.getElementById("foregroundLayer").classList.add("hidden");
@@ -6649,6 +8989,29 @@
                 }
                 return true;
             }
+            // Rotating cube: require ALL 6 faces to have mounted media —
+            // otherwise the poster can capture during the brief window where
+            // only the front face has loaded, producing a "flat single image"
+            // poster instead of a cube. (Without this check, the default
+            // readiness test passes as soon as the BG layer loads, since
+            // empty cube-face-media divs contribute no <img> to the
+            // ALL-imgs-complete check.)
+            if (compositionType === "rotating-cube" || compositionType === "rotating-cube-strobe") {
+                const faces = stage.querySelectorAll(".cube-face-media");
+                if (faces.length < 6) return false;
+                for (let i = 0; i < faces.length; i++) {
+                    const v = faces[i].querySelector("video");
+                    const img = faces[i].querySelector("img");
+                    if (v) {
+                        if (!videoDimsOk(v)) return false;
+                    } else if (img) {
+                        if (!img.complete || img.naturalWidth === 0) return false;
+                    } else {
+                        return false;
+                    }
+                }
+                return true;
+            }
             const imgs = Array.from(stage.querySelectorAll("img"));
             const videos = Array.from(stage.querySelectorAll("video"));
             if (!imgs.length && !videos.length) return false;
@@ -6684,6 +9047,7 @@
             overlayLayer.style.zIndex = "90";
             overlayLayer.style.position = "absolute";
             overlayLayer.style.pointerEvents = "none";
+            overlayLayer.style.opacity = String(overlayOpacity);
             let idx = 0;
             let lastOverlayPick = -1;
             const pickRandomOverlayAsset = () => {
@@ -6699,6 +9063,9 @@
                 const raw = String(value || "").trim().toLowerCase();
                 const compact = raw.replace(/[\s_-]+/g, "");
                 if (compact === "rotate3d" || compact === "spin3d" || compact === "rotate") return "rotate_3d";
+                if (compact === "rotate3dreverse" || compact === "spin3dreverse" || compact === "rotatereverse" || compact === "rotateopposite" || compact === "rotatebackwards" || compact === "rotateccw") return "rotate_3d_reverse";
+                if (compact === "rotate3dvertical" || compact === "spin3dvertical" || compact === "rotatevertical" || compact === "rotateflip" || compact === "rotateforward" || compact === "rotatetumble" || compact === "verticalrotate") return "rotate_3d_vertical";
+                if (compact === "liquidmirror" || compact === "liquid" || compact === "mirror" || compact === "ripple" || compact === "liquidwarp") return "liquid_mirror";
                 if (compact === "circlerotate" || compact === "circle") return "circle_rotate";
                 if (compact === "circlerotatemirror" || compact === "circlemirror") return "circle_rotate_mirror";
                 if (compact === "mash" || compact === "glitchmash" || compact === "overlaymash") return "mash";
@@ -6971,11 +9338,35 @@
                 shell.inner.style.overflow = "hidden";
                 overlayLayer.appendChild(shell.wrapper);
                 const strobeMs = Math.max(42, Math.floor(82 / Math.max(0.25, overlaySpeed)));
-                let idx = 0;
+                // Strobing recreates the asset element every ~82ms. Recreating <img>
+                // (or worse, <video>) at that rate pressures the decoder and yields a
+                // blank overlay after a few seconds. Resolve every asset to a still
+                // (preview_url for videos) and reuse a single persistent <img>, only
+                // updating its `src`. Also warm the browser image cache up front so
+                // subsequent swaps come straight from memory.
+                const resolveStill = (asset) => {
+                    if (!asset) return "";
+                    if (asset.kind === "image") return asset.url || "";
+                    return asset.preview_url || "";
+                };
+                // Pre-warm cache so first paint of each thumb is instant.
+                (overlayAssets || []).forEach((a) => {
+                    const u = resolveStill(a);
+                    if (u) { const im = new Image(); im.decoding = "async"; im.src = u; }
+                });
+                const img = document.createElement("img");
+                img.alt = "";
+                img.decoding = "async";
+                img.style.width = "100%";
+                img.style.height = "100%";
+                img.style.objectFit = "cover";
+                img.style.display = "block";
+                shell.inner.appendChild(img);
+                applyMountedMediaFit(shell.inner);
                 const tick = () => {
-                    if (!shell.inner.isConnected) return;
-                    const asset = pickRandomOverlayAsset();
-                    if (asset) mountKaleidoCell(shell.inner, asset);
+                    if (!img.isConnected) return;
+                    const stillUrl = resolveStill(pickRandomOverlayAsset());
+                    if (stillUrl && stillUrl !== img.src) img.src = stillUrl;
                 };
                 tick();
                 trackOverlayInterval(setInterval(tick, strobeMs));
@@ -7390,7 +9781,81 @@
                 }
                 return;
             }
-            if (resolvedOverlayEffect === "rotate_3d") {
+            if (resolvedOverlayEffect === "liquid_mirror") {
+                // Liquid-mirror overlay: re-use the same SVG turbulence +
+                // displacement filter the composition-type liquid-mirror
+                // mode uses (#liquidMirrorWarp), but apply it inside the
+                // overlay shell so it only warps the overlay folder rather
+                // than the whole stage. Assets cross-fade slowly so the
+                // surface seems to "re-resolve" into a new image while
+                // staying continuously rippling.
+                const shell = buildOverlayShell();
+                overlayLayer.appendChild(shell.wrapper);
+                shell.inner.style.position = "relative";
+                shell.inner.style.overflow = "hidden";
+
+                const canvas = document.createElement("div");
+                canvas.style.cssText = (
+                    "position:absolute;inset:0;" +
+                    "filter:url(#liquidMirrorWarp);" +
+                    "will-change:filter;"
+                );
+                shell.inner.appendChild(canvas);
+
+                const speed = Math.max(0.25, overlaySpeed);
+                const cycleMs = Math.max(7000, Math.floor(11000 / speed));
+                const fadeMs = 1800;
+
+                let activeWrapper = null;
+                const cycle = () => {
+                    if (!canvas.isConnected) return;
+                    const asset = pickRandomOverlayAsset();
+                    if (!asset) return;
+                    const wrapper = document.createElement("div");
+                    wrapper.style.cssText = (
+                        "position:absolute;inset:0;opacity:0;" +
+                        `transition:opacity ${fadeMs}ms ease;`
+                    );
+                    canvas.appendChild(wrapper);
+                    mountAsset(wrapper, asset, false);
+                    applyMountedMediaFit(wrapper);
+                    requestAnimationFrame(() => { wrapper.style.opacity = "1"; });
+                    const previous = activeWrapper;
+                    activeWrapper = wrapper;
+                    if (previous) {
+                        previous.style.opacity = "0";
+                        setTimeout(() => { if (previous.parentNode) previous.remove(); }, fadeMs + 80);
+                    }
+                };
+                cycle();
+                if (overlayAssets.length > 1) {
+                    trackOverlayInterval(setInterval(cycle, cycleMs));
+                }
+
+                // Animate the shared SVG turbulence so the ripples drift.
+                // (Re-uses the same #liquidMirrorTurbulence node the
+                // composition-mode liquid mirror uses; if both are active
+                // they share the same animated baseFrequency, which is
+                // visually fine.)
+                const turbulence = document.getElementById("liquidMirrorTurbulence");
+                if (turbulence) {
+                    const start = Date.now();
+                    const tick = () => {
+                        if (!canvas.isConnected) return;
+                        const t = (Date.now() - start) / 1000;
+                        const fx = (0.013 + Math.sin(t * 0.12 * speed) * 0.004).toFixed(4);
+                        const fy = (0.028 + Math.cos(t * 0.16 * speed) * 0.006).toFixed(4);
+                        turbulence.setAttribute("baseFrequency", `${fx} ${fy}`);
+                        requestAnimationFrame(tick);
+                    };
+                    tick();
+                }
+                return;
+            }
+            if (resolvedOverlayEffect === "rotate_3d"
+                || resolvedOverlayEffect === "rotate_3d_reverse"
+                || resolvedOverlayEffect === "rotate_3d_vertical") {
+                const isVertical = resolvedOverlayEffect === "rotate_3d_vertical";
                 const shell = buildOverlayShell();
                 overlayLayer.appendChild(shell.wrapper);
                 // Perspective on inner so 3D context is established; rotator spins inside it
@@ -7406,8 +9871,11 @@
                 front.style.cssText = "position:absolute;inset:0;overflow:hidden;backface-visibility:visible;";
 
                 const back = document.createElement("div");
-                // rotateY(180deg) makes it face rearward; scaleX(-1) on the media mirrors it so it reads correctly
-                back.style.cssText = "position:absolute;inset:0;overflow:hidden;backface-visibility:visible;transform:rotateY(180deg);";
+                // For Y-axis rotation: rotateY(180deg) faces the back rearward.
+                // For X-axis rotation: rotateX(180deg) does the same for vertical.
+                // The mirror axis on the media (scaleX vs scaleY) must match.
+                back.style.cssText = "position:absolute;inset:0;overflow:hidden;backface-visibility:visible;transform:"
+                    + (isVertical ? "rotateX(180deg)" : "rotateY(180deg)") + ";";
 
                 rotator.appendChild(front);
                 rotator.appendChild(back);
@@ -7421,11 +9889,22 @@
                     mountAsset(back, asset, false);
                     applyMountedMediaFit(back);
                     const backMedia = back.querySelector("img,video");
-                    if (backMedia) backMedia.style.transform = (backMedia.style.transform || "") + " scaleX(-1)";
+                    if (backMedia) {
+                        // Vertical spin needs scaleY mirror (top-bottom flip);
+                        // horizontal spin needs scaleX (left-right flip).
+                        const mirror = isVertical ? " scaleY(-1)" : " scaleX(-1)";
+                        backMedia.style.transform = (backMedia.style.transform || "") + mirror;
+                    }
                 };
 
                 loadFaces(pickRandomOverlayAsset());
-                rotator.style.animation = `overlaySpinContinuous ${fullTurnMs}ms linear infinite`;
+                // Pick the right keyframe for this variant.
+                const spinKeyframe = (
+                    resolvedOverlayEffect === "rotate_3d_reverse"  ? "overlaySpinContinuousReverse" :
+                    resolvedOverlayEffect === "rotate_3d_vertical" ? "overlaySpinContinuousVertical" :
+                                                                     "overlaySpinContinuous"
+                );
+                rotator.style.animation = `${spinKeyframe} ${fullTurnMs}ms linear infinite`;
 
                 if (overlayAssets.length > 1) {
                     trackOverlayInterval(setInterval(() => {
@@ -7435,18 +9914,164 @@
                 }
                 return;
             }
-            const mount = () => {
-                const asset = pickRandomOverlayAsset();
+            // === Video ping-pong for video-only overlay pools ====================
+            // Each mount() that creates a fresh <video> spawns a new GPU decoder.
+            // Even with explicit src clear + load() on the old element, Chrome
+            // takes a while to actually release the decoder. After ~10–20 swaps
+            // the pool is exhausted and new mounts produce black frames.
+            //
+            // Solution: pre-create exactly TWO <video> elements (ping + pong)
+            // inside the overlay shell. Swap visibility between them; load the
+            // next clip into the hidden one while the visible one plays. Only
+            // change .src on the inactive element — decoders get reused, total
+            // active decoders for this layer stays at 2 forever.
+            const overlayPoolAllVideo = (overlayAssets || []).length > 0
+                && (overlayAssets || []).every((a) => a && a.kind === "video");
+            if (overlayPoolAllVideo && overlayAssets.length > 1) {
+                const shell = buildOverlayShell();
+                shell.inner.style.position = "relative";
+                shell.inner.style.overflow = "hidden";
+                overlayLayer.appendChild(shell.wrapper);
+                const makeSlot = () => {
+                    const v = document.createElement("video");
+                    v.muted = true;
+                    v.defaultMuted = true;
+                    v.playsInline = true;
+                    v.loop = true;
+                    v.autoplay = true;
+                    v.preload = "auto";
+                    v.setAttribute("playsinline", "");
+                    v.setAttribute("muted", "");
+                    v.setAttribute("webkit-playsinline", "");
+                    v.disablePictureInPicture = true;
+                    v.disableRemotePlayback = true;
+                    v.controls = false;
+                    v.style.position = "absolute";
+                    v.style.inset = "0";
+                    v.style.width = "100%";
+                    v.style.height = "100%";
+                    v.style.objectFit = "cover";
+                    v.style.opacity = "0";
+                    v.style.transition = "opacity 320ms ease";
+                    shell.inner.appendChild(v);
+                    return v;
+                };
+                const slotA = makeSlot();
+                const slotB = makeSlot();
+                let active = slotA;
+                let inactive = slotB;
+                let lastIdx = -1;
+                let lastUrl = "";
+                const pickNextUrl = () => {
+                    let pick = pickRandomOverlayAsset();
+                    if (pick && pick.url === lastUrl && overlayAssets.length > 1) {
+                        pick = pickRandomOverlayAsset();
+                    }
+                    return pick && pick.url ? pick.url : null;
+                };
+                const swap = () => {
+                    if (!shell.inner.isConnected) return;
+                    const nextUrl = pickNextUrl();
+                    if (!nextUrl) return;
+                    inactive.src = nextUrl;
+                    lastUrl = nextUrl;
+                    try { inactive.load(); } catch (_) {}
+                    inactive.play().catch(() => {});
+                    let swapped = false;
+                    const doSwap = () => {
+                        if (swapped) return;
+                        swapped = true;
+                        // Crossfade: hide active, show inactive.
+                        inactive.style.opacity = "1";
+                        active.style.opacity = "0";
+                        // After fade, pause the now-hidden slot to free decode work
+                        // without releasing the element itself.
+                        setTimeout(() => {
+                            try { active.pause(); } catch (_) {}
+                            const tmp = active;
+                            active = inactive;
+                            inactive = tmp;
+                            // Schedule the next swap once this clip has played.
+                            setTimeout(() => { if (shell.inner.isConnected) swap(); }, 5500);
+                        }, 360);
+                    };
+                    inactive.addEventListener("canplay", doSwap, { once: true });
+                    inactive.addEventListener("loadeddata", doSwap, { once: true });
+                    inactive.addEventListener("error", doSwap, { once: true });
+                    setTimeout(doSwap, 8000); // safety: never wait forever
+                };
+                // Bootstrap: load + show the first clip on slotA.
+                const bootUrl = pickNextUrl();
+                if (bootUrl) {
+                    slotA.src = bootUrl;
+                    lastUrl = bootUrl;
+                    try { slotA.load(); } catch (_) {}
+                    slotA.play().catch(() => {});
+                    const showA = () => { slotA.style.opacity = "1"; };
+                    slotA.addEventListener("canplay", showA, { once: true });
+                    slotA.addEventListener("loadeddata", showA, { once: true });
+                    setTimeout(showA, 600);
+                    // First swap after the first clip has played for a bit.
+                    setTimeout(() => { if (shell.inner.isConnected) swap(); }, 5500);
+                }
+                return;
+            }
+            // ====================================================================
+            // Release video decoders on stale shells before dropping them from the
+            // DOM. Otherwise cycling video overlays piles up decoders in Chrome's
+            // GPU pool until it refuses new ones and the overlay layer goes blank.
+            const dropStaleShell = (node) => {
+                if (!node) return;
+                try {
+                    node.querySelectorAll("video").forEach((v) => {
+                        try { v.pause(); } catch (_) {}
+                        try { v.removeAttribute("src"); v.load(); } catch (_) {}
+                    });
+                } catch (_) {}
+                if (node.parentElement === overlayLayer) node.remove();
+            };
+            const mount = (preResolvedAsset) => {
+                const asset = preResolvedAsset || pickRandomOverlayAsset();
                 if (!asset) return;
                 const shell = buildOverlayShell();
                 const overlayTransitionMode = normalizeTransitionMode(compositionOverlayTransition);
-                const useTransition = overlayTransitionMode === "fade" || overlayTransitionMode === "crossfade";
+                const isMelt = overlayTransitionMode === "melt";
+                const useTransition = (
+                    overlayTransitionMode === "fade" ||
+                    overlayTransitionMode === "crossfade" ||
+                    isMelt
+                );
+                // Melt: very slow blur-laden crossfade so each clip dissolves
+                // gradually into the next instead of swapping cleanly. Filter
+                // peaks at full blur in the middle of the transition and clears
+                // at the ends. Speed slider scales the duration: a 0.5x speed
+                // doubles the melt time.
+                const meltDurationMs = (() => {
+                    if (!isMelt) return 0;
+                    const baseMs = 6500;
+                    const spd = Math.max(0.25, Math.min(3, overlaySpeed || 1));
+                    return Math.round(baseMs / spd);
+                })();
                 // Always mount the new asset BEFORE removing the previous one so
                 // there is no empty frame while videos/images load.
                 shell.wrapper.style.opacity = "0";
-                shell.wrapper.style.transition = useTransition
-                    ? "opacity 520ms ease-in-out"
-                    : "opacity 120ms linear";
+                if (isMelt) {
+                    // IMPORTANT: shell.wrapper carries its own centering transform
+                    // (e.g. translate(-50%, -50%)). Putting the melt's scale on the
+                    // wrapper would clobber that and throw the overlay off-screen.
+                    // Apply blur/scale to shell.inner — which has no positional
+                    // transform — so we don't fight the wrapper's layout math.
+                    shell.wrapper.style.transition = `opacity ${meltDurationMs}ms ease-in-out`;
+                    shell.wrapper.style.willChange = "opacity";
+                    shell.inner.style.transition = `filter ${meltDurationMs}ms ease-in-out, transform ${meltDurationMs}ms ease-in-out`;
+                    shell.inner.style.willChange = "filter, transform";
+                    shell.inner.style.filter = "blur(36px) saturate(1.6) contrast(0.9)";
+                    shell.inner.style.transform = "scale(1.06)";
+                } else {
+                    shell.wrapper.style.transition = useTransition
+                        ? "opacity 520ms ease-in-out"
+                        : "opacity 120ms linear";
+                }
                 overlayLayer.appendChild(shell.wrapper);
                 const reveal = () => {
                     applyMountedMediaFit(shell.inner);
@@ -7454,32 +10079,120 @@
                     const stale = Array.from(overlayLayer.children).filter((node) => node !== shell.wrapper);
                     requestAnimationFrame(() => {
                         shell.wrapper.style.opacity = "1";
-                        if (useTransition) {
+                        if (isMelt) {
+                            // New shell: clear blur/scale on shell.inner so the
+                            // wrapper's centering transform stays intact.
+                            shell.inner.style.filter = "blur(0px) saturate(1) contrast(1)";
+                            shell.inner.style.transform = "scale(1)";
+                            stale.forEach((node) => {
+                                node.style.transition = `opacity ${meltDurationMs}ms ease-in-out`;
+                                node.style.willChange = "opacity";
+                                node.style.opacity = "0";
+                                // Apply blur/scale on the stale node's inner div
+                                // (first .layer-inner child added by buildOverlayShell;
+                                // fall back to direct child if structure differs).
+                                const innerEl = node.firstElementChild || node;
+                                if (innerEl) {
+                                    innerEl.style.transition = `filter ${meltDurationMs}ms ease-in-out, transform ${meltDurationMs}ms ease-in-out`;
+                                    innerEl.style.willChange = "filter, transform";
+                                    innerEl.style.filter = "blur(36px) saturate(1.6) contrast(0.9)";
+                                    innerEl.style.transform = "scale(0.94)";
+                                }
+                            });
+                            setTimeout(() => {
+                                stale.forEach(dropStaleShell);
+                            }, meltDurationMs + 80);
+                        } else if (useTransition) {
                             stale.forEach((node) => {
                                 node.style.transition = "opacity 520ms ease-in-out";
                                 node.style.opacity = "0";
                             });
                             setTimeout(() => {
-                                stale.forEach((node) => {
-                                    if (node && node.parentElement === overlayLayer) node.remove();
-                                });
+                                stale.forEach(dropStaleShell);
                             }, 560);
                         } else {
-                            stale.forEach((node) => {
-                                if (node && node.parentElement === overlayLayer) node.remove();
-                            });
+                            // Hold the old shell until the new one has actually
+                            // faded in (120ms transition). Dropping it sooner leaves
+                            // a 1-frame empty layer == visible "blink" on every swap.
+                            setTimeout(() => {
+                                stale.forEach(dropStaleShell);
+                            }, 160);
                         }
                     });
+                    // Ready-driven cycling: once this mount is visible, schedule
+                    // the next one. The next mount appends a new shell at opacity
+                    // 0 (invisible), loads its asset in background, and only fires
+                    // its own reveal once playable — at which point the swap
+                    // happens and the previous video's decoder is released. The
+                    // current shell stays visible and playing during the load.
+                    if (overlayAssets.length > 1) {
+                        // Hold each clip long enough to play out cleanly before the
+                        // next swap, so a loop can complete (no mid-frame cuts).
+                        //   - videos: at least 4.5s (≈ one playthrough of a typical clip)
+                        //   - GIFs:   5.5s — most GIFs loop in 2-4s, so this lets the
+                        //             loop close on itself naturally (or play through twice)
+                        //   - other images: 2.2s — no animation to honor, but give the
+                        //             eye time to register before the next swap
+                        //   - melt mode: longer so each clip plays fully visible before
+                        //             the next melt transition starts
+                        // If the asset has a server-supplied duration_ms (future
+                        // enhancement), prefer that exact value (with a small safety margin).
+                        const assetUrl = String(asset.url || "");
+                        const isGif = asset.kind === "image" && /\.gif(?:$|\?)/i.test(assetUrl);
+                        let imageHoldMs;
+                        if (typeof asset.duration_ms === "number" && asset.duration_ms > 0) {
+                            // One full loop + a hair extra so the loop seam isn't on the swap.
+                            imageHoldMs = Math.max(800, Math.floor(asset.duration_ms) + 120);
+                        } else if (isGif) {
+                            imageHoldMs = 5500;
+                        } else {
+                            imageHoldMs = 2200;
+                        }
+                        const minHoldMs = isMelt
+                            ? Math.max(meltDurationMs + 3000, asset.kind === "video" ? 9000 : imageHoldMs)
+                            : (asset.kind === "video" ? 4500 : imageHoldMs);
+                        setTimeout(() => {
+                            if (!overlayLayer.isConnected) return;
+                            let candidate = pickRandomOverlayAsset();
+                            if (candidate && candidate.url === asset.url) {
+                                candidate = pickRandomOverlayAsset();
+                            }
+                            if (candidate) mount(candidate);
+                        }, minHoldMs);
+                    }
                 };
-                mountAssetWhenReady(shell.inner, asset, reveal, false);
+                // waitForVideoReady delays the reveal callback until the new
+                // video has decoded its first frame, so the old shell keeps
+                // playing during the load instead of going blank.
+                mountAssetWhenReady(shell.inner, asset, reveal, false, {
+                    waitForVideoReady: asset.kind === "video",
+                    videoReadyTimeoutMs: 8000,
+                });
                 const isSingleGifOverlay =
                     overlayAssets.length === 1 &&
                     asset &&
                     asset.kind === "image" &&
                     /\.gif(?:$|\?)/i.test(String(asset.url || ""));
-                if (isSingleGifOverlay) {
+                // Some overlay effects (e.g. circle_rotate_mirror) build their own DOM
+                // structure inside shell.inner. The GIF remount cycle below would wipe
+                // those children and the effect would visibly stop after one tick.
+                // Skip the periodic remount when such an effect is active — the
+                // effect's own animation keeps things alive.
+                const motionEffectBuildsDom = (
+                    resolvedOverlayEffect === "circle_rotate_mirror"
+                );
+                if (isSingleGifOverlay && !motionEffectBuildsDom) {
                     const baseUrl = String(asset.url || "");
-                    const restartMs = Math.max(700, Math.floor(1350 / Math.max(0.25, overlaySpeed)));
+                    // Restart only at exact loop boundaries so the swap is invisible
+                    // (frame N of loop K → frame 0 of loop K+1 = identical pixels).
+                    // The restart exists to combat Chrome eventually freezing long-
+                    // running GIF animations — restart every ~5 full loops, capped
+                    // at a 22s ceiling so very long GIFs still refresh occasionally.
+                    // Older asset caches without duration_ms fall back to 5.5s.
+                    const speedScale = Math.max(0.25, overlaySpeed);
+                    const restartMs = (typeof asset.duration_ms === "number" && asset.duration_ms > 0)
+                        ? Math.min(22000, Math.max(2500, Math.floor((asset.duration_ms * 5) / speedScale)))
+                        : Math.max(4000, Math.floor(5500 / speedScale));
                     shell.inner.style.position = "relative";
                     const remountGif = () => {
                         if (!shell.inner.isConnected) return;
@@ -7518,10 +10231,11 @@
                     gifTimer = trackOverlayInterval(setInterval(remountGif, restartMs));
                 }
             };
+            // Initial mount kicks off the ready-driven cycling chain inside
+            // reveal() — each newly visible asset schedules its own preloader
+            // and swap. No fixed interval; cycling speed is dictated by how
+            // fast the next asset can decode.
             mount();
-            if (overlayAssets.length > 1) {
-                trackOverlayInterval(setInterval(mount, Math.max(120, Math.floor(880 / Math.max(0.25, overlaySpeed)))));
-            }
         }
 
         if (typeof window !== "undefined") {
@@ -7618,6 +10332,8 @@
             "psychedelic-tunnel": () => setupTunnelMode("psychedelic"),
             "tunnel-double": () => setupTunnelDoubleMode(),
             "tunnel-burst": () => setupTunnelBurstMode(),
+            "zoom-forward": () => setupZoomForwardMode(),
+            "zoom-slow": () => setupZoomForwardMode(true),
             "liquid-mirror": () => setupLiquidMirrorMode(),
             "liquid-mirror-extreme": () => setupLiquidMirrorExtremeMode(),
             "wax-melt": () => setupWaxMeltMode(),
@@ -7645,6 +10361,11 @@
             "box-room": () => setupBoxRoomMode(),
             "cylinder-room": () => setupCylinderRoomMode(),
             "triple-cylinder-room": () => setupTripleCylinderRoomMode(),
+            "rotating-cube": () => setupRotatingCubeMode(),
+            "slot-machine": () => setupSlotMachineMode(),
+            "eye-wake": () => setupEyeWakeMode(),
+            "rotating-cube-strobe": () => setupRotatingCubeStrobeMode(),
+            "road-trip": () => setupRoadTripMode(),
             "left-to-right": sharedOr("split-lr", () => setupSplitMode()),
             "top-and-bottom": sharedOr("split-tb", () => setupTopBottomMode()),
             "psychedelic-classic": () => setupPsychedelicClassicMode(),
@@ -7774,6 +10495,194 @@
                 window.location.href = navigationTarget;
             }, autoLinkDelaySeconds * 1000);
         }
+
+        // ── TEXT LAYERS — preset-driven typographic overlays ──
+        // Reads JSON config from #text-layers-data, mounts one .text-layer
+        // node per entry, applies preset class + per-instance variables.
+        // Two presets (typewriter, karaoke) need per-frame JS for char-by-char
+        // timing — the rest run purely on CSS keyframes.
+        (function mountTextLayers() {
+            const dataEl = document.getElementById("text-layers-data");
+            if (!dataEl) return;
+            let layers;
+            try { layers = JSON.parse(dataEl.textContent || "[]"); }
+            catch (e) { return; }
+            if (!Array.isArray(layers) || layers.length === 0) return;
+            const container = document.getElementById("textLayersContainer");
+            if (!container) return;
+
+            const ANCHORS = { left: "anchor-left", right: "anchor-right", center: "anchor-center" };
+            const POSITIONS = {
+                "top":     { top: "8%",  left: "50%", transform: "translateX(-50%)" },
+                "center":  { top: "50%", left: "50%", transform: "translate(-50%,-50%)" },
+                "bottom":  { top: "85%", left: "50%", transform: "translateX(-50%)" },
+                "top-left":    { top: "8%",  left: "5%" },
+                "top-right":   { top: "8%",  right: "5%" },
+                "bottom-left": { top: "85%", left: "5%" },
+                "bottom-right":{ top: "85%", right: "5%" },
+            };
+            // Some presets manage their own positioning via animation
+            // (scroll-band sets left/top, bounce sets top, drop-in sets left).
+            // Don't fight them with the user's position preset.
+            const SELF_POSITIONING = new Set(["scroll-band", "scroll-up", "bounce", "drop-in"]);
+
+            layers.forEach((spec, idx) => {
+                if (!spec || !spec.text) return;
+                const node = document.createElement("div");
+                const preset = (spec.preset || "static").trim();
+                const ztarget = (spec.z_target || "overlay").trim();
+                const ztClass = "zt-" + ({
+                    "background": "above-bg",
+                    "above-bg":   "above-bg",
+                    "foreground": "above-fg",
+                    "above-fg":   "above-fg",
+                    "overlay":    "above-overlay",
+                    "above-overlay":"above-overlay",
+                    "top": "top",
+                }[ztarget] || "above-overlay");
+                node.className = `text-layer preset-${preset} ${ztClass} ${ANCHORS[spec.anchor] || "anchor-center"}`;
+                node.dataset.idx = idx;
+
+                // Font + color
+                if (spec.font_family) node.style.fontFamily = spec.font_family;
+                const sizePct = Number(spec.font_size_pct);
+                if (sizePct > 0 && sizePct < 100) node.style.fontSize = sizePct.toFixed(2) + "vh";
+                if (spec.color) node.style.color = spec.color;
+
+                // Duration → CSS var consumed by animations
+                const durSec = Number(spec.duration_sec);
+                if (durSec > 0) node.style.setProperty("--tl-dur", durSec + "s");
+
+                // Position
+                if (!SELF_POSITIONING.has(preset)) {
+                    const pos = POSITIONS[spec.position] || POSITIONS.center;
+                    Object.assign(node.style, pos);
+                    if (spec.x_pct != null) { node.style.left = spec.x_pct + "%"; node.style.right = ""; }
+                    if (spec.y_pct != null) { node.style.top  = spec.y_pct + "%"; }
+                }
+
+                // Content + per-preset bootstrap
+                if (preset === "typewriter") {
+                    mountTypewriter(node, spec);
+                } else if (preset === "karaoke") {
+                    mountKaraoke(node, spec);
+                } else {
+                    node.textContent = spec.text;
+                }
+                container.appendChild(node);
+
+                // Start / delayed reveal
+                const startSec = Number(spec.start_sec) || 0;
+                setTimeout(() => {
+                    node.classList.add("visible");
+                    if (preset === "typewriter") runTypewriter(node, spec);
+                    if (preset === "karaoke")    runKaraoke(node, spec);
+                }, startSec * 1000);
+
+                // Auto-hide after duration for non-looping presets that don't
+                // self-manage their lifecycle (flash is the only CSS preset
+                // that fades itself out; the rest run infinite, so we hide
+                // them at duration-end to give the user a one-shot option).
+                if (durSec > 0 && !["scroll-band", "scroll-up", "bounce",
+                                    "flicker", "glitch", "rgb-shift",
+                                    "strobe"].includes(preset)) {
+                    setTimeout(() => { node.classList.remove("visible"); }, (startSec + durSec) * 1000);
+                }
+            });
+
+            function mountTypewriter(node, spec) {
+                // Split text into spans so we can reveal one char at a time.
+                node.textContent = "";
+                const txt = spec.text || "";
+                for (const ch of txt) {
+                    const s = document.createElement("span");
+                    s.className = "tl-tw-hidden tl-tw-ch";
+                    s.textContent = ch;
+                    node.appendChild(s);
+                }
+                if (spec.cursor !== false) {
+                    const cur = document.createElement("span");
+                    cur.className = "tl-tw-cursor";
+                    cur.textContent = " ";
+                    node.appendChild(cur);
+                }
+            }
+            function runTypewriter(node, spec) {
+                const chars = node.querySelectorAll(".tl-tw-ch");
+                const total = chars.length;
+                if (!total) return;
+                const durSec = Math.max(0.5, Number(spec.duration_sec) || (total / 8));
+                const interval = (durSec * 1000) / total;
+                let i = 0;
+                const tick = () => {
+                    if (i >= total) return;
+                    chars[i].classList.remove("tl-tw-hidden");
+                    i++;
+                    setTimeout(tick, interval);
+                };
+                tick();
+            }
+
+            function mountKaraoke(node, spec) {
+                // Word-by-word reveal with a bouncing ball above the active word.
+                node.textContent = "";
+                const words = (spec.text || "").split(/(\s+)/);
+                words.forEach((w) => {
+                    if (/^\s+$/.test(w)) {
+                        node.appendChild(document.createTextNode(w));
+                    } else if (w.length > 0) {
+                        const s = document.createElement("span");
+                        s.className = "tl-word";
+                        s.textContent = w;
+                        node.appendChild(s);
+                    }
+                });
+                const ball = document.createElement("div");
+                ball.className = "tl-karaoke-ball";
+                ball.style.left = "-9999px";
+                node._karaokeBall = ball;
+                container.appendChild(ball);
+            }
+            function runKaraoke(node, spec) {
+                const words = Array.from(node.querySelectorAll(".tl-word"));
+                if (!words.length) return;
+                const durSec = Math.max(1.5, Number(spec.duration_sec) || words.length * 0.6);
+                const perWord = (durSec * 1000) / words.length;
+                const ball = node._karaokeBall;
+                let i = 0;
+                const advance = () => {
+                    words.forEach((w, j) => {
+                        w.classList.remove("active");
+                        if (j < i) w.classList.add("done"); else w.classList.remove("done");
+                    });
+                    if (i < words.length) {
+                        const w = words[i];
+                        w.classList.add("active");
+                        // Position ball above the active word, animate small bounce.
+                        const rectN = node.getBoundingClientRect();
+                        const rectW = w.getBoundingClientRect();
+                        const rectC = container.getBoundingClientRect();
+                        const cx = (rectW.left + rectW.width / 2) - rectC.left;
+                        const cy = rectW.top - rectC.top - 12;
+                        ball.style.fontSize = node.style.fontSize || "5vh";
+                        ball.style.left = cx + "px";
+                        ball.style.top = cy + "px";
+                        ball.animate(
+                            [{ transform: "translate(-50%, 0) scale(1)" },
+                             { transform: "translate(-50%, -45%) scale(1.06)", offset: 0.45 },
+                             { transform: "translate(-50%, 0) scale(1)" }],
+                            { duration: perWord, easing: "cubic-bezier(.36,1.6,.46,1)" }
+                        );
+                        i++;
+                        setTimeout(advance, perWord);
+                    } else {
+                        // Done — hide the ball.
+                        ball.style.left = "-9999px";
+                    }
+                };
+                advance();
+            }
+        })();
     </script>
 </body>
 </html>

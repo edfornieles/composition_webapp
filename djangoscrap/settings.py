@@ -85,6 +85,46 @@ NFT_STORAGE_GUIDANCE_URL = (os.getenv("NFT_STORAGE_GUIDANCE_URL") or "").strip()
 # Stream-of-consciousness line generation (public thought pages)
 MONOLOGUE_STREAM_MODEL = (os.getenv("MONOLOGUE_STREAM_MODEL") or "gpt-4o-mini").strip()
 
+# External-drive corpus root for imageboard scrapes/profiles/models.
+# Default is /Volumes/oom/imageboard_corpora (the user's external drive).
+# Falls back to repo-local path only if the external drive isn't mounted.
+IMAGEBOARD_CORPUS_ROOT = os.environ.get(
+    "IMAGEBOARD_CORPUS_ROOT",
+    "/Volumes/oom/imageboard_corpora",
+)
+
+# Imageboard /fit/ corpus-grounded persona.
+# When True, personas matching FIT_PERSONA_SLUGS will return empty (no-op tick)
+# rather than fall back to a generic OpenAI roleplay if the corpus cannot
+# supply the minimum number of grounded fragments. This is intentional —
+# the persona must speak from the corpus or not at all.
+FIT_THOUGHTS_REQUIRE_GROUNDING = os.getenv("FIT_THOUGHTS_REQUIRE_GROUNDING", "1") not in ("0", "false", "False", "")
+FIT_CORPUS_SOURCE_KEY = (os.getenv("FIT_CORPUS_SOURCE_KEY") or "fourchan_fit").strip()
+FIT_PERSONA_SLUGS = tuple(
+    s.strip().lower() for s in (os.getenv("FIT_PERSONA_SLUGS") or "fit,fourchan_fit_body_discipline,fourchan_fit_be_me_body_discipline").split(",") if s.strip()
+)
+
+# Art-mode toggles for /fit/ persona output
+FIT_ART_MODE = os.getenv("FIT_ART_MODE", "1") not in ("0", "false", "False", "")
+FIT_CONTAMINATION_INTENSITY = float(os.getenv("FIT_CONTAMINATION_INTENSITY", "0.75"))
+FIT_ALLOW_GREENTEXT = os.getenv("FIT_ALLOW_GREENTEXT", "1") not in ("0", "false", "False", "")
+FIT_ALLOW_BE_ME = os.getenv("FIT_ALLOW_BE_ME", "1") not in ("0", "false", "False", "")
+FIT_BLOCK_RAW_SLURS = os.getenv("FIT_BLOCK_RAW_SLURS", "1") not in ("0", "false", "False", "")
+FIT_BLOCK_ACTIONABLE_HARM = os.getenv("FIT_BLOCK_ACTIONABLE_HARM", "1") not in ("0", "false", "False", "")
+
+# Local model runtime selection
+FIT_LOCAL_RUNTIME = (os.getenv("FIT_LOCAL_RUNTIME") or "mlx").strip().lower()
+FIT_MLX_BASE_MODEL = (os.getenv("FIT_MLX_BASE_MODEL") or "mlx-community/Qwen2.5-1.5B-Instruct-4bit").strip()
+FIT_MLX_ADAPTER_DIR = (os.getenv("FIT_MLX_ADAPTER_DIR") or "/Volumes/oom/imageboard_corpora/fourchan_fit/models/fit_be_me_lora_1_5b").strip()
+FIT_OLLAMA_MODEL = (os.getenv("FIT_OLLAMA_MODEL") or "fit-be-me").strip()
+FIT_OLLAMA_HOST = (os.getenv("FIT_OLLAMA_HOST") or "http://127.0.0.1:11434").strip()
+FIT_LLAMACPP_MODEL_PATH = (os.getenv("FIT_LLAMACPP_MODEL_PATH") or "").strip()
+
+# 8kun is intentionally disabled. Set ENABLE_8KUN_INGESTION=1 and EIGHTKUN_HOST
+# to enable; the adapter is a stub today and will not run without explicit code.
+ENABLE_8KUN_INGESTION = os.getenv("ENABLE_8KUN_INGESTION", "0") in ("1", "true", "True")
+EIGHTKUN_HOST = (os.getenv("EIGHTKUN_HOST") or "").strip()
+
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
@@ -123,6 +163,10 @@ INSTALLED_APPS = [
 # Middleware
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # WhiteNoise serves static files efficiently under gunicorn. Must come
+    # right after SecurityMiddleware. Harmless under `manage.py runserver`
+    # which retains its built-in static-file handling.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -135,12 +179,28 @@ MIDDLEWARE = [
 ROOT_URLCONF = "djangoscrap.urls"
 
 # Templates
+# Use the cached loader only when DEBUG=False (production). In DEBUG mode the
+# raw filesystem/app_directories loaders re-read templates on every render, so
+# template edits show up immediately without restarting gunicorn. Forcing the
+# cached loader in dev was eating every CSS/JS edit until a manual restart.
+_TEMPLATE_LOADERS = [
+    "django.template.loaders.filesystem.Loader",
+    "django.template.loaders.app_directories.Loader",
+]
+if not DEBUG:
+    _TEMPLATE_LOADERS = [
+        (
+            "django.template.loaders.cached.Loader",
+            _TEMPLATE_LOADERS,
+        ),
+    ]
+
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [BASE_DIR / "templates"],
-        "APP_DIRS": True,
         "OPTIONS": {
+            "loaders": _TEMPLATE_LOADERS,
             "context_processors": [
                 "django.template.context_processors.debug",
                 "django.template.context_processors.request",

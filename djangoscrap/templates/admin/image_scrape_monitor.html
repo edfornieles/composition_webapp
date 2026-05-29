@@ -1,0 +1,1035 @@
+{% extends "layouts/admin.html" %}
+{% block content %}
+<div class="content-wrapper" style="background:#0e0f12;">
+  <section class="content pt-3 pb-5">
+    <div class="container-fluid" style="color:#e7e7e2; max-width: 1500px;">
+      <style>
+        .ism-h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; color:#e7e7e2; }
+        .ism-sub { color: #8a8e98; font-size: 12px; margin-bottom: 18px; }
+
+        .ism-headline { display:grid; grid-template-columns: minmax(180px,max-content) minmax(180px,max-content) minmax(220px,1fr); gap: 28px; margin-bottom: 18px; align-items:end; }
+        .ism-headline .lbl { font-size:10px; color:#8a8e98; text-transform:uppercase; letter-spacing:.12em; margin-bottom:4px; }
+        .ism-headline .total { font-size: 52px; font-weight: 700; font-variant-numeric: tabular-nums; line-height:1; }
+        .ism-headline .sub { font-size: 13px; color:#8a8e98; font-variant-numeric: tabular-nums; margin-top:4px; }
+        .ism-headline .rate { font-size: 16px; color: #9ec25c; font-variant-numeric: tabular-nums; }
+        .ism-headline .stale { color: #d49b58; }
+        .ism-headline .meta { font-size:11px; color:#5a5e68; margin-top:4px; }
+
+        .ism-pipeline { display:grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 18px; }
+        .ism-stage { background:#15171c; border:1px solid #23262e; border-radius:6px; padding:10px 12px; }
+        .ism-stage .lbl { font-size:10px; color:#8a8e98; text-transform:uppercase; letter-spacing:.10em; }
+        .ism-stage .v { font-size:18px; font-weight:600; font-variant-numeric: tabular-nums; }
+        .ism-stage .h { font-size: 10px; color:#5a5e68; margin-top:2px; }
+
+        .ism-targets { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: 10px; margin-bottom: 22px; }
+        .ism-target { background:#15171c; border:1px solid #23262e; border-radius:6px; padding:10px 14px; }
+        .ism-target .lbl { font-size:10px; color:#8a8e98; text-transform:uppercase; letter-spacing:.10em; }
+        .ism-target .val { font-size:20px; font-weight:600; font-variant-numeric: tabular-nums; }
+        .ism-target .eta { font-size:11px; color:#5a5e68; }
+        .ism-target .bar { height:5px; background:#0e0f12; border-radius:3px; margin-top:6px; overflow:hidden; }
+        .ism-target .bar > div { height:100%; background:linear-gradient(90deg,#9ec25c,#5a8aa8); transition: width .4s ease; }
+
+        .ism-cols { display:grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items:start; }
+        @media (max-width: 1100px) { .ism-cols { grid-template-columns: 1fr; } }
+
+        .ism-panel { background:#15171c; border:1px solid #23262e; border-radius:6px; margin-bottom:16px; overflow:hidden; }
+        .ism-panel-head { padding:12px 16px; border-bottom:1px solid #23262e; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:12px; }
+        .ism-panel-head .label { font-weight:600; font-size:14px; color:#e7e7e2; }
+        .ism-panel-head .meta { font-size:11px; color:#8a8e98; font-variant-numeric: tabular-nums; }
+
+        table.ism-tbl { width:100%; border-collapse: collapse; font-size:12px; font-variant-numeric: tabular-nums; }
+        .ism-tbl th, .ism-tbl td { padding: 6px 12px; text-align:right; border-bottom:1px solid #1a1c22; white-space:nowrap; }
+        .ism-tbl th { color:#5a5e68; font-weight:500; text-transform:uppercase; font-size:10px; letter-spacing:.08em; background:#13151a; }
+        .ism-tbl td.b { text-align:left; color:#e7e7e2; font-family:'SF Mono', Menlo, monospace; }
+        .ism-tbl td.bar-cell { width:120px; text-align:left; }
+        .ism-tbl .bar { height:6px; background:#0e0f12; border-radius:3px; overflow:hidden; }
+        .ism-tbl .bar > div { height:100%; background:#5a8aa8; }
+
+        .ism-clusters { padding:10px 12px; }
+        .ism-cluster { display:grid; grid-template-columns: 1fr auto; gap:6px 14px; padding:8px 6px; border-bottom:1px solid #1a1c22; align-items:center; }
+        .ism-cluster:last-child { border-bottom:none; }
+        .ism-cluster .lbl { color:#e7e7e2; font-size:13px; font-weight:500; }
+        .ism-cluster .meta { color:#5a5e68; font-size:10px; font-family:'SF Mono', Menlo, monospace; }
+        .ism-cluster .size { color:#9ec25c; font-size:13px; font-variant-numeric:tabular-nums; }
+        .ism-cluster .reps { display:flex; gap:6px; grid-column:1 / -1; flex-wrap:wrap; }
+        .ism-cluster .reps img { width:96px; height:96px; object-fit:cover; border-radius:3px; background:#0e0f12; border:1px solid #1a1c22; cursor:zoom-in; transition: transform .15s; }
+        .ism-cluster .reps img:hover { transform: scale(1.05); border-color:#5a8aa8; }
+        .ism-lightbox { position:fixed; inset:0; background:rgba(0,0,0,.92); display:none; align-items:center; justify-content:center; z-index:9999; cursor:zoom-out; }
+        .ism-lightbox.open { display:flex; }
+        .ism-lightbox img { max-width:92vw; max-height:92vh; object-fit:contain; box-shadow: 0 0 60px rgba(0,0,0,.6); }
+        .ism-lightbox .meta { position:absolute; bottom:16px; left:16px; color:#8a8e98; font-size:12px; font-family:'SF Mono', Menlo, monospace; background:rgba(0,0,0,.6); padding:6px 10px; border-radius:3px; }
+        .ism-tile img { cursor:pointer; }
+        .ism-tile.zooming img { transform:scale(1.04); transition: transform .12s; }
+        .ism-tile.focus img { outline: 2px solid #5a8aa8; outline-offset: -2px; }
+        .ism-tile.selected img { outline: 3px solid #d4a958; outline-offset: -3px; }
+        .ism-tile.selected::after { content: "✓"; position:absolute; top:3px; left:3px; background:#d4a958; color:#0e0f12; font-weight:700; font-size:11px; width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+        .ism-tile .pkeep { position:absolute; bottom:2px; left:2px; font-size:9px; padding:1px 4px; border-radius:2px; background:rgba(0,0,0,.7); color:#9ec25c; font-variant-numeric:tabular-nums; }
+        .ism-tile .simovr { position:absolute; bottom:2px; right:2px; font-size:9px; padding:1px 4px; border-radius:2px; background:rgba(0,0,0,.7); color:#8a8e98; font-variant-numeric:tabular-nums; }
+        .ism-tile.later img { box-shadow: 0 0 0 2px #d49b58 inset; }
+        .ism-tile.later .ovr { background:#7a5a32; }
+        .ism-clustermode { display:inline-flex; gap:4px; background:#0e0f12; border:1px solid #23262e; border-radius:4px; padding:2px; }
+        .ism-clustermode button { background:transparent; border:none; color:#8a8e98; font-size:10px; padding:4px 10px; border-radius:2px; cursor:pointer; text-transform:uppercase; letter-spacing:.06em; }
+        .ism-clustermode button.active { background:#1c2028; color:#e7e7e2; }
+        .ism-help { position:fixed; bottom:18px; right:18px; background:#15171c; border:1px solid #23262e; border-radius:6px; padding:10px 14px; font-size:11px; color:#8a8e98; line-height:1.6; box-shadow:0 4px 20px rgba(0,0,0,.4); z-index:500; }
+        .ism-help kbd { display:inline-block; min-width:14px; padding:1px 5px; background:#0e0f12; border:1px solid #23262e; border-radius:2px; color:#e7e7e2; font-family:'SF Mono',Menlo,monospace; font-size:10px; text-align:center; }
+        .ism-cluster.active { background:#1c2028; }
+        .ism-cluster .actions { grid-column:1 / -1; display:flex; gap:8px; padding-top:6px; }
+        .ism-cluster .actions button { background:transparent; border:1px solid #23262e; color:#8a8e98; font-size:10px; padding:3px 8px; border-radius:3px; cursor:pointer; text-transform:uppercase; letter-spacing:.06em; }
+        .ism-cluster .actions button.keep { border-color:#3d5a32; color:#9ec25c; }
+        .ism-cluster .actions button.reject { border-color:#5a3232; color:#c95a5a; }
+        .ism-cluster .actions button:hover { background:#1f232b; }
+
+        .ism-triage { background:#0c0d10; border-top:1px solid #1a1c22; padding: 10px; max-height: 480px; overflow-y:auto; display:none; }
+        .ism-triage.open { display:block; }
+        .ism-triage-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+        .ism-tile { position:relative; cursor:pointer; }
+        .ism-tile img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:2px; background:#0e0f12; transition: opacity .15s, box-shadow .15s; }
+        .ism-tile.keep img { box-shadow: 0 0 0 2px #9ec25c inset; }
+        .ism-tile.reject img { opacity:.25; box-shadow: 0 0 0 2px #c95a5a inset; }
+        .ism-tile .ovr { position:absolute; top:2px; right:2px; font-size:9px; padding:1px 4px; border-radius:2px; background:rgba(0,0,0,.6); color:#fff; }
+        .ism-tile.keep .ovr { background:#3d5a32; }
+        .ism-tile.reject .ovr { background:#5a3232; }
+        .ism-triage-summary { font-size:11px; color:#8a8e98; padding:4px 6px 8px; }
+        .ism-triage-summary .keep { color:#9ec25c; } .ism-triage-summary .reject { color:#c95a5a; }
+
+        .ism-empty { color:#5a5e68; padding:14px; font-size:12px; }
+        .ism-gallery { display:grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; padding:10px 12px; }
+        .ism-gallery .tile { position:relative; }
+        .ism-gallery .tile img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:3px; background:#0e0f12; border:1px solid #1a1c22; }
+        .ism-gallery .tile .meta { font-size:9px; color:#5a5e68; margin-top:2px; font-family:'SF Mono', Menlo, monospace; }
+      </style>
+
+      <h1 class="ism-h1">Image scrape progress · /fit/</h1>
+      <div class="ism-sub">refreshes every 5s · counts read from chan-corpus manifests · ETA from rolling rate</div>
+
+      <div style="margin-bottom:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <button id="recomputeBtn" type="button" style="background:#5a8aa8;border:none;color:#0e0f12;font-weight:600;font-size:12px;padding:8px 18px;border-radius:4px;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;">Recompute clusters</button>
+        <span id="recomputeStatus" style="color:#8a8e98;font-size:11px;">idle</span>
+        <label style="color:#8a8e98;font-size:11px; display:flex; align-items:center; gap:6px; margin-left:6px;">
+          <input type="checkbox" id="autoRecomputeChk"> auto-recompute every
+          <select id="autoRecomputeMin" style="background:#15171c;border:1px solid #23262e;color:#e7e7e2;font-size:11px;padding:2px 6px;border-radius:3px;">
+            <option value="10">10 min</option>
+            <option value="20" selected>20 min</option>
+            <option value="45">45 min</option>
+            <option value="90">90 min</option>
+          </select>
+          <span id="autoRecomputeNext" style="color:#5a5e68;"></span>
+        </label>
+        <span style="color:#5a5e68;font-size:11px;">(quality → embed → cluster on whatever is on disk)</span>
+      </div>
+
+      <div class="ism-panel" style="margin-bottom:18px;">
+        <div class="ism-panel-head">
+          <div class="label">Search across CLIP embeddings</div>
+          <div class="meta" id="searchMeta">type a concept; matches over current corpus</div>
+        </div>
+        <div style="padding:12px 14px;">
+          <form id="searchForm" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <input id="searchQ" type="text" placeholder="anime girl, specific pose  ·  comma-separated terms intersect (AND)  ·  -term excludes"
+                   style="flex:1; min-width:260px; background:#0e0f12;border:1px solid #23262e;color:#e7e7e2;font-size:13px;padding:8px 12px;border-radius:4px;">
+            <label style="color:#8a8e98;font-size:11px;">top
+              <input id="searchTop" type="number" value="200" min="20" max="1000" step="20"
+                     style="width:64px; background:#0e0f12;border:1px solid #23262e;color:#e7e7e2;font-size:11px;padding:3px 6px;border-radius:3px;">
+            </label>
+            <label style="color:#8a8e98;font-size:11px;">min sim
+              <input id="searchMin" type="number" value="0.22" min="0" max="0.5" step="0.01"
+                     style="width:60px; background:#0e0f12;border:1px solid #23262e;color:#e7e7e2;font-size:11px;padding:3px 6px;border-radius:3px;">
+            </label>
+            <label style="color:#8a8e98;font-size:11px; display:flex; gap:4px; align-items:center;" title="Each comma-separated term must independently pass min sim (intersection, not average)">
+              <input id="searchAnd" type="checkbox" checked> AND terms
+            </label>
+            <label style="color:#8a8e98;font-size:11px; display:flex; gap:4px; align-items:center;" title="Hide images already in any saved folder or rejected">
+              <input id="searchExclude" type="checkbox" checked> hide already-handled
+            </label>
+            <button type="submit" style="background:#9ec25c;border:none;color:#0e0f12;font-weight:600;font-size:12px;padding:7px 16px;border-radius:4px;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;">Search</button>
+          </form>
+          <div id="searchIndexStat" style="margin-top:6px; font-size:11px; color:#5a5e68;">index: …</div>
+          <div id="searchResults" style="margin-top:12px; display:none;">
+            <div id="searchSummary" style="font-size:11px; color:#8a8e98; padding:4px 0 8px;"></div>
+            <div style="display:flex; gap:8px; margin-bottom:8px; padding:8px; background:#0c0d10; border:1px solid #1a1c22; border-radius:4px; flex-wrap:wrap; align-items:center;">
+              <span style="color:#8a8e98; font-size:11px; text-transform:uppercase; letter-spacing:.08em;">Drill into results</span>
+              <input id="refineQ" type="text" placeholder="add a stricter constraint: e.g. one person facing camera"
+                     style="flex:1; min-width:240px; background:#0e0f12;border:1px solid #23262e;color:#e7e7e2;font-size:12px;padding:6px 10px;border-radius:3px;">
+              <button id="refineFilterBtn" type="button" style="background:#9ec25c;border:none;color:#0e0f12;font-weight:600;font-size:11px;padding:6px 12px;border-radius:3px;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;" title="Drop everything below min sim and re-order what's left">Drill (Filter)</button>
+              <button id="refineSortBtn" type="button" style="background:transparent;border:1px solid #5a8aa8;color:#5a8aa8;font-weight:600;font-size:11px;padding:6px 12px;border-radius:3px;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;" title="Re-order without dropping anything">Re-rank only</button>
+              <label style="color:#8a8e98;font-size:11px;">min sim
+                <input id="refineMin" type="number" value="0.24" min="0" max="0.5" step="0.01"
+                       style="width:60px; background:#0e0f12;border:1px solid #23262e;color:#e7e7e2;font-size:11px;padding:3px 6px;border-radius:3px;">
+              </label>
+              <label style="color:#8a8e98;font-size:11px; display:flex; gap:4px; align-items:center;" title="Comma-separated terms must each independently pass min sim">
+                <input id="refineAnd" type="checkbox" checked> AND
+              </label>
+              <button id="refineResetBtn" type="button" style="background:transparent;border:1px solid #23262e;color:#8a8e98;font-size:10px;padding:5px 10px;border-radius:3px;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;">Reset</button>
+            </div>
+            <div style="display:flex; gap:8px; margin-bottom:8px; padding:10px; background:#1c1f25; border:1px solid #2c2f37; border-radius:4px; flex-wrap:wrap; align-items:center;">
+              <span id="selCount" style="color:#d4a958; font-size:12px; font-weight:600; min-width:90px;">0 selected</span>
+              <button id="selAll" type="button" style="background:transparent;border:1px solid #23262e;color:#8a8e98;font-size:10px;padding:5px 10px;border-radius:3px;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;">Select all</button>
+              <button id="selNone" type="button" style="background:transparent;border:1px solid #23262e;color:#8a8e98;font-size:10px;padding:5px 10px;border-radius:3px;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;">Clear</button>
+              <button id="selInvert" type="button" style="background:transparent;border:1px solid #23262e;color:#8a8e98;font-size:10px;padding:5px 10px;border-radius:3px;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;">Invert</button>
+              <span style="color:#5a5e68; font-size:11px;">→</span>
+              <span style="color:#8a8e98; font-size:11px; text-transform:uppercase; letter-spacing:.08em;">Allot to:</span>
+              <input id="searchSaveName" type="text" placeholder="folder / cluster name"
+                     style="flex:1; min-width:180px; background:#0e0f12;border:1px solid #23262e;color:#e7e7e2;font-size:12px;padding:6px 10px;border-radius:3px;">
+              <button id="allotAppend" type="button" style="background:#9ec25c;border:none;color:#0e0f12;font-weight:600;font-size:11px;padding:6px 14px;border-radius:3px;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;" title="Add selected to this folder (creates if missing)">+ Add to folder</button>
+              <button id="allotOverwrite" type="button" style="background:transparent;border:1px solid #5a8aa8;color:#5a8aa8;font-weight:600;font-size:11px;padding:6px 12px;border-radius:3px;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;" title="Overwrite folder contents with selection">Overwrite</button>
+              <button id="allotRemove" type="button" style="background:transparent;border:1px solid #5a3232;color:#c95a5a;font-weight:600;font-size:11px;padding:6px 12px;border-radius:3px;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;" title="Remove selected from folder">– Remove</button>
+            </div>
+            <div id="allotQuickPicks" style="display:flex; gap:6px; padding:0 4px 8px; flex-wrap:wrap;"></div>
+            <div id="searchGrid" class="ism-triage-grid"></div>
+          </div>
+          <div id="namedClusters" style="margin-top:14px; padding-top:10px; border-top:1px solid #1a1c22;">
+            <div style="font-size:10px; color:#5a5e68; text-transform:uppercase; letter-spacing:.10em; margin-bottom:6px;">Saved named clusters</div>
+            <div id="namedClustersList" style="font-size:12px; color:#8a8e98;">none yet</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ism-headline">
+        <div>
+          <div class="lbl">Images on disk</div>
+          <div class="total" id="grandTotal">—</div>
+          <div class="meta" id="lastUpdate">last update: —</div>
+        </div>
+        <div>
+          <div class="lbl">Posts walked</div>
+          <div class="total" style="font-size:36px;color:#9ec25c;" id="postsTotal">—</div>
+          <div class="sub" id="postsRate">— / — posts/s</div>
+        </div>
+        <div>
+          <div class="lbl">Image rate (recent / long)</div>
+          <div class="rate" id="grandRate">— / — img/s</div>
+          <div class="meta" id="rootMeta">—</div>
+          <div class="meta" id="decisionMeta" style="margin-top:4px;">triage: <span style="color:#9ec25c">0 kept</span> · <span style="color:#c95a5a">0 rejected</span></div>
+        </div>
+      </div>
+
+      <div class="ism-pipeline" id="pipeline"></div>
+      <div class="ism-targets" id="targets"></div>
+
+      <div class="ism-panel" style="margin-bottom:18px;">
+        <div class="ism-panel-head">
+          <div class="label">Active-learning ranker</div>
+          <div class="meta" id="rankerMeta">no model — make 5+ keeps and 5+ rejects, then refit</div>
+        </div>
+        <div style="padding:10px 14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button id="rankerRefitBtn" type="button" style="background:#9ec25c;border:none;color:#0e0f12;font-weight:600;font-size:11px;padding:6px 14px;border-radius:3px;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;">Refit ranker</button>
+          <label style="color:#8a8e98;font-size:11px; display:flex; align-items:center; gap:6px;">
+            <input type="checkbox" id="rankerSortChk"> sort triage panels by P(keep)
+          </label>
+          <span id="rankerStats" style="color:#5a5e68; font-size:11px;"></span>
+        </div>
+      </div>
+
+      <div class="ism-cols">
+        <div>
+          <div class="ism-panel">
+            <div class="ism-panel-head">
+              <div class="label">Per-board breakdown</div>
+              <div class="meta" id="boardsMeta">—</div>
+            </div>
+            <div id="boards"><div class="ism-empty">no boards yet</div></div>
+          </div>
+
+          <div class="ism-panel">
+            <div class="ism-panel-head">
+              <div class="label">Random allow-listed sample</div>
+              <button id="resampleBtn" type="button" style="background:transparent;border:1px solid #23262e;color:#8a8e98;font-size:10px;padding:2px 8px;border-radius:3px;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;">resample</button>
+            </div>
+            <div id="gallery" class="ism-gallery"><div class="ism-empty">no thumbnails yet</div></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="ism-panel">
+            <div class="ism-panel-head">
+              <div class="label">Clusters</div>
+              <div style="display:flex; gap:10px; align-items:center;">
+                <div class="ism-clustermode">
+                  <button type="button" data-mode="semantic" class="active">Semantic (CLIP)</button>
+                  <button type="button" data-mode="aesthetic">Aesthetic</button>
+                </div>
+                <div class="meta" id="clustersMeta">—</div>
+              </div>
+            </div>
+            <div id="clusters"><div class="ism-empty">run cluster_imageboard_images to populate</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="ism-lightbox" id="lightbox"><img id="lightboxImg" src=""><div class="meta" id="lightboxMeta"></div></div>
+
+<div class="ism-help" id="kbdHelp">
+  <strong style="color:#e7e7e2">Keyboard</strong> &nbsp;
+  <kbd>J</kbd>/<kbd>K</kbd> next/prev &nbsp;
+  <kbd>F</kbd> keep &nbsp;
+  <kbd>D</kbd> reject &nbsp;
+  <kbd>S</kbd> later &nbsp;
+  <kbd>Space</kbd> zoom &nbsp;
+  <kbd>M</kbd> more like this &nbsp;
+  <kbd>Esc</kbd> close
+</div>
+
+<script>
+  function openLightbox(src, meta) {
+    const lb = document.getElementById('lightbox');
+    document.getElementById('lightboxImg').src = src;
+    document.getElementById('lightboxMeta').textContent = meta || '';
+    lb.classList.add('open');
+  }
+  document.addEventListener('click', (ev) => {
+    const lb = document.getElementById('lightbox');
+    if (ev.target === lb || ev.target.id === 'lightboxImg' || ev.target.id === 'lightboxMeta') {
+      lb.classList.remove('open');
+    }
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') document.getElementById('lightbox').classList.remove('open');
+  });
+</script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  function fmtInt(n) { return Number(n).toLocaleString(); }
+  function fmtBytes(n) {
+    if (!n) return '0 B';
+    const u = ['B','KB','MB','GB','TB']; let i = 0;
+    while (n >= 1024 && i < u.length-1) { n /= 1024; i++; }
+    return `${n.toFixed(i ? 1 : 0)} ${u[i]}`;
+  }
+  function fmtETA(s) {
+    if (s == null) return '—';
+    if (s < 60) return `${s}s`;
+    if (s < 3600) return `${Math.round(s/60)}m`;
+    if (s < 86400) return `${(s/3600).toFixed(1)}h`;
+    return `${(s/86400).toFixed(1)}d`;
+  }
+  function escapeHtml(s) { const d=document.createElement('div'); d.textContent = s==null?'':String(s); return d.innerHTML; }
+
+  function renderPipeline(t) {
+    const stages = [
+      ['Posts',         t.posts],
+      ['Images',        t.images],
+      ['Features',      t.features],
+      ['Captions',      t.captions],
+      ['Clusters',      t.n_clusters],
+      ['Members',       t.cluster_members],
+    ];
+    $("pipeline").innerHTML = stages.map(([lbl,v]) => `
+      <div class="ism-stage">
+        <div class="lbl">${lbl}</div>
+        <div class="v">${fmtInt(v)}</div>
+      </div>`).join('');
+  }
+
+  function renderTargets(targets) {
+    $("targets").innerHTML = targets.map(t => `
+      <div class="ism-target">
+        <div class="lbl">Toward ${fmtInt(t.target)} images</div>
+        <div class="val">${t.pct.toFixed(2)}%</div>
+        <div class="eta">ETA: ${fmtETA(t.eta_seconds)}</div>
+        <div class="bar"><div style="width:${Math.min(100,t.pct)}%"></div></div>
+      </div>`).join('');
+  }
+
+  function renderBoards(boards) {
+    if (!boards.length) { $("boards").innerHTML = '<div class="ism-empty">no boards yet</div>'; return; }
+    const max = Math.max(1, ...boards.map(b => b.images));
+    $("boards").innerHTML = `
+      <table class="ism-tbl">
+        <thead><tr>
+          <th class="b" style="text-align:left">source/board</th>
+          <th>images</th><th>allow</th><th>quar</th><th>del</th><th>bytes</th>
+          <th class="bar-cell">share</th>
+        </tr></thead>
+        <tbody>
+          ${boards.map(b => `
+            <tr>
+              <td class="b">${escapeHtml(b.source)}/${escapeHtml(b.board)}</td>
+              <td>${fmtInt(b.images)}</td>
+              <td style="color:#9ec25c">${fmtInt(b.allow)}</td>
+              <td style="color:#d49b58">${fmtInt(b.quarantine)}</td>
+              <td style="color:#c95a5a">${fmtInt(b.delete)}</td>
+              <td>${fmtBytes(b.bytes_recorded)}</td>
+              <td class="bar-cell"><div class="bar"><div style="width:${(100*b.images/max).toFixed(1)}%"></div></div></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  function renderClusters(clusters, n_noise) {
+    if (!clusters.length) { $("clusters").innerHTML = '<div class="ism-empty">run cluster_imageboard_images to populate</div>'; return; }
+    $("clusters").innerHTML = `<div class="ism-clusters">${clusters.map(c => `
+      <div class="ism-cluster" data-cluster-id="${c.cluster_id}">
+        <div>
+          <div class="lbl">${escapeHtml(c.label || ('cluster_' + c.cluster_id))}</div>
+          <div class="meta">id ${c.cluster_id} · ${(c.top_words || []).map(w=>'#'+w).join(' ')} ${(c.top_tags||[]).map(t=>'@'+t).join(' ')}</div>
+        </div>
+        <div class="size">${fmtInt(c.size)}</div>
+        <div class="reps">
+          ${(c.rep_keys || []).map(k => `<img src="/api/image-monitor/thumb/?key=${encodeURIComponent(k)}" loading="lazy" onerror="this.style.opacity=.15" onclick="event.stopPropagation();openLightbox('/api/image-monitor/thumb/?key=${encodeURIComponent(k)}&full=1','${escapeHtml(k)}')">`).join('')}
+        </div>
+        <div class="actions">
+          <button type="button" data-act="toggle">Triage</button>
+          <button type="button" class="keep" data-act="keep-all">Keep all</button>
+          <button type="button" class="reject" data-act="reject-all">Reject all</button>
+          <button type="button" data-act="clear-all">Clear</button>
+        </div>
+        <div class="ism-triage" data-triage="${c.cluster_id}"></div>
+      </div>`).join('')}</div>`;
+    document.querySelectorAll('.ism-cluster').forEach(el => {
+      el.querySelector('.actions').addEventListener('click', (ev) => {
+        const btn = ev.target.closest('button'); if (!btn) return;
+        const cid = el.getAttribute('data-cluster-id');
+        const act = btn.getAttribute('data-act');
+        if (act === 'toggle') toggleTriage(el, cid);
+        else if (act === 'keep-all') decideCluster(el, cid, 'keep');
+        else if (act === 'reject-all') decideCluster(el, cid, 'reject');
+        else if (act === 'clear-all') decideCluster(el, cid, 'none');
+        ev.stopPropagation();
+      });
+    });
+  }
+
+  async function toggleTriage(rowEl, cid) {
+    const panel = rowEl.querySelector('.ism-triage');
+    if (panel.classList.contains('open')) {
+      panel.classList.remove('open'); rowEl.classList.remove('active'); return;
+    }
+    rowEl.classList.add('active'); panel.classList.add('open');
+    panel.innerHTML = '<div class="ism-empty">loading…</div>';
+    try {
+      const isAesthetic = (clusterMode === 'aesthetic') || rowEl.getAttribute('data-mode') === 'aesthetic';
+      const url = isAesthetic
+        ? `/api/image-monitor/aesthetic-cluster/?cluster_id=${encodeURIComponent(cid)}`
+        : `/api/image-monitor/cluster/?cluster_id=${encodeURIComponent(cid)}`;
+      const r = await fetch(url, { credentials:'same-origin' });
+      const d = await r.json();
+      if (rankerScores) await ensureRankerScoresFor((d.members||[]).map(m => m.image_key));
+      renderTriage(panel, d);
+    } catch (e) { panel.innerHTML = `<div class="ism-empty">error: ${e}</div>`; }
+  }
+
+  async function renderTriage(panel, d) {
+    const counts = d.counts || {keep:0,reject:0,none:0};
+    let members = (d.members || []).slice();
+    // Ranker sort if enabled
+    if ($("rankerSortChk") && $("rankerSortChk").checked && rankerScores) {
+      members.sort((a, b) => (rankerScores[b.image_key] ?? 0) - (rankerScores[a.image_key] ?? 0));
+    }
+    const summary = `<div class="ism-triage-summary">${d.size} images · <span class="keep">${counts.keep||0} keep</span> · <span class="reject">${counts.reject||0} reject</span> · ${counts.none||0} undecided · <span style="color:#5a5e68">click=cycle · shift+click=zoom · ranker:${$("rankerSortChk")?.checked?'on':'off'}</span></div>`;
+    const grid = `<div class="ism-triage-grid">${members.map(m => {
+      const pk = rankerScores ? rankerScores[m.image_key] : null;
+      const cls = m.decision==='keep'?'keep':m.decision==='reject'?'reject':m.decision==='later'?'later':'';
+      return `
+      <div class="ism-tile ${cls}" data-key="${escapeHtml(m.image_key)}" data-dec="${m.decision||'none'}" title="${escapeHtml(m.filename)} · ${m.width}×${m.height}${pk!=null?` · P(keep)=${pk.toFixed(2)}`:''}">
+        <img src="${escapeHtml(m.thumb_url)}" loading="lazy" onerror="this.style.opacity=.15">
+        ${m.decision&&m.decision!=='none' ? `<div class="ovr">${m.decision}</div>` : ''}
+        ${pk!=null ? `<div class="pkeep">${pk.toFixed(2)}</div>` : ''}
+        ${m.similarity!=null ? `<div class="simovr">${m.similarity.toFixed(2)}</div>` : ''}
+      </div>`;
+    }).join('')}</div>`;
+    panel.innerHTML = summary + grid;
+    panel.querySelectorAll('.ism-tile').forEach(t => {
+      const img = t.querySelector('img');
+      if (img) img.addEventListener('click', (ev) => {
+        if (ev.shiftKey) {
+          ev.stopPropagation();
+          const key = t.getAttribute('data-key');
+          openLightbox(`/api/image-monitor/thumb/?key=${encodeURIComponent(key)}&full=1`, key);
+          return;
+        }
+        ev.stopPropagation();
+        const cur = t.getAttribute('data-dec') || 'none';
+        const next = cur === 'none' ? 'keep' : cur === 'keep' ? 'reject' : 'none';
+        decideTile(t, next);
+      });
+    });
+  }
+
+  async function decideTile(tileEl, next) {
+    const key = tileEl.getAttribute('data-key');
+    const fd = new FormData();
+    fd.append('decision', next); fd.append('image_keys[]', key);
+    try {
+      await fetch('/api/image-monitor/decide/', { method:'POST', credentials:'same-origin', body:fd, headers:{'X-CSRFToken':getCookie('csrftoken')} });
+      tileEl.classList.remove('keep','reject','later'); if (next!=='none') tileEl.classList.add(next);
+      tileEl.setAttribute('data-dec', next);
+      const ovr = tileEl.querySelector('.ovr');
+      if (next === 'none') { if (ovr) ovr.remove(); }
+      else if (ovr) { ovr.textContent = next; }
+      else { const o = document.createElement('div'); o.className='ovr'; o.textContent = next; tileEl.appendChild(o); }
+      refreshDecisionCounts();
+    } catch (e) { console.error(e); }
+  }
+
+  async function decideCluster(rowEl, cid, decision) {
+    const fd = new FormData();
+    fd.append('decision', decision); fd.append('cluster_id', cid);
+    try {
+      await fetch('/api/image-monitor/decide-cluster/', { method:'POST', credentials:'same-origin', body:fd, headers:{'X-CSRFToken':getCookie('csrftoken')} });
+      // Re-pull triage view if open
+      const panel = rowEl.querySelector('.ism-triage');
+      if (panel.classList.contains('open')) {
+        const r = await fetch(`/api/image-monitor/cluster/?cluster_id=${encodeURIComponent(cid)}`, { credentials:'same-origin' });
+        renderTriage(panel, await r.json());
+      }
+      refreshDecisionCounts();
+    } catch (e) { console.error(e); }
+  }
+
+  async function refreshDecisionCounts() {
+    try {
+      const r = await fetch('/api/image-monitor/decision-counts/', { credentials:'same-origin' });
+      const d = await r.json(); const c = d.counts || {keep:0,reject:0,none:0};
+      $("decisionMeta").innerHTML = `triage: <span style="color:#9ec25c">${fmtInt(c.keep||0)} kept</span> · <span style="color:#c95a5a">${fmtInt(c.reject||0)} rejected</span>`;
+    } catch (_) {}
+  }
+
+  function renderGallery(samples) {
+    if (!samples.length) { $("gallery").innerHTML = '<div class="ism-empty">no thumbnails yet — run analyze_image_quality after ingest</div>'; return; }
+    $("gallery").innerHTML = samples.map(s => {
+      const fullUrl = s.thumb_url.includes('?')
+        ? `${s.thumb_url}&full=1`
+        : `${s.thumb_url}?full=1`;
+      return `
+      <div class="tile">
+        <img src="${escapeHtml(s.thumb_url)}" loading="lazy" onerror="this.style.opacity=.15"
+             title="${escapeHtml(s.filename)} · ${s.width}×${s.height}"
+             style="cursor:zoom-in"
+             onclick="openLightbox('${fullUrl}', '${escapeHtml(s.filename)} · ${s.width}×${s.height}')">
+        <div class="meta">${escapeHtml(s.width)}×${escapeHtml(s.height)}</div>
+      </div>`;
+    }).join('');
+  }
+
+  let lastTotal = 0, lastTotalAt = 0;
+  async function tick() {
+    try {
+      const r = await fetch("/api/image-scrape-monitor/", { credentials:"same-origin" });
+      const d = await r.json();
+      const t = d.totals;
+      $("grandTotal").textContent = fmtInt(t.images);
+      $("postsTotal").textContent = fmtInt(t.posts);
+      const stale = (t.images === lastTotal) && (Date.now()-lastTotalAt > 30000);
+      $("grandRate").textContent = `${d.rates.images_recent.toFixed(2)} / ${d.rates.images_long.toFixed(2)} img/s`;
+      $("postsRate").textContent = `${d.rates.posts_recent.toFixed(2)} / ${d.rates.posts_long.toFixed(2)} posts/s`;
+      $("grandRate").classList.toggle("stale", stale);
+      if (t.images !== lastTotal) { lastTotal = t.images; lastTotalAt = Date.now(); }
+      $("lastUpdate").textContent = `last update: ${new Date(d.ts*1000).toLocaleTimeString()}`;
+      $("rootMeta").textContent = `${d.root} · originals ${fmtBytes(t.bytes_originals)} (${fmtInt(t.n_files_originals)} files) · quarantine ${fmtInt(t.n_files_quarantine)} files`;
+      $("boardsMeta").textContent = `${d.boards.length} board(s) · ${fmtInt(t.images)} image rows`;
+      $("clustersMeta").textContent = t.n_clusters
+        ? `${t.n_clusters} clusters · ${fmtInt(t.cluster_members)} members · ${fmtInt(t.n_noise)} noise`
+        : 'not yet computed';
+      renderPipeline(t);
+      renderTargets(d.targets);
+      renderBoards(d.boards);
+      renderClusters(d.clusters, t.n_noise);
+    } catch (e) { $("lastUpdate").textContent = `last update: error (${e})`; }
+  }
+
+  async function fetchSamples() {
+    try {
+      const r = await fetch("/api/image-scrape-monitor/samples/", { credentials:"same-origin" });
+      const d = await r.json();
+      renderGallery(d.samples || []);
+    } catch (_) {}
+  }
+
+  $("resampleBtn").addEventListener("click", fetchSamples);
+
+  function getCookie(name) {
+    const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return m ? decodeURIComponent(m[2]) : '';
+  }
+
+  async function recompute() {
+    $("recomputeStatus").textContent = "starting…";
+    $("recomputeBtn").disabled = true;
+    try {
+      const fd = new FormData();
+      fd.append("source", "fourchan"); fd.append("board", "all");
+      fd.append("min_cluster_size", "5");
+      const r = await fetch("/api/image-scrape-monitor/recompute/", {
+        method: "POST", credentials: "same-origin", body: fd,
+        headers: { "X-CSRFToken": getCookie("csrftoken") },
+      });
+      const d = await r.json();
+      if (!d.ok) { $("recomputeStatus").textContent = `busy: ${d.msg}`; return; }
+      pollStatus();
+    } catch (e) { $("recomputeStatus").textContent = `error: ${e}`; }
+  }
+
+  async function pollStatus() {
+    try {
+      const r = await fetch("/api/image-scrape-monitor/recompute-status/", { credentials: "same-origin" });
+      const d = await r.json();
+      const s = d.state;
+      if (s.running) {
+        $("recomputeStatus").textContent = `${s.stage}…`;
+        setTimeout(pollStatus, 1500);
+      } else {
+        const elapsed = (s.ended_at && s.started_at) ? Math.round(s.ended_at - s.started_at) : 0;
+        $("recomputeStatus").textContent = s.error
+          ? `error: ${s.error}` : `done in ${elapsed}s — refreshing clusters`;
+        $("recomputeBtn").disabled = false;
+        tick(); fetchSamples();
+      }
+    } catch (e) { $("recomputeStatus").textContent = `error: ${e}`; $("recomputeBtn").disabled = false; }
+  }
+
+  $("recomputeBtn").addEventListener("click", recompute);
+  // Resume polling if a recompute is already in flight on page load
+  fetch("/api/image-scrape-monitor/recompute-status/", { credentials: "same-origin" })
+    .then(r => r.json()).then(d => { if (d.state && d.state.running) { $("recomputeBtn").disabled = true; pollStatus(); } });
+
+  // -------- Active-learning ranker --------
+  let rankerScores = null;  // image_key -> P(keep), populated after refit
+  async function refitRanker() {
+    $("rankerStats").textContent = "fitting…";
+    try {
+      const r = await fetch('/api/image-monitor/ranker/refit/', { method:'POST', credentials:'same-origin', headers:{'X-CSRFToken':getCookie('csrftoken')} });
+      const d = await r.json();
+      if (!d.ok) { $("rankerMeta").textContent = `error: ${d.error||'?'}`; $("rankerStats").textContent=''; return; }
+      $("rankerMeta").textContent = `fit on ${d.n_keep} keep + ${d.n_reject} reject · val_acc=${d.val_acc!=null?(d.val_acc*100).toFixed(1)+'%':'—'} · scored ${fmtInt(d.n_scored)}`;
+      $("rankerStats").textContent = '';
+      // Pull all scores so triage tiles can show P(keep)
+      // Strategy: fetch state + do an aggregate score query on demand per-cluster (smaller payload)
+      // For now, mark a flag so renderTriage knows the ranker is trained, and lazy-load scores per-cluster.
+      rankerScores = {}; // empty but truthy → triage will request scores per-batch
+    } catch (e) { $("rankerMeta").textContent = `error: ${e}`; }
+  }
+  async function ensureRankerScoresFor(keys) {
+    if (!rankerScores) return;
+    const missing = keys.filter(k => !(k in rankerScores));
+    if (!missing.length) return;
+    try {
+      // Chunk to avoid URL length issues
+      for (let i = 0; i < missing.length; i += 200) {
+        const chunk = missing.slice(i, i+200);
+        const r = await fetch(`/api/image-monitor/ranker/scores/?keys=${encodeURIComponent(chunk.join(','))}`, { credentials:'same-origin' });
+        const d = await r.json();
+        if (d.scores) Object.assign(rankerScores, d.scores);
+      }
+    } catch (_) {}
+  }
+  $("rankerRefitBtn").addEventListener('click', refitRanker);
+  $("rankerSortChk").addEventListener('change', async () => {
+    // Re-render currently-open triage panels
+    document.querySelectorAll('.ism-triage.open').forEach(async (panel) => {
+      const cid = panel.getAttribute('data-triage');
+      if (!cid) return;
+      const r = await fetch(`/api/image-monitor/cluster/?cluster_id=${cid}`, { credentials:'same-origin' });
+      const d = await r.json();
+      if (rankerScores) await ensureRankerScoresFor((d.members||[]).map(m => m.image_key));
+      renderTriage(panel, d);
+    });
+    // Re-render search grid if visible
+    const sg = $("searchGrid");
+    if (sg && sg.children.length) runSearch();
+  });
+  // Auto-fetch state on load
+  fetch('/api/image-monitor/ranker/state/', { credentials:'same-origin' }).then(r=>r.json()).then(d=>{
+    if (d.trained) {
+      $("rankerMeta").textContent = `trained on ${d.n_keep} keep + ${d.n_reject} reject · val_acc=${d.val_acc!=null?(d.val_acc*100).toFixed(1)+'%':'—'} · scored ${fmtInt(d.n_scored)}`;
+      rankerScores = {};
+    } else if (d.error) {
+      $("rankerMeta").textContent = d.error;
+    }
+  }).catch(()=>{});
+
+  // -------- Aesthetic vs Semantic cluster mode --------
+  let clusterMode = 'semantic';
+  document.querySelectorAll('.ism-clustermode button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.ism-clustermode button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      clusterMode = btn.getAttribute('data-mode');
+      if (clusterMode === 'aesthetic') {
+        loadAestheticClusters();
+      } else {
+        tick(); // re-fetch semantic clusters via main data endpoint
+      }
+    });
+  });
+  async function loadAestheticClusters() {
+    $("clusters").innerHTML = '<div class="ism-empty">computing aesthetic clusters…</div>';
+    try {
+      const r = await fetch('/api/image-monitor/aesthetic-clusters/?n=24', { credentials:'same-origin' });
+      const d = await r.json();
+      if (!d.ok || !d.clusters || !d.clusters.length) {
+        $("clusters").innerHTML = '<div class="ism-empty">need image_features.jsonl populated — run analyze_image_quality</div>';
+        return;
+      }
+      // Adapt to renderClusters shape
+      const adapted = d.clusters.map(c => ({
+        cluster_id: c.cluster_id, label: c.label, size: c.size,
+        top_words: c.feature_tags || [], top_tags: [], rep_keys: c.rep_keys || [],
+      }));
+      renderClusters(adapted, 0);
+      // Re-bind cluster fetches to aesthetic endpoint
+      document.querySelectorAll('.ism-cluster').forEach(el => {
+        el.setAttribute('data-mode', 'aesthetic');
+      });
+      $("clustersMeta").textContent = `${d.clusters.length} aesthetic clusters · KMeans on quality feature z-scores`;
+    } catch (e) { $("clusters").innerHTML = `<div class="ism-empty">error: ${e}</div>`; }
+  }
+
+  // -------- Image-as-query "more like this" --------
+  async function moreLikeThis(imageKey) {
+    if (!imageKey) return;
+    $("searchMeta").textContent = `more like ${imageKey}…`;
+    $("searchQ").value = '';
+    const top = parseInt($("searchTop").value) || 200;
+    try {
+      const r = await fetch(`/api/image-monitor/search-by-image/?keys=${encodeURIComponent(imageKey)}&top=${top}`, { credentials:'same-origin' });
+      const d = await r.json();
+      if (!d.ok) { $("searchMeta").textContent = `error: ${d.error||'?'}`; return; }
+      lastSearchMembers = d.members; lastSearchQuery = `like:${imageKey}`;
+      $("searchMeta").textContent = `${d.n_results} matches like image · ${fmtInt(d.n_searched)} candidates`;
+      renderSearchResults(d);
+      $("searchSaveName").value = `like_${imageKey.split(':').pop().slice(0,12)}`;
+      $("searchResults").scrollIntoView({behavior:'smooth', block:'start'});
+    } catch (e) { $("searchMeta").textContent = `error: ${e}`; }
+  }
+
+  // -------- Keyboard triage --------
+  let focusedTile = null;
+  function setFocus(t) {
+    if (focusedTile) focusedTile.classList.remove('focus');
+    focusedTile = t;
+    if (t) { t.classList.add('focus'); t.scrollIntoView({block:'nearest', behavior:'smooth'}); }
+  }
+  function visibleTiles() {
+    return Array.from(document.querySelectorAll('.ism-triage.open .ism-tile, #searchGrid .ism-tile'));
+  }
+  document.addEventListener('keydown', (ev) => {
+    // Ignore when typing in inputs
+    const tag = (ev.target.tagName||'').toUpperCase();
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || ev.target.isContentEditable) return;
+    const tiles = visibleTiles();
+    if (!tiles.length && ev.key.toLowerCase() !== 'escape') return;
+    const cur = focusedTile && tiles.includes(focusedTile) ? tiles.indexOf(focusedTile) : -1;
+    const k = ev.key.toLowerCase();
+    if (k === 'j') { ev.preventDefault(); setFocus(tiles[Math.min(tiles.length-1, cur+1)] || tiles[0]); }
+    else if (k === 'k') { ev.preventDefault(); setFocus(tiles[Math.max(0, cur-1)] || tiles[0]); }
+    else if (k === 'f' || k === 'd' || k === 's') {
+      if (!focusedTile) { setFocus(tiles[0]); return; }
+      ev.preventDefault();
+      const next = k === 'f' ? 'keep' : k === 'd' ? 'reject' : 'later';
+      decideTile(focusedTile, next);
+    }
+    else if (k === ' ' || k === 'enter') {
+      if (!focusedTile) return;
+      ev.preventDefault();
+      const key = focusedTile.getAttribute('data-key');
+      openLightbox(`/api/image-monitor/thumb/?key=${encodeURIComponent(key)}&full=1`, key);
+    }
+    else if (k === 'm') {
+      if (!focusedTile) return;
+      ev.preventDefault();
+      moreLikeThis(focusedTile.getAttribute('data-key'));
+    }
+    else if (k === 'escape') { document.getElementById('lightbox').classList.remove('open'); }
+  });
+
+  // -------- Search across CLIP embeddings --------
+  let lastSearchMembers = [];
+  let lastSearchQuery = "";
+
+  async function runSearch(ev) {
+    if (ev) ev.preventDefault();
+    const q = $("searchQ").value.trim();
+    if (!q) return;
+    const top = parseInt($("searchTop").value) || 200;
+    const min_sim = parseFloat($("searchMin").value) || 0.22;
+    const useAnd = $("searchAnd") && $("searchAnd").checked;
+    const useExclude = $("searchExclude") && $("searchExclude").checked;
+    const params = new URLSearchParams({q, top: String(top), min_sim: String(min_sim)});
+    if (useAnd) params.set('strict_and', '1');
+    if (useExclude) params.set('exclude', 'both');
+    $("searchMeta").textContent = `searching "${q}"…`;
+    try {
+      const r = await fetch(`/api/image-monitor/search/?${params.toString()}`, { credentials:'same-origin' });
+      const d = await r.json();
+      if (!d.ok) { $("searchMeta").textContent = `error: ${d.error || 'unknown'}`; return; }
+      lastSearchMembers = d.members; lastSearchQuery = d.q;
+      const tags = [];
+      if (d.strict_and) tags.push('AND');
+      if (d.n_excluded) tags.push(`hid ${d.n_excluded} handled`);
+      $("searchMeta").textContent = `${d.n_results} results from ${fmtInt(d.n_searched)} embeddings${tags.length?' · '+tags.join(' · '):''} · ${d.elapsed_ms}ms`;
+      renderSearchResults(d);
+      const slug = q.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'').slice(0,40);
+      if (!$("searchSaveName").value) $("searchSaveName").value = slug;
+    } catch (e) { $("searchMeta").textContent = `error: ${e}`; }
+  }
+
+  function renderSearchResults(d) {
+    $("searchSummary").innerHTML = `${d.n_results} matches for <strong style="color:#e7e7e2">${escapeHtml(d.q)}</strong> · click=select · shift+click=zoom · F/D/S=keep/reject/later · M=more like this`;
+    $("searchGrid").innerHTML = (d.members||[]).map(m => `
+      <div class="ism-tile" data-key="${escapeHtml(m.image_key)}" data-dec="${m.decision||'none'}" title="${escapeHtml(m.filename)} · ${m.width}×${m.height} · sim=${(m.similarity||0).toFixed(3)}">
+        <img src="${escapeHtml(m.thumb_url)}" loading="lazy" onerror="this.style.opacity=.15">
+        <div class="simovr">${(m.similarity||0).toFixed(2)}</div>
+      </div>`).join('');
+    $("searchResults").style.display = 'block';
+    $("searchGrid").querySelectorAll('.ism-tile').forEach(t => {
+      const img = t.querySelector('img');
+      img.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (ev.shiftKey) {
+          const key = t.getAttribute('data-key');
+          openLightbox(`/api/image-monitor/thumb/?key=${encodeURIComponent(key)}&full=1`, key);
+          return;
+        }
+        // Click toggles SELECTION (not decision)
+        t.classList.toggle('selected');
+        updateSelCount();
+      });
+    });
+    updateSelCount();
+  }
+
+  function selectedTiles() {
+    return Array.from($("searchGrid").querySelectorAll('.ism-tile.selected'));
+  }
+  function selectedKeys() {
+    return selectedTiles().map(t => t.getAttribute('data-key'));
+  }
+  function updateSelCount() {
+    const n = selectedTiles().length;
+    const tot = $("searchGrid").querySelectorAll('.ism-tile').length;
+    $("selCount").textContent = `${n} selected / ${tot}`;
+  }
+  $("selAll").addEventListener('click', () => {
+    $("searchGrid").querySelectorAll('.ism-tile').forEach(t => t.classList.add('selected'));
+    updateSelCount();
+  });
+  $("selNone").addEventListener('click', () => {
+    $("searchGrid").querySelectorAll('.ism-tile.selected').forEach(t => t.classList.remove('selected'));
+    updateSelCount();
+  });
+  $("selInvert").addEventListener('click', () => {
+    $("searchGrid").querySelectorAll('.ism-tile').forEach(t => t.classList.toggle('selected'));
+    updateSelCount();
+  });
+
+  async function allotSelected(mode) {
+    const name = $("searchSaveName").value.trim();
+    if (!name) { alert('Type a folder/cluster name first.'); return; }
+    const keys = selectedKeys();
+    if (!keys.length) { alert('No selection. Click images to select them.'); return; }
+    const fd = new FormData();
+    fd.append('name', name); fd.append('mode', mode); fd.append('query', lastSearchQuery || '');
+    keys.forEach(k => fd.append('image_keys[]', k));
+    try {
+      const r = await fetch('/api/image-monitor/save-named-cluster/', { method:'POST', credentials:'same-origin', body:fd, headers:{'X-CSRFToken':getCookie('csrftoken')} });
+      const d = await r.json();
+      if (!d.ok) { $("searchMeta").textContent = `save failed: ${d.error||'?'}`; return; }
+      const verb = mode === 'append' ? 'added to' : mode === 'remove' ? 'removed from' : 'overwrote';
+      $("searchMeta").textContent = `${verb} "${d.name}" · folder now has ${d.size} images (Δ${d.delta})`;
+      refreshNamedClusters();
+    } catch (e) { $("searchMeta").textContent = `save error: ${e}`; }
+  }
+  $("allotAppend").addEventListener('click', () => allotSelected('append'));
+  $("allotOverwrite").addEventListener('click', () => {
+    if (!confirm('Overwrite folder with current selection? Existing entries will be replaced.')) return;
+    allotSelected('overwrite');
+  });
+  $("allotRemove").addEventListener('click', () => allotSelected('remove'));
+
+  async function saveNamedCluster(keysToSave) {
+    const name = $("searchSaveName").value.trim();
+    if (!name) { alert("Name the cluster first."); return; }
+    if (!keysToSave.length) { alert("No images to save."); return; }
+    const fd = new FormData();
+    fd.append('name', name); fd.append('query', lastSearchQuery);
+    keysToSave.forEach(k => fd.append('image_keys[]', k));
+    try {
+      const r = await fetch('/api/image-monitor/save-named-cluster/', { method:'POST', credentials:'same-origin', body:fd, headers:{'X-CSRFToken':getCookie('csrftoken')} });
+      const d = await r.json();
+      if (d.ok) { $("searchMeta").textContent = `saved "${d.name}" · ${d.size} images`; refreshNamedClusters(); }
+      else { $("searchMeta").textContent = `save failed: ${d.error||'?'}`; }
+    } catch (e) { $("searchMeta").textContent = `save error: ${e}`; }
+  }
+
+  async function bulkDecideVisible(decision) {
+    const tiles = $("searchGrid").querySelectorAll('.ism-tile');
+    if (!tiles.length) return;
+    const keys = Array.from(tiles).map(t => t.getAttribute('data-key'));
+    const fd = new FormData(); fd.append('decision', decision);
+    keys.forEach(k => fd.append('image_keys[]', k));
+    try {
+      await fetch('/api/image-monitor/decide/', { method:'POST', credentials:'same-origin', body:fd, headers:{'X-CSRFToken':getCookie('csrftoken')} });
+      tiles.forEach(t => {
+        t.classList.remove('keep','reject'); if (decision !== 'none') t.classList.add(decision);
+        t.setAttribute('data-dec', decision);
+      });
+      refreshDecisionCounts();
+    } catch (e) { console.error(e); }
+  }
+
+  async function refreshNamedClusters() {
+    try {
+      const r = await fetch('/api/image-monitor/named-clusters/', { credentials:'same-origin' });
+      const d = await r.json();
+      const list = d.clusters || [];
+      if (!list.length) { $("namedClustersList").innerHTML = '<span style="color:#5a5e68">none yet</span>'; return; }
+      const renderPill = (c, opts={}) => `
+        <span data-name="${escapeHtml(c.name)}" data-action="${opts.action||'load'}"
+              title="${opts.title||'click to load this folder'}"
+              style="display:inline-block; margin:2px 4px 2px 0; padding:3px 9px; background:${opts.bg||'#1c2028'}; border:1px solid ${opts.border||'#23262e'}; border-radius:11px; cursor:pointer; font-size:12px;">
+          ${escapeHtml(c.name)} <span style="color:#9ec25c">${c.size}</span>
+        </span>`;
+      $("namedClustersList").innerHTML = `<div style="font-size:10px;color:#5a5e68;margin-bottom:4px;">click pill to load folder · click 'Allot' button above to add selection</div>`
+        + list.map(c => renderPill(c)).join('');
+      $("namedClustersList").querySelectorAll('[data-name]').forEach(el => {
+        el.addEventListener('click', async () => {
+          const name = el.getAttribute('data-name');
+          const r = await fetch(`/api/image-monitor/named-cluster/?name=${encodeURIComponent(name)}`, { credentials:'same-origin' });
+          const d = await r.json();
+          if (!d.ok) return;
+          lastSearchQuery = d.query || name;
+          $("searchQ").value = d.query || name;
+          $("searchSaveName").value = name;
+          renderSearchResults({ n_results: d.size, q: name, members: d.members });
+          $("searchMeta").textContent = `loaded saved cluster "${name}" · ${d.size} images`;
+        });
+      });
+      // Quick-pick pills above search grid: click sets the allot target name
+      const qp = $("allotQuickPicks");
+      if (qp) {
+        if (!list.length) { qp.innerHTML = ''; }
+        else {
+          qp.innerHTML = '<span style="font-size:10px;color:#5a5e68;margin-right:6px;align-self:center;">recent folders →</span>'
+            + list.slice(0, 12).map(c => `<span data-quickname="${escapeHtml(c.name)}" style="display:inline-block; padding:3px 9px; background:#0e0f12; border:1px solid #2c2f37; border-radius:11px; cursor:pointer; font-size:11px; color:#d4a958;">${escapeHtml(c.name)}</span>`).join('');
+          qp.querySelectorAll('[data-quickname]').forEach(el => {
+            el.addEventListener('click', () => {
+              $("searchSaveName").value = el.getAttribute('data-quickname');
+              $("searchSaveName").focus();
+            });
+          });
+        }
+      }
+    } catch (e) {}
+  }
+
+  // -------- Refine within search results --------
+  let baselineSearchMembers = []; // snapshot before any refine applied
+  async function runRefine(filter) {
+    const subQ = $("refineQ").value.trim();
+    if (!subQ) return;
+    const minSim = parseFloat($("refineMin").value) || 0.0;
+    // Use the *current visible* set as the candidate pool (already a search result)
+    const tiles = Array.from($("searchGrid").querySelectorAll('.ism-tile'));
+    if (!tiles.length) return;
+    if (!baselineSearchMembers.length) baselineSearchMembers = lastSearchMembers.slice();
+    const keys = tiles.map(t => t.getAttribute('data-key'));
+    $("searchMeta").textContent = `refining "${subQ}" over ${keys.length} results…`;
+    try {
+      const useAnd = $("refineAnd") && $("refineAnd").checked;
+      const url = `/api/image-monitor/search-refine/?q=${encodeURIComponent(subQ)}`
+                + `&keys=${encodeURIComponent(keys.join(','))}`
+                + `&min_sim=${minSim}`
+                + `&mode=${filter ? 'filter' : 'rerank'}`
+                + (useAnd ? '&strict_and=1' : '');
+      const r = await fetch(url, { credentials:'same-origin' });
+      const d = await r.json();
+      if (!d.ok) { $("searchMeta").textContent = `refine error: ${d.error||'?'}`; return; }
+      lastSearchMembers = d.members;
+      lastSearchQuery = `${lastSearchQuery} → ${subQ}`;
+      $("searchMeta").textContent = `${filter?'filtered':'re-ranked'} by "${subQ}" · ${d.n_results} of ${d.n_input}`;
+      renderSearchResults({ q: subQ, n_results: d.n_results, members: d.members });
+      // Suggest a sensible save name combining base + refine
+      const slug = subQ.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'').slice(0,40);
+      if ($("searchSaveName").value && !$("searchSaveName").value.includes(slug)) {
+        $("searchSaveName").value = `${$("searchSaveName").value}__${slug}`.slice(0,80);
+      }
+    } catch (e) { $("searchMeta").textContent = `refine error: ${e}`; }
+  }
+  $("refineSortBtn").addEventListener('click', () => runRefine(false));
+  $("refineFilterBtn").addEventListener('click', () => runRefine(true));
+  $("refineQ").addEventListener('keydown', (ev) => {
+    // Enter = Drill (filter, the desired narrowing flow). Shift+Enter = Re-rank only.
+    if (ev.key === 'Enter') { ev.preventDefault(); runRefine(!ev.shiftKey); }
+  });
+  $("refineResetBtn").addEventListener('click', () => {
+    if (!baselineSearchMembers.length) return;
+    lastSearchMembers = baselineSearchMembers.slice();
+    baselineSearchMembers = [];
+    renderSearchResults({ q: lastSearchQuery, n_results: lastSearchMembers.length, members: lastSearchMembers });
+    $("searchMeta").textContent = `reset · ${lastSearchMembers.length} results`;
+    $("refineQ").value = '';
+  });
+
+  $("searchForm").addEventListener('submit', (e) => { baselineSearchMembers = []; runSearch(e); });
+
+  // -------- Index diagnostics: tell user what's actually searchable --------
+  async function refreshSearchIndexStat() {
+    try {
+      const r = await fetch('/api/image-monitor/search-index-stats/', { credentials:'same-origin' });
+      const d = await r.json();
+      if (!d.ok) return;
+      const boards = (d.by_board||[]).map(b => `${b.board}:${fmtInt(b.n)}`).join(' · ');
+      const el = $("searchIndexStat");
+      if (!el) return;
+      let warn = '';
+      if (d.n_indexed < 2000) {
+        warn = ` <span style="color:#c95a5a;">— index is small; recompute clusters after more boards finish scraping to widen the pool</span>`;
+      }
+      el.innerHTML = `index: <strong style="color:#9ec25c">${fmtInt(d.n_indexed)}</strong> embeddings (${boards||'none'}) · ${fmtInt(d.n_saved)} already in folders · ${fmtInt(d.n_rejected)} rejected${warn}`;
+    } catch(e) {}
+  }
+  refreshSearchIndexStat();
+  setInterval(refreshSearchIndexStat, 30000);
+
+  // -------- Auto-recompute clusters --------
+  let autoRecomputeTimer = null;
+  function setupAutoRecompute() {
+    const chk = $("autoRecomputeChk"); const sel = $("autoRecomputeMin"); const nxt = $("autoRecomputeNext");
+    function rearm() {
+      if (autoRecomputeTimer) { clearInterval(autoRecomputeTimer); autoRecomputeTimer = null; }
+      nxt.textContent = '';
+      if (!chk.checked) { localStorage.setItem('ism_auto_recompute', '0'); return; }
+      localStorage.setItem('ism_auto_recompute', '1');
+      localStorage.setItem('ism_auto_recompute_min', sel.value);
+      const minutes = parseInt(sel.value);
+      let nextAt = Date.now() + minutes*60*1000;
+      const renderCountdown = () => {
+        const left = Math.max(0, nextAt - Date.now());
+        const m = Math.floor(left/60000), s = Math.floor((left%60000)/1000);
+        nxt.textContent = `next: ${m}m${s.toString().padStart(2,'0')}s`;
+      };
+      renderCountdown();
+      autoRecomputeTimer = setInterval(async () => {
+        renderCountdown();
+        if (Date.now() >= nextAt) {
+          // Only fire if not already running
+          try {
+            const r = await fetch('/api/image-scrape-monitor/recompute-status/', { credentials:'same-origin' });
+            const d = await r.json();
+            if (!d.state || !d.state.running) recompute();
+          } catch (_) {}
+          nextAt = Date.now() + minutes*60*1000;
+        }
+      }, 1000);
+    }
+    chk.addEventListener('change', rearm);
+    sel.addEventListener('change', rearm);
+    if (localStorage.getItem('ism_auto_recompute') === '1') {
+      chk.checked = true;
+      const saved = localStorage.getItem('ism_auto_recompute_min');
+      if (saved) sel.value = saved;
+      rearm();
+    }
+  }
+  setupAutoRecompute();
+
+  tick(); fetchSamples(); refreshDecisionCounts(); refreshNamedClusters();
+  setInterval(tick, 5000);
+  setInterval(fetchSamples, 30000);
+  setInterval(refreshDecisionCounts, 7000);
+  setInterval(refreshNamedClusters, 30000);
+</script>
+{% endblock %}

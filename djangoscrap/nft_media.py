@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 from pathlib import Path
 
@@ -26,7 +27,7 @@ MEDIA_KINDS = {
         "bufsize": "1400k",
         "include_audio": True,
         "audio_bitrate": "64k",
-        "trim_start_seconds": 2.0,
+        "use_screencast": True,
     },
     "collector_45s": {
         "duration": 45,
@@ -34,8 +35,10 @@ MEDIA_KINDS = {
         "content_type": "video/mp4",
         "size": (1080, 1080),
         "fps": 25,
-        "crf": 23,
+        "crf": 18,
+        "preset": "slow",
         "include_audio": True,
+        "use_screencast": True,
     },
 }
 
@@ -151,11 +154,23 @@ def media_asset_is_fresh(asset, signature: str) -> bool:
         return False
 
 
-def capture_url_for_composition(composition) -> str:
+def capture_url_for_composition(composition, *, capture_kind: str = "video") -> str:
+    """Build the capture URL for Playwright.
+
+    capture_kind="still" appends &capture=still — motion-modes like eye-wake
+    use this to freeze on a useful frame for the poster. Video captures use
+    the default and let motion run normally.
+    """
     if not composition.url:
         raise ValueError("Composition has no public URL to capture.")
-    base = composition.url.rstrip("/")
-    return base + ("/?render=1" if "?" not in base else "&render=1")
+    path = composition.url.rstrip("/")
+    suffix = "/?render=1" if "?" not in path else "&render=1"
+    if capture_kind == "still":
+        suffix += "&capture=still"
+    # Playwright requires a fully-qualified URL; composition.url is a path like
+    # "/foo". Default to the local gunicorn/runserver, overridable via env.
+    base = os.getenv("NFT_CAPTURE_BASE_URL", "http://localhost:8765").rstrip("/")
+    return f"{base}{path}{suffix}"
 
 
 def _playwright_headless_value() -> bool:
@@ -188,6 +203,7 @@ def _wait_for_render_ready(page, timeout_ms: int = 120000):
     from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
     page.wait_for_timeout(800)
+    # Stage 1: wait until isCompositionReadyForCapture() signals all assets loaded.
     try:
         page.wait_for_function(
             "() => window.__compositionCaptureReady === true",
@@ -195,17 +211,32 @@ def _wait_for_render_ready(page, timeout_ms: int = 120000):
         )
     except PlaywrightTimeoutError:
         pass
-    page.wait_for_timeout(1200)
+
+    # Stage 2: force-play every video so they produce frames, not frozen first frames.
     page.evaluate(
         """() => {
             document.querySelectorAll('video').forEach((v) => {
-                try {
-                    v.muted = true;
-                    v.play();
-                } catch (e) {}
+                try { v.muted = true; v.play(); } catch (e) {}
             });
         }"""
     )
+
+    # Stage 3: wait until every visible video has actually advanced (currentTime > 0),
+    # proving animation frames are being produced — not just a loaded-but-paused clip.
+    try:
+        page.wait_for_function(
+            """() => {
+                const videos = Array.from(document.querySelectorAll('video'));
+                if (!videos.length) return true;
+                return videos.every(v => v.paused || v.currentTime > 0.05);
+            }""",
+            timeout=8000,
+        )
+    except PlaywrightTimeoutError:
+        pass
+
+    # Stage 4: a short settle window for CSS transitions and first-frame rendering.
+    page.wait_for_timeout(800)
 
 
 def _store_file(local_path: Path, storage_path: str) -> str:
@@ -230,7 +261,7 @@ def capture_composition_still(composition, *, storage_path: str | None = None, s
             browser = _launch_chromium(playwright)
             context = browser.new_context(viewport={"width": size, "height": size})
             page = context.new_page()
-            page.goto(capture_url_for_composition(composition), wait_until="domcontentloaded", timeout=60000)
+            page.goto(capture_url_for_composition(composition, capture_kind="still"), wait_until="domcontentloaded", timeout=120000)
             _wait_for_render_ready(page)
             if random_offset:
                 offset_ms = _random.randint(3000, 20000)
@@ -260,7 +291,11 @@ def capture_composition_video(
     maxrate: str | None = None,
     bufsize: str | None = None,
     audio_bitrate: str = "128k",
+    oversample_factor: int = 1,
+    preset: str = "medium",
+    use_screencast: bool = False,
 ) -> str:
+    import base64 as _base64
     from playwright.sync_api import sync_playwright
 
     preset_sizes = {
@@ -271,8 +306,10 @@ def capture_composition_video(
     }
     size = size_override or preset_sizes.get(aspect_preset, preset_sizes["square"])
     duration_seconds = max(3, min(600, int(duration_seconds)))
-    trim_start_seconds = max(0, min(3, float(trim_start_seconds or 0)))
+    trim_start_seconds = max(0, float(trim_start_seconds or 0))
     fps = max(12, min(60, int(fps or 25)))
+    oversample_factor = max(1, min(4, int(oversample_factor or 1)))
+    preset = preset or "medium"
     storage_path = storage_path or (
         f"nft/generated/composition_{int(composition.id)}/"
         f"{aspect_preset}_{duration_seconds}s.mp4"
@@ -282,26 +319,10 @@ def capture_composition_video(
     renders_dir.mkdir(parents=True, exist_ok=True)
     temp_capture_dir = Path(tempfile.mkdtemp(prefix="capture_", dir=str(renders_dir)))
     output_path = renders_dir / f"render_{composition.id}_{aspect_preset}_{duration_seconds}s_{uuid.uuid4().hex[:8]}.mp4"
-    capture_path = None
     audio_temp_path = None
 
     try:
-        with sync_playwright() as playwright:
-            browser = _launch_chromium(playwright)
-            context = browser.new_context(
-                viewport={"width": size[0], "height": size[1]},
-                record_video_dir=str(temp_capture_dir),
-                record_video_size={"width": size[0], "height": size[1]},
-            )
-            page = context.new_page()
-            page.goto(capture_url_for_composition(composition), wait_until="domcontentloaded", timeout=60000)
-            _wait_for_render_ready(page)
-            page.wait_for_timeout(max(1000, int((duration_seconds + trim_start_seconds) * 1000)))
-            page_video = page.video
-            context.close()
-            browser.close()
-            capture_path = Path(page_video.path())
-
+        # --- audio setup (shared by both capture modes) ---
         audio_input = None
         if include_audio and composition.audio_file:
             af_name = composition.audio_file.name
@@ -314,79 +335,219 @@ def capture_composition_video(
                     dst.write(src.read())
                 audio_input = audio_temp_path
 
-        ffmpeg_cmd = ["ffmpeg", "-y", "-i", str(capture_path)]
-        if audio_input:
-            ffmpeg_cmd += ["-stream_loop", "-1", "-i", str(audio_input)]
-        ffmpeg_cmd += [
-            "-map",
-            "0:v:0",
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            "-r",
-            str(fps),
-            "-preset",
-            "medium",
-            "-crf",
-            str(int(crf if crf is not None else 23)),
-            "-movflags",
-            "+faststart",
-        ]
-        if maxrate:
-            ffmpeg_cmd += ["-maxrate", str(maxrate)]
-        if bufsize:
-            ffmpeg_cmd += ["-bufsize", str(bufsize)]
-        if audio_input:
-            ffmpeg_cmd += ["-map", "1:a:0", "-c:a", "aac", "-b:a", audio_bitrate]
-        else:
-            ffmpeg_cmd += ["-an"]
-        # Auto-detect end of leading black section. Crop the bottom quarter so
-        # this works for compositions that load top-to-bottom (e.g.
-        # horizontal-stripes), where the top rows have content but the rest of
-        # the frame is still black during the loading phase.
-        effective_trim = float(trim_start_seconds or 0)
-        try:
-            # Get actual recording duration so the trim cap is based on real length.
-            dur_probe = subprocess.run(
-                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                 "-of", "default=noprint_wrappers=1:nokey=1", str(capture_path)],
-                capture_output=True, text=True, timeout=30,
-            )
-            total_rec_duration = float((dur_probe.stdout or "").strip() or "0") or (duration_seconds + effective_trim + 30)
-        except Exception:
-            total_rec_duration = duration_seconds + effective_trim + 30
+        if use_screencast:
+            # ------------------------------------------------------------------
+            # CDP screencast mode — JPEG frames captured after page is fully
+            # ready, assembled by ffmpeg.  Eliminates the VP8 intermediate step
+            # so source-image detail is preserved all the way to the final H264.
+            # Dead space is impossible here because recording only begins after
+            # _wait_for_render_ready() returns.
+            # ------------------------------------------------------------------
+            frames_dir = temp_capture_dir / "frames"
+            frames_dir.mkdir()
+            frame_list: list[tuple[str, float]] = []  # (abs_path, monotonic_time)
 
-        try:
-            probe = subprocess.run(
-                ["ffmpeg", "-i", str(capture_path),
-                 "-vf", "crop=iw:ih/4:0:ih*3/4,blackdetect=d=0.1:pix_th=0.10",
-                 "-f", "null", "-"],
-                capture_output=True, text=True, timeout=90,
-            )
-            last_black_end = 0.0
-            for line in (probe.stderr or "").splitlines():
-                if "black_end:" in line:
-                    for part in line.split():
-                        if part.startswith("black_end:"):
-                            try:
-                                last_black_end = max(last_black_end, float(part.split(":")[1]))
-                            except (ValueError, IndexError):
-                                pass
-            if last_black_end > effective_trim:
-                # Allow trimming up to (total_rec_duration - duration_seconds) so
-                # there's still at least duration_seconds of content left.
-                max_auto_trim = max(effective_trim, total_rec_duration - duration_seconds - 0.5)
-                effective_trim = min(last_black_end + 0.15, max_auto_trim)
-        except Exception:
-            pass
-        if effective_trim:
-            ffmpeg_cmd += ["-ss", f"{effective_trim:.3f}"]
-        ffmpeg_cmd += ["-t", str(duration_seconds), str(output_path)]
-        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr or result.stdout or "ffmpeg encode failed")
-        return _store_file(output_path, storage_path)
+            with sync_playwright() as playwright:
+                browser = _launch_chromium(playwright)
+                context = browser.new_context(
+                    viewport={"width": size[0], "height": size[1]},
+                )
+                page = context.new_page()
+                cdp = context.new_cdp_session(page)
+
+                page.goto(
+                    capture_url_for_composition(composition),
+                    wait_until="domcontentloaded",
+                    timeout=120000,
+                )
+                _wait_for_render_ready(page)
+
+                def _on_frame(event):
+                    raw = _base64.b64decode(event.get("data", ""))
+                    t = time.monotonic()
+                    idx = len(frame_list)
+                    fpath = frames_dir / f"frame_{idx:06d}.jpg"
+                    fpath.write_bytes(raw)
+                    frame_list.append((str(fpath), t))
+                    try:
+                        cdp.send("Page.screencastFrameAck", {"sessionId": event.get("sessionId", 0)})
+                    except Exception:
+                        pass
+
+                cdp.on("Page.screencastFrame", _on_frame)
+                cdp.send("Page.startScreencast", {
+                    "format": "jpeg",
+                    "quality": 92,
+                    "maxWidth": size[0],
+                    "maxHeight": size[1],
+                    "everyNthFrame": 1,
+                })
+
+                page.wait_for_timeout(int((duration_seconds + 2.0) * 1000))
+
+                try:
+                    cdp.send("Page.stopScreencast")
+                except Exception:
+                    pass
+                context.close()
+                browser.close()
+
+            if not frame_list:
+                raise RuntimeError("CDP screencast produced no frames")
+
+            # Build a concat file so ffmpeg respects each frame's actual capture time.
+            concat_file = temp_capture_dir / "frames.txt"
+            timestamps = [t for _, t in frame_list]
+            with open(concat_file, "w") as cf:
+                for i, (fpath, _) in enumerate(frame_list):
+                    next_t = timestamps[i + 1] if i + 1 < len(timestamps) else timestamps[i] + 1.0 / fps
+                    dur = max(0.001, next_t - timestamps[i])
+                    cf.write(f"file '{fpath}'\n")
+                    cf.write(f"duration {dur:.6f}\n")
+                # ffmpeg concat demuxer requires a trailing entry without duration
+                cf.write(f"file '{frame_list[-1][0]}'\n")
+
+            ffmpeg_cmd = [
+                "ffmpeg", "-y",
+                "-f", "concat", "-safe", "0",
+                "-i", str(concat_file),
+            ]
+            if audio_input:
+                ffmpeg_cmd += ["-stream_loop", "-1", "-i", str(audio_input)]
+            ffmpeg_cmd += [
+                "-map", "0:v:0",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                "-r", str(fps), "-preset", preset,
+                "-crf", str(int(crf if crf is not None else 23)),
+                "-movflags", "+faststart",
+            ]
+            if maxrate:
+                ffmpeg_cmd += ["-maxrate", str(maxrate)]
+            if bufsize:
+                ffmpeg_cmd += ["-bufsize", str(bufsize)]
+            if audio_input:
+                ffmpeg_cmd += ["-map", "1:a:0", "-c:a", "aac", "-b:a", audio_bitrate]
+            else:
+                ffmpeg_cmd += ["-an"]
+            # No -ss trim needed — recording began after page was ready.
+            ffmpeg_cmd += ["-t", str(duration_seconds), str(output_path)]
+
+            result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(result.stderr or result.stdout or "ffmpeg encode failed (screencast)")
+            return _store_file(output_path, storage_path)
+
+        else:
+            # ------------------------------------------------------------------
+            # record_video_dir mode — original Playwright VP8/WebM capture.
+            # Used for preview_10s and as fallback.
+            # ------------------------------------------------------------------
+            capture_path = None
+            load_elapsed_seconds = trim_start_seconds  # fallback if measurement fails
+
+            with sync_playwright() as playwright:
+                browser = _launch_chromium(playwright)
+                rec_w = size[0] * oversample_factor
+                rec_h = size[1] * oversample_factor
+                ctx_kwargs: dict = {
+                    "viewport": {"width": size[0], "height": size[1]},
+                    "record_video_dir": str(temp_capture_dir),
+                    "record_video_size": {"width": rec_w, "height": rec_h},
+                }
+                if oversample_factor > 1:
+                    ctx_kwargs["device_scale_factor"] = float(oversample_factor)
+                context = browser.new_context(**ctx_kwargs)
+                page = context.new_page()
+                t_nav = time.monotonic()
+                page.goto(
+                    capture_url_for_composition(composition),
+                    wait_until="domcontentloaded",
+                    timeout=120000,
+                )
+                _wait_for_render_ready(page)
+                load_elapsed_seconds = time.monotonic() - t_nav
+                page.wait_for_timeout(max(1000, int((duration_seconds + 1.0) * 1000)))
+                page_video = page.video
+                context.close()
+                browser.close()
+                capture_path = Path(page_video.path())
+
+            ffmpeg_cmd = ["ffmpeg", "-y", "-i", str(capture_path)]
+            if audio_input:
+                ffmpeg_cmd += ["-stream_loop", "-1", "-i", str(audio_input)]
+            vf_filters = []
+            if oversample_factor > 1:
+                vf_filters.append(f"scale={size[0]}:{size[1]}:flags=lanczos")
+            ffmpeg_cmd += [
+                "-map", "0:v:0", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                "-r", str(fps), "-preset", preset,
+                "-crf", str(int(crf if crf is not None else 23)),
+                "-movflags", "+faststart",
+            ]
+            if vf_filters:
+                ffmpeg_cmd += ["-vf", ",".join(vf_filters)]
+            if maxrate:
+                ffmpeg_cmd += ["-maxrate", str(maxrate)]
+            if bufsize:
+                ffmpeg_cmd += ["-bufsize", str(bufsize)]
+            if audio_input:
+                ffmpeg_cmd += ["-map", "1:a:0", "-c:a", "aac", "-b:a", audio_bitrate]
+            else:
+                ffmpeg_cmd += ["-an"]
+
+            effective_trim = load_elapsed_seconds + 0.3
+            try:
+                dur_probe = subprocess.run(
+                    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", str(capture_path)],
+                    capture_output=True, text=True, timeout=30,
+                )
+                total_rec_duration = float((dur_probe.stdout or "").strip() or "0") or (duration_seconds + effective_trim + 30)
+            except Exception:
+                total_rec_duration = duration_seconds + effective_trim + 30
+
+            def _last_black_end_from_probe(stderr: str) -> float:
+                val = 0.0
+                for line in stderr.splitlines():
+                    if "black_end:" in line:
+                        for part in line.split():
+                            if part.startswith("black_end:"):
+                                try:
+                                    val = max(val, float(part.split(":")[1]))
+                                except (ValueError, IndexError):
+                                    pass
+                return val
+
+            try:
+                probe_dark = subprocess.run(
+                    ["ffmpeg", "-i", str(capture_path),
+                     "-vf", "crop=iw:ih/4:0:ih*3/4,blackdetect=d=0.1:pix_th=0.10",
+                     "-f", "null", "-"],
+                    capture_output=True, text=True, timeout=90,
+                )
+                last_dark_end = _last_black_end_from_probe(probe_dark.stderr or "")
+                probe_bright = subprocess.run(
+                    ["ffmpeg", "-i", str(capture_path),
+                     "-vf", "crop=iw:ih/4:0:ih*3/4,negate,blackdetect=d=0.1:pix_th=0.10",
+                     "-f", "null", "-"],
+                    capture_output=True, text=True, timeout=90,
+                )
+                last_bright_end = _last_black_end_from_probe(probe_bright.stderr or "")
+                last_uniform_end = max(last_dark_end, last_bright_end)
+                if last_uniform_end > effective_trim:
+                    max_auto_trim = max(effective_trim, total_rec_duration - duration_seconds - 0.5)
+                    effective_trim = min(last_uniform_end + 0.15, max_auto_trim)
+            except Exception:
+                pass
+
+            if effective_trim:
+                ffmpeg_cmd += ["-ss", f"{effective_trim:.3f}"]
+            ffmpeg_cmd += ["-t", str(duration_seconds), str(output_path)]
+            result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(result.stderr or result.stdout or "ffmpeg encode failed")
+            return _store_file(output_path, storage_path)
+
     finally:
         if audio_temp_path:
             try:
@@ -473,6 +634,9 @@ def generate_composition_media_assets(composition, *, force: bool = False, kinds
                     bufsize=spec.get("bufsize"),
                     audio_bitrate=str(spec.get("audio_bitrate") or "128k"),
                     trim_start_seconds=float(spec.get("trim_start_seconds") or 0.7),
+                    oversample_factor=int(spec.get("oversample_factor") or 1),
+                    preset=str(spec.get("preset") or "medium"),
+                    use_screencast=bool(spec.get("use_screencast", False)),
                 )
             asset.file.name = rel_path
             asset.source_signature = signature

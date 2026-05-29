@@ -85,6 +85,8 @@ def _local_source_dir_media_files(source_dir: Path) -> list[Path]:
                 continue
             if not entry.is_dir():
                 continue
+            if entry.name.startswith("."):
+                continue
             for p in entry.rglob("*"):
                 if not p.is_file():
                     continue
@@ -318,10 +320,38 @@ def _is_landscape_media(file: Path) -> bool:
         return False
 
 
+_SOURCE_ASSETS_CACHE_TTL = 60  # seconds
+
+
+def _gif_loop_duration_ms(file_path: Path) -> int | None:
+    """Sum frame durations for an animated GIF, in milliseconds.
+
+    Returns None for static GIFs (single frame) or on any read error. Result
+    is cached implicitly via the surrounding collect_source_assets cache.
+    """
+    try:
+        with Image.open(file_path) as im:
+            if getattr(im, "n_frames", 1) <= 1:
+                return None
+            total = 0
+            for frame_idx in range(im.n_frames):
+                im.seek(frame_idx)
+                # Per-frame duration in ms; GIF spec defaults to 100ms when unset.
+                total += int(im.info.get("duration", 100))
+            return total if total > 0 else None
+    except Exception:
+        return None
+
+
 def collect_source_assets(source_names, landscape_only: bool = False):
+    names = sorted(source_names or [])
+    cache_key = f"src_assets:{'|'.join(names)}:{int(landscape_only)}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
     assets = []
     seen = set()
-    for source_name in source_names or []:
+    for source_name in names:
         source_dir = LOCAL_SOURCES_ROOT / source_name
         if not source_dir.exists():
             continue
@@ -342,14 +372,21 @@ def collect_source_assets(source_names, landscape_only: bool = False):
                 if kind == "video"
                 else media_url
             )
-            assets.append(
-                {
-                    "kind": kind,
-                    "url": media_url,
-                    "preview_url": preview_url,
-                    "name": file.name,
-                }
-            )
+            entry = {
+                "kind": kind,
+                "url": media_url,
+                "preview_url": preview_url,
+                "name": file.name,
+            }
+            # Animated GIFs: probe the loop duration so the overlay layer can
+            # hold each clip for exactly one (or N) full loops, eliminating
+            # mid-frame cuts. Static GIFs / read errors -> no duration field.
+            if ext == ".gif":
+                d = _gif_loop_duration_ms(file)
+                if d:
+                    entry["duration_ms"] = d
+            assets.append(entry)
+    cache.set(cache_key, assets, _SOURCE_ASSETS_CACHE_TTL)
     return assets
 
 

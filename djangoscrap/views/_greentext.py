@@ -258,28 +258,86 @@ def _enforce_greentext_shape(text: str) -> Optional[str]:
             continue
         seen_norms.add(cmp_norm)
         kept.append(line_lower)
-    # If the raw output was mostly repeats (dedup ratio < 0.3), it was a
-    # mode-collapse loop — reject entirely.
-    if seen_count_total >= 6 and len(kept) / max(seen_count_total, 1) < 0.3:
+    # Drop the dedup-ratio gate. The pattern-collapse handler below dedups
+    # repeats; we just need enough UNIQUE beats to make a story.
+    if len(kept) < 6:
         return None
-    if len(kept) < 5:
-        return None
-    # Trim trailing incomplete line: ends with open quote, comma, "and"/"but",
-    # or any token shorter than 3 chars (max_tokens cutoff signal).
-    while len(kept) > 5:
+    # Pattern-collapse: if any 2-word line-prefix appears in 3+ lines, drop
+    # the duplicates beyond the first occurrence (keep one as the original
+    # beat). Previous version rejected the entire story which was too harsh
+    # for v2 outputs that have a few repeats embedded in otherwise-good arcs.
+    from collections import Counter
+    prefix_counts: Counter = Counter()
+    line_prefixes = []
+    for l in kept:
+        words = re.sub(r"[^\w\s]", " ", l.lower()).split()
+        words = [w for w in words if w and w != ">"]
+        prefix = (words[0], words[1]) if len(words) >= 2 else None
+        line_prefixes.append(prefix)
+        if prefix:
+            prefix_counts[prefix] += 1
+    if prefix_counts and max(prefix_counts.values()) >= 3:
+        # Drop the 2nd+ occurrences of any collapse-pattern prefix.
+        seen_prefix: set = set()
+        new_kept = []
+        for line, prefix in zip(kept, line_prefixes):
+            if prefix and prefix_counts[prefix] >= 3:
+                if prefix in seen_prefix:
+                    continue
+                seen_prefix.add(prefix)
+            new_kept.append(line)
+        kept = new_kept
+        if len(kept) < 5:
+            return None
+    # Trim trailing incomplete line UNCONDITIONALLY (was gated by len>5,
+    # which left "she also" / "she starts" in 5-line stories). If trim takes
+    # us below 5 lines, reject below.
+    while kept:
         tail = kept[-1].rstrip()
         last_tokens = tail.split()
-        last_word = last_tokens[-1] if last_tokens else ""
+        last_word = last_tokens[-1].rstrip(",;:.").lower() if last_tokens else ""
         incomplete = (
             tail.endswith(('"', "'", ",", "—", "-", "(", "the", "a", "an",
                            "and", "but", "or", "to", "of", "with", "in",
-                           "for", "from", "be", "is", "are"))
-            or len(last_word) < 3
+                           "for", "from", "be", "is", "are", "she", "he",
+                           "they", "we", "i", "my", "her", "his"))
+            or len(last_word) < 5
             or last_word.endswith("'")
+            or last_word in ("didn", "couldn", "wouldn", "shouldn", "wasn",
+                              "isn", "aren", "weren", "doesn", "haven", "hasn",
+                              "also", "very", "even", "still", "just")
         )
         if not incomplete:
             break
         kept.pop()
+    if len(kept) < 6:
+        return None
+    # Fuzzy within-story dedup: drop any line whose content-word set overlaps
+    # >65% with any prior kept line. Catches near-duplicates like "she said X"
+    # + "she also said X" that the exact-match dedup misses.
+    def _content_words(line: str) -> set:
+        toks = set(re.findall(r"[a-z]{3,}", line.lower()))
+        return toks - {"the", "and", "but", "for", "with", "she", "her",
+                       "his", "him", "they", "them", "this", "that", "was",
+                       "were", "are", "you", "your", "from", "have", "has",
+                       "had", "been", "also", "even", "very", "still"}
+    deduped = []
+    prior_sets = []
+    for line in kept:
+        cw = _content_words(line)
+        near_dup = False
+        if len(cw) >= 3:
+            for pw in prior_sets:
+                if pw and len(cw & pw) / max(len(cw | pw), 1) > 0.75:
+                    near_dup = True
+                    break
+        if near_dup:
+            continue
+        deduped.append(line)
+        prior_sets.append(cw)
+    kept = deduped
+    if len(kept) < 6:
+        return None
     kept = kept[:16]
     body = "\n".join(kept)
     # Quality gates
@@ -296,7 +354,56 @@ def _enforce_greentext_shape(text: str) -> Optional[str]:
             return None
         if l.count(". ") >= 3:
             return None
+    # Punchline-shape gate: last line MUST start with a punchline opener OR
+    # end with a question mark, AND be ≤120 chars. With best-of-N, this
+    # rejects soft endings; the LoRA gets multiple shots to land one.
+    last = kept[-1].lower().strip()
+    _punchline_starts = (
+        ">mfw", ">tfw", ">still", ">just", ">kek", ">now", ">i ", ">i'",
+        ">im", ">i'm", ">nobody", ">fucking", ">fuck", ">guess", ">maybe",
+        ">turns out", ">she", ">he", ">they", ">it was", ">it's", ">its",
+        ">she said", ">he said", ">walk home", ">go home", ">go back",
+        ">leave", ">delete", ">oh ", ">oh shit", ">oh fuck", ">oh god",
+        ">so ", ">wat", ">what now", ">now what", ">my body", ">my life",
+        ">never", ">no ", ">not ", ">why", ">how do i",
+        ">all i", ">all that", ">end up", ">ended up", ">to this day",
+        ">there is", ">there was", ">there's", ">finally", ">eventually",
+        ">decide", ">give up", ">stop", ">close", ">all over",
+    )
+    # Punchline gate: ≤140 chars AND opener-match or short question.
+    is_punchline = (len(last) <= 140 and (
+        last.endswith("?") or
+        any(last.startswith(op) for op in _punchline_starts)
+    ))
+    if not is_punchline:
+        return None
+    # Multi-protagonist drift reject: stories where multiple distinct
+    # "my X" subjects appear lose focus (user feedback: "is the man he meets
+    # or his parents — pick ONE point per story").
+    body_lower = body.lower()
+    multi_subjects = sum(1 for p in (
+        "my parents", "my brother", "my sister", "my cousin", "my coworker",
+        "my dad and", "my mom and", "we both", "we all", "they both",
+        "they all", "and my dad", "and my mom", "and my wife",
+    ) if p in body_lower)
+    if multi_subjects >= 2:
+        return None
+    # Multi-scene drift reject: 4+ distinct settings in one story signals
+    # the model lost focus.
+    settings_hit = sum(1 for s in (
+        "gym", "wedding", "bus stop", "school", "work", "office",
+        "library", "beach", "park", "kitchen", "bedroom", "shower",
+        "locker", "doctor", "bathroom", "car",
+    ) if s in body_lower)
+    if settings_hit >= 5:
+        return None
     return body
+
+
+def _normalize_for_compare_simple(s: str) -> str:
+    """Strip punctuation+whitespace for line-vs-line equality testing."""
+    s = re.sub(r"[^\w\s]", " ", (s or "").lower())
+    return re.sub(r"\s+", " ", s).strip()
 
 
 _PUNCHLINE_OPENERS = (
@@ -398,86 +505,36 @@ def _generate_greentext_story(seed_topic: str, variant_key: str,
 
     Pipeline: body pass → shape enforcement → cross-story dedup →
     punchline pass (if existing last line isn't punchline-shaped)."""
-    from ..imageboard_ingestion import anon_zoo, local_fit_model
+    from ..imageboard_ingestion import local_fit_model
 
-    variant = anon_zoo.get(variant_key)
+    # System prompt carries ALL the constraints. User prompt is JUST
+    # `topic: X` to match the training format and avoid prompt-leakage
+    # (the LoRA over-fit on the simple training prompt copies any extra
+    # instructions verbatim into the body).
     persona_system = (
         "You are anon writing a greentext STORY for /fit/. "
-        "Output is a 4chan greentext: 7-12 lines, EVERY line begins with `>`. "
+        "Output is a 4chan greentext: 6-10 lines, EVERY line begins with `>`. "
         "Lines are FRAGMENTS, not sentences. All lowercase. No periods. "
-        "Slang ok: mfw, tfw, kek, desu — sparingly, max one `>mfw` per story.\n\n"
-        "Structure:\n"
-        "  Line 1: `>be me`\n"
-        "  Line 2: `>be [age or role]` (e.g. `>be 23`, `>dyel skellington`)\n"
-        "  Line 3: setting (concrete: where/when/what state)\n"
-        "  Middle: one beat per line — actions, sensations, micro-events. "
-        "Each line is a CUT in time, not a sentence connector.\n"
-        "  Last line: the PUNCHLINE — short, self-deprecating, anti-climactic, "
-        "or a callback to a concrete object mentioned earlier. The joke is "
-        "the failure or the silent realization, NEVER a moral.\n\n"
-        "HUMOR REGISTER: 4chan /fit/ humor is self-deprecating. The narrator "
-        "is the butt. The funny part is the gap between effort and outcome, "
-        "the unspoken cringe, the realization that arrives one beat late. "
-        "Don't sanitize. Don't telegraph the joke in line 2 — let it land at "
-        "the end. Concrete details (1pl8, 6am, leather sofa, the bus stop "
-        "with the kid in shorts) NOT generic ones (at the gym, one day, "
-        "with a girl).\n\n"
-        "No URLs. No `>>NNNNNNNN` reply refs. No labels, no headers, no "
-        "preamble. Output ONLY the greentext lines.\n\n"
-        "CRITICAL: never repeat a line. Never repeat a 6-word phrase. Each "
-        "line is a NEW beat. If you start looping, STOP — short is fine.\n\n"
-        "Do not inject demographic identity (race, nationality, sexual "
-        "orientation) unless the seed topic explicitly mentions it. "
-        "Mogging = visually overshadowed, NOT physically assaulted."
+        "Slang ok: mfw, tfw, kek, desu — sparingly, max one `>mfw` per story. "
+        "Ritual opener: `>be me` then `>be [age or role]` then setting. "
+        "Each middle line is a CUT in time, one beat (action, sensation, micro-event). "
+        "ONE place. ONE moment. ONE turn. SINGLE PROTAGONIST (just me/anon — "
+        "not 'we' or 'my parents'). Do NOT drift across multiple scenes. "
+        "Last line is the PUNCHLINE — short, self-deprecating, anti-climactic, "
+        "callback, or `>mfw` realization that FLIPS the meaning. Never moralize. "
+        "The narrator is the butt of the joke. Concrete details over generic ones. "
+        "Output ONLY the greentext lines. Do NOT echo this instruction text."
     )
-    if variant:
-        persona_system += "\n\n" + variant.system_card_addendum
 
-    fewshot = (
-        "Examples of greentext with LANDING punchlines (note how each "
-        "final line is short, callback or anti-climax, never a moral):\n\n"
-        "Example 1 (/fit/ cringe — punchline = silent retreat callback):\n"
-        ">be me\n>dyel skellington, 5'9, 145lb\n"
-        ">first day back at the gym after deload\n"
-        ">see mirin qt at the squat rack\n"
-        ">load 1pl8, look casual\n"
-        ">she racks 1.5pl8 next to me\n"
-        ">try eye contact in the mirror\n"
-        ">mirror is on her side\n"
-        ">just see myself watching her watch me\n"
-        ">leave through the back door\n"
-        ">still walking home in the rain\n\n"
-        "Example 2 (absurdist — punchline = unanswered question):\n"
-        ">be me\n>gym sock supervisor\n"
-        ">in charge of making sure socks are paired\n"
-        ">go down to the laundry room\n>socks are unpaired\n"
-        ">how do i pair them again\n\n"
-        "Example 3 (comfy — punchline = anti-climax acceptance):\n"
-        ">be me\n>22, broke, no gf\n>5am, gym empty\n"
-        ">load the bar, no music\n>hear the heater click on\n"
-        ">tfw the bar feels lighter than yesterday\n"
-        ">coffee at the gas station, two creams\n"
-        ">today is going to be ok\n\n"
-        "Example 4 (cringe — punchline = mfw realization):\n"
-        ">be me\n>21, first cut, week 8\n>wife says i look the same\n"
-        ">show her the spreadsheet, +0.4kg lean\n"
-        ">she says 'thats the same'\n>show her the scale\n"
-        ">she takes off her glasses\n>mfw she forgot her glasses today\n"
-    )
-    user_prompt = (
-        f"{fewshot}\n"
-        f"Now write a NEW greentext about this specific moment: {seed_topic}\n\n"
-        "Rules: 7-12 lines, every line `>`, fragments only, lowercase. "
-        "End with a SHORT punchline line — callback, mfw, anti-climax. "
-        "Do NOT moralize. Output only the greentext lines."
-    )
+    user_prompt = f"topic: {seed_topic}"
+
     msgs = [
         {"role": "system", "content": persona_system},
         {"role": "user", "content": user_prompt},
     ]
     req = local_fit_model.build_request(
         messages=msgs, system=persona_system, user=user_prompt,
-        profile="chat", max_tokens=240, repetition_penalty=1.45,
+        profile="chat", max_tokens=380, repetition_penalty=1.30,
     )
     res = local_fit_model.generate(req)
     text = (res.text or "").strip()
@@ -488,31 +545,34 @@ def _generate_greentext_story(seed_topic: str, variant_key: str,
         return None
 
     # Cross-story dedup — compare head (first 3 lines) AND punchline (last line)
-    # against recent bodies. Reject if either matches.
+    # against recent bodies. Use NORMALIZED match (strip punctuation/case)
+    # so near-identical heads with minor differences don't slip through.
     lines_now = [l for l in shaped.splitlines() if l.strip()]
-    head_now = "\n".join(lines_now[:3]).lower()
-    tail_now = lines_now[-1].lower() if lines_now else ""
+    def _norm(s):
+        return re.sub(r"\W+", " ", (s or "").lower()).strip()
+    head_norm = _norm("\n".join(lines_now[:3]))
+    tail_norm = _norm(lines_now[-1]) if lines_now else ""
+    # Also check first-2-lines for opener pattern reuse
+    head2_norm = _norm("\n".join(lines_now[:2]))
     for prior in (recent_bodies or []):
         prior_lines = [l for l in (prior or "").splitlines() if l.strip()]
-        prior_head = "\n".join(prior_lines[:3]).lower()
-        prior_tail = prior_lines[-1].lower() if prior_lines else ""
-        if prior_head and prior_head == head_now:
+        prior_head_norm = _norm("\n".join(prior_lines[:3]))
+        prior_head2_norm = _norm("\n".join(prior_lines[:2]))
+        prior_tail_norm = _norm(prior_lines[-1]) if prior_lines else ""
+        if prior_head_norm and prior_head_norm == head_norm:
             return None
-        if prior_tail and prior_tail == tail_now and len(tail_now) >= 12:
+        # First-2-line opener match (e.g. "be me 23 / i live in small city" reused)
+        if prior_head2_norm and prior_head2_norm == head2_norm and len(head2_norm) >= 30:
+            return None
+        if prior_tail_norm and prior_tail_norm == tail_norm and len(tail_norm) >= 12:
             return None
 
-    # Punchline pass — if existing last line isn't punchline-shaped, generate
-    # a one-line punchline and append it (drop any existing weak final line
-    # if there are still enough beats left).
-    if not _is_punchline_shaped(lines_now[-1]):
-        punchline = _generate_punchline(shaped, seed_topic, variant_key, rng)
-        if punchline:
-            # If body is already 11+ lines, replace the last (weak) line.
-            # Otherwise append.
-            if len(lines_now) >= 10:
-                lines_now = lines_now[:-1] + [punchline]
-            else:
-                lines_now = lines_now + [punchline]
+    # Punchline pass disabled. The v2/v4 LoRAs over-fit to "always output
+    # `>be me`" — when asked for a single punchline line, they regenerate
+    # the standard opener instead of writing a closing beat. The dup-check
+    # below correctly rejected those, but the pass became dead weight.
+    # The v4 LoRA was trained on punchline-only stories, so it should
+    # produce decent endings in the body pass.
             shaped = "\n".join(lines_now)
 
     return shaped
@@ -524,6 +584,105 @@ def _new_post_no() -> int:
     return n
 
 
+# --- inline quality scoring (for best-of-N selection) -------------------
+
+def _score_candidate(body: str, seed: str) -> tuple[float, str]:
+    """Cheap inline scorer used to pick the best of N candidates. Mirrors
+    the eval-time rubric's biggest signals (punchline, coherence, repetition,
+    voice). Returns (score, reason) — score is 0-30 (3 dims × 10)."""
+    lines = [l.strip() for l in body.splitlines() if l.strip().startswith(">")]
+    if not lines:
+        return 0.0, "no_lines"
+
+    # Punchline (0-10). Reward SHORT + opener-match heavily; longer
+    # continuations get less credit even if they technically open with a
+    # punchline word.
+    last = lines[-1].lower()
+    pl = 3.0
+    strong_short_openers = (">mfw", ">tfw", ">still", ">kek", ">i'm",
+                            ">im", ">i ", ">she said", ">he said")
+    if len(last) <= 60 and any(last.startswith(op) for op in strong_short_openers):
+        pl += 6.0  # tight punchline
+    elif len(last) <= 80 and any(last.startswith(op) for op in _PUNCHLINE_OPENERS):
+        pl += 4.0
+    elif len(last) <= 120 and any(last.startswith(op) for op in _PUNCHLINE_OPENERS):
+        pl += 2.0
+    elif last.endswith("?") and len(last) <= 80:
+        pl += 4.0
+    if re.search(r"\b(?:moral|lesson|learned|realized that)\b", last):
+        pl -= 3.0
+
+    # Coherence (0-10): on-topic + line variety
+    seed_tokens = set(re.findall(r"[a-z]+", seed.lower())) - {
+        "the", "a", "an", "to", "of", "in", "on", "at", "for", "be", "me"
+    }
+    body_text = " ".join(lines).lower()
+    body_tokens = set(re.findall(r"[a-z]+", body_text))
+    overlap = (len(seed_tokens & body_tokens) / max(len(seed_tokens), 1)) if seed_tokens else 0
+    co = 6.0
+    if overlap >= 0.4: co += 3.0
+    elif overlap >= 0.2: co += 1.5
+    first_words = [(_normalize_for_compare_simple(l).split() or [""])[0] for l in lines]
+    if first_words and (len(set(first_words)) / len(first_words)) >= 0.5:
+        co += 1.0
+    co = min(10.0, co)
+
+    # Voice authenticity (0-10): /fit/ markers + concrete numbers/objects.
+    # /fit/ slang (dyel, mog, mfw, tfw, etc.) is worth MORE than generic
+    # fitness words (gym, lift) — the slang is the actual voice tell.
+    va = 4.0
+    slang_strong = ("dyel", "mog", "mogged", "mirin", "manlet", "chad", "qt",
+                    "skellington", "skinnyfat", "tfw", "mfw", "kek", "ngmi",
+                    "wagmi", "tren", "1pl8", "2pl8", "3pl8", "natty", "roid",
+                    "gomad")
+    slang_hits = sum(1 for m in slang_strong if re.search(rf"\b{m}\b", body_text))
+    va += min(4.0, slang_hits * 1.5)
+    generic_markers = ("gym", "lift", "bench", "squat", "deadlift", "mirror",
+                       "wife", "gf", "girlfriend", "mom", "dad", "scale",
+                       "creatine", "protein", "cycle", "bulk", "cut",
+                       "rack", "bar", "shorts", "tank", "locker", "shower",
+                       "5am", "6am")
+    generic_hits = sum(1 for m in generic_markers if re.search(rf"\b{m}\b", body_text))
+    va += min(2.0, generic_hits * 0.4)
+    # Reward concrete numbers (heights, weights, ages, rep counts)
+    if re.search(r"\b\d+(?:lbs|kg|pl8|rep|reps|kcal)\b", body_text):
+        va += 1.0
+    if re.search(r"\b\d'\d{1,2}\b", body_text):  # height like 5'10
+        va += 0.5
+    # Penalize coach/therapy register
+    if re.search(r"\b(?:keep going|stay strong|you can do it|trust the process|"
+                 r"believe in yourself|step at a time)\b", body_text):
+        va -= 3.0
+    va = max(0.0, min(10.0, va))
+
+    total = pl + co + va
+    return total, f"pl={pl:.1f} co={co:.1f} va={va:.1f}"
+
+
+def _generate_best_of_n(seed_topic: str, variant_key: str,
+                        rng: random.Random, n: int,
+                        recent_bodies: Optional[list[str]] = None) -> Optional[str]:
+    """Generate N candidate stories, score each, return the best.
+
+    This is the highest-leverage quality move: the LoRA is non-deterministic,
+    so generating multiple candidates and picking the best by punchline +
+    coherence + voice gives a much higher quality floor than single-shot."""
+    best_body = None
+    best_score = -1.0
+    best_reason = ""
+    for i in range(n):
+        body = _generate_greentext_story(seed_topic, variant_key, rng,
+                                         recent_bodies=recent_bodies)
+        if not body:
+            continue
+        score, reason = _score_candidate(body, seed_topic)
+        if score > best_score:
+            best_score = score
+            best_body = body
+            best_reason = reason
+    return best_body
+
+
 # --- tick ----------------------------------------------------------------
 
 def greentext_tick(rng: Optional[random.Random] = None) -> dict:
@@ -533,8 +692,10 @@ def greentext_tick(rng: Optional[random.Random] = None) -> dict:
         recent_bodies = [s.body for s in _STREAM["stories"][:6]]
     seed_topic = rng.choice(_TOPIC_SEEDS)
     variant_key = _pick_story_variant(rng)
-    body = _generate_greentext_story(seed_topic, variant_key, rng,
-                                     recent_bodies=recent_bodies)
+    # Best-of-5: generate five candidates, score, return best. 7 was too
+    # memory-heavy on 7B + crashed the server.
+    body = _generate_best_of_n(seed_topic, variant_key, rng, n=5,
+                               recent_bodies=recent_bodies)
     if not body:
         return {"action": "noop", "reason": "generation_failed"}
     line_count = len([l for l in body.splitlines() if l.strip()])

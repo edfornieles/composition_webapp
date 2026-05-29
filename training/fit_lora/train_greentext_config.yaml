@@ -1,0 +1,30 @@
+# Train fit_anon_v2_greentext: continue from fit_anon_v1 on a greentext-story
+# corpus (scraped /fit/ greentexts via desuarchive, curated to ~800+ stories).
+#
+# Goal: teach the existing board-voice LoRA to write 8-14 line greentext
+# narratives with proper turn/punchline shape. Same base model, same LoRA
+# params; resume so we don't lose the board voice we already trained in.
+#
+# Usage:
+#   .venv/bin/python -m mlx_lm.lora --config training/fit_lora/train_greentext_config.yaml
+
+model: mlx-community/Qwen2.5-3B-Instruct-4bit
+train: true
+data: /Volumes/Oom/aggregation/composition_webapp-main/training/fit_lora/data_greentext
+iters: 1500
+batch_size: 1
+learning_rate: 2.0e-5
+num_layers: 16
+steps_per_report: 20
+steps_per_eval: 150
+val_batches: 25
+save_every: 250
+max_seq_length: 2048
+grad_checkpoint: true
+resume_adapter_file: /Volumes/Oom/aggregation/composition_webapp-main/training/fit_lora/adapters/fit_anon_v1/adapters.safetensors
+adapter_path: /Volumes/Oom/aggregation/composition_webapp-main/training/fit_lora/adapters/fit_anon_v4_punchy
+
+lora_parameters:
+  rank: 16
+  dropout: 0.05
+  scale: 20.0

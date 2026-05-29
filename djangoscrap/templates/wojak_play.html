@@ -1,0 +1,487 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>wojak playground</title>
+<style>
+  html,body { margin:0; padding:0; height:100%; background:#0e0f12; color:#e7e7e2;
+              font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif; overflow:hidden; }
+  #stage { position:fixed; inset:0; }
+  #hud { position:fixed; top:14px; left:16px; font-size:11px; color:#8a8e98;
+         background:rgba(20,22,27,0.7); padding:10px 14px; border-radius:4px;
+         border:1px solid #23262e; line-height:1.6; }
+  #hud b { color:#9ec25c; font-family:monospace; }
+  #hud .row { display:flex; gap:10px; }
+  #hud .row span { min-width:90px; color:#5a5e68; }
+  #stats { position:fixed; top:14px; right:16px; font-size:11px; color:#5a5e68;
+           font-variant-numeric:tabular-nums; text-align:right;
+           background:rgba(20,22,27,0.7); padding:8px 12px; border-radius:4px;
+           border:1px solid #23262e; }
+  #stats b { color:#e7e7e2; }
+  #status { position:fixed; bottom:14px; left:16px; font-size:11px; color:#8a8e98; }
+  #status.err { color:#d49b58; }
+  #facebar { position:fixed; bottom:14px; right:16px; display:flex; gap:6px;
+             font-size:10px; color:#8a8e98; flex-wrap:wrap; max-width:50%; justify-content:flex-end; }
+  #facebar button {
+    background:#15171c; border:1px solid #23262e; color:#8a8e98;
+    padding:5px 10px; border-radius:3px; cursor:pointer;
+    text-transform:uppercase; letter-spacing:.05em; font-size:10px;
+  }
+  #facebar button:hover { color:#9ec25c; border-color:#3a3d44; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<div id="hud">
+  <div class="row"><span>move</span><b>W A S D</b></div>
+  <div class="row"><span>run</span><b>SHIFT</b></div>
+  <div class="row"><span>jump</span><b>SPACE</b></div>
+  <div class="row"><span>dance</span><b>B</b></div>
+  <div class="row"><span>wave</span><b>V</b></div>
+  <div class="row"><span>camera</span><b>mouse drag · scroll</b></div>
+</div>
+
+<div id="stats">
+  <div><b id="state">—</b></div>
+  <div id="fps">—</div>
+</div>
+
+<div id="status">loading…</div>
+
+<div id="facebar">
+  <button data-expr="reset">neutral</button>
+  <button data-expr="happy">happy</button>
+  <button data-expr="sad">sad</button>
+  <button data-expr="shock">shock</button>
+  <button data-expr="doomer">doomer</button>
+  <button data-expr="wink">wink</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
+
+const GLB_URL = "{{ glb_url|escapejs }}";
+const CLIPS = [
+  {% for c in clips %}
+  { name: "{{ c.name|escapejs }}", url: "{{ c.url|escapejs }}" }{% if not forloop.last %},{% endif %}
+  {% endfor %}
+];
+
+const stage = document.getElementById("stage");
+const statusEl = document.getElementById("status");
+const stateEl = document.getElementById("state");
+const fpsEl = document.getElementById("fps");
+
+// --- scene -----------------------------------------------------------------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x191b21);
+scene.fog = new THREE.Fog(0x191b21, 60, 220);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
+camera.position.set(0, 6, 12);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+stage.appendChild(renderer.domElement);
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+window.addEventListener("resize", resize);
+resize();
+
+// --- lighting --------------------------------------------------------------
+scene.add(new THREE.HemisphereLight(0xbfd0e5, 0x1a1c22, 0.55));
+const sun = new THREE.DirectionalLight(0xffe8c8, 1.6);
+sun.position.set(40, 60, 30);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -40; sun.shadow.camera.right = 40;
+sun.shadow.camera.top = 40; sun.shadow.camera.bottom = -40;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 200;
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0x88aacc, 0.35);
+fill.position.set(-30, 20, -20);
+scene.add(fill);
+
+// --- ground ----------------------------------------------------------------
+const groundGeom = new THREE.PlaneGeometry(400, 400, 1, 1);
+const groundMat = new THREE.MeshStandardMaterial({ color:0x2a2d34, roughness:0.95, metalness:0.0 });
+const ground = new THREE.Mesh(groundGeom, groundMat);
+ground.rotation.x = -Math.PI/2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// grid overlay
+const grid = new THREE.GridHelper(400, 80, 0x3a3d44, 0x23262e);
+grid.position.y = 0.01;
+scene.add(grid);
+
+// scatter some pillars / blocks for spatial reference
+function addBlock(x, z, w, h, d, color) {
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshStandardMaterial({ color, roughness:0.85, metalness:0.0 })
+  );
+  m.position.set(x, h/2, z);
+  m.castShadow = true; m.receiveShadow = true;
+  scene.add(m);
+}
+addBlock( 14, -10, 4, 3, 4, 0x4a3a2a);
+addBlock(-18,   6, 6, 1.5, 6, 0x3a4a3a);
+addBlock(  0,  22, 12, 5, 4, 0x4a4a3a);
+addBlock( 22,  18, 3, 8, 3, 0x3a3a4a);
+addBlock(-28, -14, 8, 2, 8, 0x2a3a4a);
+
+// --- camera controls (orbit around player) ---------------------------------
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.1;
+controls.minDistance = 4;
+controls.maxDistance = 30;
+controls.maxPolarAngle = Math.PI/2 - 0.05;
+
+// --- player ----------------------------------------------------------------
+const player = new THREE.Group();
+scene.add(player);
+
+let mesh = null;
+let mixer = null;
+const actions = {};   // name -> AnimationAction
+let currentAction = null;
+let currentName = "";
+let modelScale = 1;
+
+function fadeTo(name, duration=0.25) {
+  const next = actions[name];
+  if (!next) return;
+  if (currentAction === next) return;
+  next.reset().fadeIn(duration).play();
+  if (currentAction) currentAction.fadeOut(duration);
+  currentAction = next;
+  currentName = name;
+  stateEl.textContent = name;
+}
+
+async function loadCharacter() {
+  if (!GLB_URL) {
+    statusEl.classList.add("err");
+    statusEl.textContent = "wojak_clean.glb not found in assets folder";
+    return;
+  }
+  statusEl.textContent = "loading wojak…";
+  const gltf = await new Promise((res, rej) =>
+    new GLTFLoader().load(GLB_URL, res, undefined, rej));
+  const obj = gltf.scene;
+  // shadow + scale
+  obj.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+
+  // Stand wojak upright. Mesh exported from Blender with spine along Y-up but
+  // appears lying on back in Three.js — pick whichever axis is tallest as "up".
+  // Detect by comparing pre-scale bbox dims and rotate so the longest axis is Y.
+  {
+    const b = new THREE.Box3().setFromObject(obj);
+    const s = new THREE.Vector3(); b.getSize(s);
+    if (s.z > s.y && s.z > s.x) {
+      obj.rotation.x = Math.PI / 2;        // spine was along Z → bring up to +Y
+    } else if (s.x > s.y && s.x > s.z) {
+      obj.rotation.z = Math.PI / 2;        // spine was along X → bring up to +Y
+    }
+    obj.updateMatrixWorld(true);
+  }
+
+  // Compute scale so wojak ~1.8m tall
+  const box = new THREE.Box3().setFromObject(obj);
+  const size = new THREE.Vector3(); box.getSize(size);
+  const targetH = 1.8;
+  const tallest = Math.max(size.x, size.y, size.z);
+  modelScale = targetH / tallest;
+  obj.scale.setScalar(modelScale);
+  // center foot at origin
+  box.setFromObject(obj);
+  const center = new THREE.Vector3(); box.getCenter(center);
+  obj.position.set(-center.x, -box.min.y, -center.z);
+
+  player.add(obj);
+  mesh = obj;
+  mixer = new THREE.AnimationMixer(obj);
+
+  statusEl.textContent = "loading animations…";
+  let loaded = 0;
+  for (const c of CLIPS) {
+    try {
+      const fbx = await new Promise((res, rej) =>
+        new FBXLoader().load(c.url, res, undefined, rej));
+      if (fbx.animations && fbx.animations.length) {
+        const clip = fbx.animations[0];
+        clip.name = c.name;
+        actions[c.name] = mixer.clipAction(clip);
+        loaded++;
+      }
+    } catch (e) {
+      console.warn("anim load failed", c.name, e);
+    }
+  }
+
+  // Pick canonical clips by name match
+  pickAnims();
+
+  statusEl.textContent = `ready · ${loaded} clip(s) loaded`;
+  setTimeout(() => statusEl.textContent = "", 2500);
+
+  // start idle
+  if (idleAction) {
+    idleAction.play();
+    currentAction = idleAction;
+    currentName = idleName;
+    stateEl.textContent = idleName;
+  }
+}
+
+let idleAction = null, idleName = "idle";
+let walkName = null, runName = null, jumpName = null, danceName = null, waveName = null;
+
+function pickAnims() {
+  const keys = Object.keys(actions);
+  const find = (regex) => keys.find(k => regex.test(k));
+  walkName  = find(/^walking$/i) || find(/walk/i);
+  runName   = find(/jog/i) || find(/run/i) || walkName;
+  jumpName  = find(/jump/i);
+  danceName = find(/dance|hip hop/i);
+  waveName  = find(/dismiss|wave|gesture/i);
+
+  // idle = first frame of walking, paused
+  if (walkName) {
+    idleAction = actions[walkName].clone ? actions[walkName] : actions[walkName];
+    // Use a separate action that we hold paused at frame 0
+    // Simpler: when "idle", set walk action timeScale 0 instead
+  }
+
+  // We'll use 'walk' action for idle by setting timeScale=0 and paused later.
+  // For state machine we'll just keep: idle, walk, run, jump, dance, wave
+  if (walkName) {
+    idleAction = actions[walkName];
+    idleName = "idle";
+  }
+}
+
+// --- input -----------------------------------------------------------------
+const keys = { w:false, a:false, s:false, d:false, shift:false, space:false, b:false, v:false };
+window.addEventListener("keydown", (e) => {
+  const k = e.key.toLowerCase();
+  if (k === "w" || k === "arrowup")    keys.w = true;
+  if (k === "s" || k === "arrowdown")  keys.s = true;
+  if (k === "a" || k === "arrowleft")  keys.a = true;
+  if (k === "d" || k === "arrowright") keys.d = true;
+  if (k === "shift") keys.shift = true;
+  if (k === " ")     { keys.space = true; e.preventDefault(); }
+  if (k === "b")     keys.b = true;
+  if (k === "v")     keys.v = true;
+});
+window.addEventListener("keyup", (e) => {
+  const k = e.key.toLowerCase();
+  if (k === "w" || k === "arrowup")    keys.w = false;
+  if (k === "s" || k === "arrowdown")  keys.s = false;
+  if (k === "a" || k === "arrowleft")  keys.a = false;
+  if (k === "d" || k === "arrowright") keys.d = false;
+  if (k === "shift") keys.shift = false;
+  if (k === " ")     keys.space = false;
+  if (k === "b")     keys.b = false;
+  if (k === "v")     keys.v = false;
+});
+
+// --- character controller --------------------------------------------------
+const playerVel = new THREE.Vector3();
+let onGround = true;
+let yVel = 0;
+const gravity = -22;
+const jumpV = 8;
+let oneShot = null;       // {name, until} for jump/dance/wave
+const moveSpeedWalk = 2.4; // m/s
+const moveSpeedRun  = 5.5;
+let facing = 0; // yaw
+
+function camForward() {
+  const v = new THREE.Vector3();
+  camera.getWorldDirection(v); v.y = 0; v.normalize();
+  return v;
+}
+function camRight() {
+  // right = forward × up (Three.js Y-up). For forward=(0,0,-1), right=(1,0,0).
+  const f = camForward();
+  return new THREE.Vector3(-f.z, 0, f.x);
+}
+
+function updateController(dt) {
+  if (!mesh) return;
+
+  // movement input
+  const f = camForward(), r = camRight();
+  const dir = new THREE.Vector3();
+  if (keys.w) dir.add(f);
+  if (keys.s) dir.sub(f);
+  if (keys.d) dir.add(r);
+  if (keys.a) dir.sub(r);
+  const moving = dir.lengthSq() > 0.001;
+  if (moving) dir.normalize();
+
+  const running = keys.shift && moving;
+  const speed = running ? moveSpeedRun : moveSpeedWalk;
+
+  // horizontal motion
+  if (moving) {
+    player.position.x += dir.x * speed * dt;
+    player.position.z += dir.z * speed * dt;
+    facing = Math.atan2(dir.x, dir.z);
+  }
+  // smooth turn
+  let cur = mesh.rotation.y;
+  let target = facing;
+  let delta = target - cur;
+  while (delta > Math.PI) delta -= Math.PI*2;
+  while (delta < -Math.PI) delta += Math.PI*2;
+  mesh.rotation.y = cur + delta * Math.min(1, dt * 12);
+
+  // gravity / jump
+  if (onGround && keys.space && !oneShot) {
+    onGround = false;
+    yVel = jumpV;
+    if (jumpName) playOneShot(jumpName, 0.9);
+  }
+  if (!onGround) {
+    yVel += gravity * dt;
+    player.position.y += yVel * dt;
+    if (player.position.y <= 0) {
+      player.position.y = 0;
+      yVel = 0;
+      onGround = true;
+    }
+  }
+
+  // dance / wave triggers
+  if (keys.b && !oneShot && danceName) playOneShot(danceName, 4.0);
+  if (keys.v && !oneShot && waveName)  playOneShot(waveName, 1.8);
+
+  // pick state
+  let want;
+  if (oneShot) {
+    want = oneShot.name;
+    if (performance.now() / 1000 >= oneShot.until) {
+      oneShot = null;
+    }
+  } else if (!onGround && jumpName) {
+    want = jumpName;
+  } else if (running && runName) {
+    want = runName;
+  } else if (moving && walkName) {
+    want = walkName;
+  } else {
+    want = idleName; // we'll handle idle via paused walk
+  }
+
+  // apply animation
+  if (want === idleName) {
+    // walk action with paused timeScale = 0
+    if (walkName) {
+      const a = actions[walkName];
+      if (currentAction !== a) {
+        if (currentAction) currentAction.fadeOut(0.2);
+        a.reset().fadeIn(0.2).play();
+        currentAction = a;
+      }
+      a.timeScale = 0; // freeze at current frame
+      // gently nudge to first frame
+      a.time = 0.0;
+      currentName = "idle";
+      stateEl.textContent = "idle";
+    }
+  } else {
+    fadeTo(want, 0.18);
+    if (currentAction) currentAction.timeScale = running && want === runName ? 1.0 : 1.0;
+  }
+
+  // camera follows player
+  const lookAt = new THREE.Vector3(player.position.x, player.position.y + 1.2, player.position.z);
+  controls.target.lerp(lookAt, Math.min(1, dt * 6));
+}
+
+function playOneShot(name, dur) {
+  if (!actions[name]) return;
+  oneShot = { name, until: performance.now()/1000 + dur };
+  fadeTo(name, 0.1);
+}
+
+// --- face presets ----------------------------------------------------------
+const presets = {
+  reset:  {},
+  happy:  { smile: 0.9, brow_up_L: 0.4, brow_up_R: 0.4 },
+  sad:    { frown: 0.8, brow_down_L: 0.6, brow_down_R: 0.6 },
+  shock:  { surprised: 0.9 },
+  wink:   { blink_L: 1.0, smile: 0.4 },
+  doomer: { frown: 0.6, brow_down_L: 0.5, brow_down_R: 0.5, mouth_open: 0.15 },
+};
+function applyExpression(presetName) {
+  if (!mesh) return;
+  const vals = presets[presetName] || {};
+  mesh.traverse(c => {
+    if (c.isMesh && c.morphTargetDictionary && c.morphTargetInfluences) {
+      for (const [name, idx] of Object.entries(c.morphTargetDictionary)) {
+        c.morphTargetInfluences[idx] = vals[name] || 0;
+      }
+    }
+  });
+}
+document.querySelectorAll("#facebar button").forEach(b => {
+  b.addEventListener("click", () => applyExpression(b.dataset.expr));
+});
+
+// --- main loop -------------------------------------------------------------
+const clock = new THREE.Clock();
+let frames = 0, lastFps = performance.now();
+function tick() {
+  const dt = Math.min(0.05, clock.getDelta());
+  updateController(dt);
+  if (mixer) mixer.update(dt);
+  controls.update();
+  renderer.render(scene, camera);
+
+  frames++;
+  const now = performance.now();
+  if (now - lastFps > 500) {
+    fpsEl.textContent = `${Math.round(frames * 1000 / (now - lastFps))} fps`;
+    frames = 0; lastFps = now;
+  }
+  requestAnimationFrame(tick);
+}
+
+loadCharacter().catch(e => {
+  console.error(e);
+  statusEl.classList.add("err");
+  statusEl.textContent = "load failed: " + (e.message || e);
+});
+tick();
+</script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+{
+  "name": "devil_search",
+  "category": "devil",
+  "subcategory": "stock_render",
+  "target_count": 130,
+  "ruscha_rule": "Red devil / demon imagery in 3D-rendered or stock-photo aesthetic. Horns, fangs, wings, tridents, hellfire palette (red/orange/black). Mythological, biblical, or kitsch \u2014 but image-as-object, not abstract.",
+  "include_terms": [
+    "red devil 3d render",
+    "demon trident horns wings",
+    "stock devil hellfire",
+    "satan horns red",
+    "devil illustration"
+  ],
+  "exclude_terms": [
+    "chili pepper",
+    "cartoon kid mascot",
+    "halloween costume kid"
+  ],
+  "seed_image_paths": [],
+  "sources": [
+    {
+      "type": "pinterest_browse",
+      "params": {
+        "urls": [
+          "https://www.pinterest.com/search/pins/?q=red%20devil%20demon%203d%20render",
+          "https://www.pinterest.com/search/pins/?q=satan%20horns%20fire"
+        ],
+        "limit_per_url": 60,
+        "scroll_passes": 10,
+        "headless": true
+      }
+    },
+    {
+      "type": "yandex_direct",
+      "params": {
+        "text_queries": [
+          "red devil 3d render trident horns wings hellfire",
+          "demon stock illustration red horns fangs",
+          "satan render fire wings"
+        ],
+        "limit_per_seed": 50,
+        "throttle_sec": 2.0,
+        "pages": 1
+      }
+    }
+  ],
+  "min_resolution": 600,
+  "max_aspect_ratio": 3.0,
+  "allow_video": false,
+  "aesthetic_threshold": 0.0,
+  "notes": "User attached devil seeds remotely. Building via Yandex text-query proxy until user can drop seeds in .seeds/ for image-anchored regate.",
+  "created_at": 0,
+  "last_run_at": 0,
+  "schema_version": 1
+}

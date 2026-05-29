@@ -231,6 +231,21 @@ def _composition_media_context(request, composition: Composition) -> dict:
         ("collector_45s", "45s collector video"),
     ):
         asset = assets.get(kind)
+        # Cache-buster: append ?v=<unix-ts> derived from generated_at (or
+        # asset.updated_at fallback) so the browser refetches when the
+        # underlying file is regenerated. Otherwise old poster.jpg bytes
+        # stay pinned in the browser cache forever — the file URL is
+        # stable across regenerations.
+        def _bust(url: str, ts) -> str:
+            if not url or not ts:
+                return url
+            try:
+                v = int(ts.timestamp())
+            except Exception:
+                return url
+            sep = "&" if "?" in url else "?"
+            return f"{url}{sep}v={v}"
+
         archive_entries = []
         if asset and asset.archive:
             for entry in reversed(asset.archive):
@@ -241,13 +256,19 @@ def _composition_media_context(request, composition: Composition) -> dict:
                     "generated_at": entry.get("generated_at", ""),
                     "size": entry.get("size", 0),
                 })
+        base_url = (
+            _storage_file_url(request, asset.file.name)
+            if asset and asset.file and asset.status == "ready"
+            else ""
+        )
+        ts_for_bust = (asset.generated_at or asset.updated_at) if asset else None
         rows[kind] = {
             "label": label,
             "asset": asset,
             "asset_id": asset.id if asset else None,
             "ready": bool(asset and asset.status == "ready" and asset.file),
             "status": asset.status if asset else "missing",
-            "url": _storage_file_url(request, asset.file.name) if asset and asset.file and asset.status == "ready" else "",
+            "url": _bust(base_url, ts_for_bust),
             "stale": bool(asset and asset.source_signature and asset.source_signature != current_signature),
             "generated_at": asset.generated_at if asset else None,
             "error": asset.error_message if asset else "",
@@ -837,21 +858,89 @@ def composition_generate_nft(request, composition_id):
 @require_POST
 
 def composition_generate_nft_media(request, composition_id):
+    """Edit-page regen button posts here.
+
+    Critical change vs. the previous implementation: the actual Playwright
+    capture now runs in a *detached subprocess*, not synchronously in the
+    gunicorn worker thread. Reasons:
+      • 10s / 45s clips take 30–60s of wall time. Doing that synchronously
+        meant the worker thread held the request for the full render, and
+        any nearby OOM (rembg + Chromium + Django all in one process) would
+        kill the worker mid-write — leaving the partial 54-KB MP4 stub the
+        user observed for comp=260.
+      • Subprocess pays no concurrency cost to the web tier; we hand it off
+        and the worker is free again in milliseconds.
+      • All START/DONE/FAIL lines go to media_gen.log so progress is visible.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path as _Path
+
     composition = get_object_or_404(Composition, id=composition_id)
     force = request.POST.get("force") == "1"
     valid_kinds = {"poster", "preview_10s", "collector_45s"}
     requested_kind = request.POST.get("kind", "").strip()
-    kinds = [requested_kind] if requested_kind in valid_kinds else None
-    results = generate_composition_media_assets(composition, force=force, kinds=kinds)
-    failed = [asset for asset in results.values() if asset.status != "ready"]
-    if failed:
-        messages.error(
-            request,
-            "Some NFT media failed: " + "; ".join(f"{asset.kind}: {asset.error_message}" for asset in failed),
+    kinds = [requested_kind] if requested_kind in valid_kinds else list(valid_kinds)
+
+    # Pre-mark the targeted assets as "rendering" so the edit page reload
+    # immediately shows the yellow rendering badge instead of an old/stale
+    # status. The subprocess will overwrite this with ready/failed when done.
+    from ..models import CompositionMediaAsset
+    for kind in kinds:
+        asset, _ = CompositionMediaAsset.objects.get_or_create(
+            composition=composition, kind=kind,
         )
-    else:
-        label = requested_kind if requested_kind in valid_kinds else "all media"
-        messages.success(request, f"NFT media generated: {label}.")
+        asset.status = "rendering"
+        asset.error_message = ""
+        asset.save(update_fields=["status", "error_message", "updated_at"])
+
+    project_root = _Path(__file__).resolve().parent.parent.parent
+    script = (
+        "import os, sys, time, traceback, django\n"
+        f"sys.path.insert(0, {str(project_root)!r})\n"
+        f"os.chdir({str(project_root)!r})\n"
+        "os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'djangoscrap.settings')\n"
+        "django.setup()\n"
+        "from djangoscrap.nft_media import generate_composition_media_assets\n"
+        "from djangoscrap.models import Composition\n"
+        f"_cid = {int(composition_id)}\n"
+        f"_kinds = {kinds!r}\n"
+        f"_force = {bool(force)!r}\n"
+        "_label = f'comp={_cid} kinds={\",\".join(_kinds)} force={_force} (edit-page regen)'\n"
+        "_t = time.time()\n"
+        "print(f'[{time.strftime(\"%H:%M:%S\")}] START {_label}', flush=True)\n"
+        "try:\n"
+        "    c = Composition.objects.prefetch_related('media_assets').get(id=_cid)\n"
+        "    res = generate_composition_media_assets(c, force=_force, kinds=_kinds)\n"
+        "    dt = time.time() - _t\n"
+        "    written = list(res.keys()) if res else []\n"
+        "    print(f'[{time.strftime(\"%H:%M:%S\")}] DONE  {_label} in {dt:.1f}s -> {written}', flush=True)\n"
+        "except Exception as e:\n"
+        "    dt = time.time() - _t\n"
+        "    print(f'[{time.strftime(\"%H:%M:%S\")}] FAIL  {_label} after {dt:.1f}s: {type(e).__name__}: {e}', flush=True)\n"
+        "    traceback.print_exc()\n"
+    )
+
+    log_path = str(project_root / "media_gen.log")
+    try:
+        with open(log_path, "ab") as logf:
+            subprocess.Popen(
+                [sys.executable, "-c", script],
+                stdout=logf,
+                stderr=logf,
+                start_new_session=True,
+                close_fds=True,
+            )
+    except Exception as e:
+        messages.error(request, f"Failed to spawn media-generation job: {type(e).__name__}: {e}")
+        return redirect("composition-edit", composition_id=composition.id)
+
+    label = requested_kind if requested_kind in valid_kinds else "all media"
+    messages.success(
+        request,
+        f"Generating {label} in the background — refresh in ~30s to see the result. "
+        f"(Live progress: tail -f media_gen.log)"
+    )
     return redirect("composition-edit", composition_id=composition.id)
 
 

@@ -1,0 +1,92 @@
+{
+  "name": "dark_wooded_forest",
+  "category": "darkwood",
+  "subcategory": "forest_path",
+  "target_count": 400,
+  "ruscha_rule": "Wide-frame photograph of a leaf-strewn path through bare or sparsely-foliaged deciduous trees in muted, overcast or pre-dusk light. Soft mist or fog at depth. Brown/grey palette dominant. No people. No buildings. No bright sun. Watchful, mute, unresolved.",
+  "include_terms": [
+    "dark wooded forest path",
+    "misty bare trees autumn",
+    "foggy deciduous woods leaf litter",
+    "twilight forest trail",
+    "overcast woodland path",
+    "leaves on forest floor late autumn",
+    "dim forest interior bare branches",
+    "stark trees in fog",
+    "muted woodland",
+    "wooded ridge in overcast light"
+  ],
+  "exclude_terms": [
+    "wedding",
+    "engagement",
+    "person standing",
+    "model",
+    "summer green leaves",
+    "bright sunlight",
+    "snow",
+    "winter heavy snow",
+    "couple",
+    "selfie",
+    "wreath",
+    "fashion shoot",
+    "ai generated",
+    "midjourney"
+  ],
+  "seed_image_paths": [],
+  "sources": [
+    {
+      "type": "yandex_direct",
+      "params": {
+        "seed_paths": [
+          "/Volumes/Oom/aggregation/got/dark_wooded_forest/.seeds/orig.webp",
+          "/Volumes/Oom/aggregation/got/dark_wooded_forest/.seeds/43399530-2d65-4a2b-aec7-9c7547db4c77.jpg",
+          "/Volumes/Oom/aggregation/got/dark_wooded_forest/.seeds/maxresdefault.jpg"
+        ],
+        "limit_per_seed": 60,
+        "throttle_sec": 2.0,
+        "pages": 1
+      }
+    },
+    {
+      "type": "reddit",
+      "params": {
+        "subreddits": [
+          "EarthPorn",
+          "ForestPorn",
+          "MostBeautiful",
+          "fog",
+          "rainy",
+          "Naturewasmetal",
+          "LandscapePhotography",
+          "ImaginaryDarklands"
+        ],
+        "min_score": 200,
+        "limit_per_sub": 200,
+        "since": "2018-01-01"
+      }
+    },
+    {
+      "type": "wikimedia",
+      "params": {
+        "categories": [
+          "Foggy forests",
+          "Forests in autumn",
+          "Mist in forests",
+          "Beech forests",
+          "Oak forests in autumn",
+          "Bare trees"
+        ],
+        "limit": 300,
+        "recurse_depth": 1
+      }
+    }
+  ],
+  "min_resolution": 800,
+  "max_aspect_ratio": 3.0,
+  "allow_video": false,
+  "aesthetic_threshold": 0.0,
+  "notes": "Test bucket. Phase 1 = text-anchored pull, no gate. After human picks seeds, set aesthetic_threshold ~0.27 and re-gate (bucket_regate.py).",
+  "created_at": 0,
+  "last_run_at": 0,
+  "schema_version": 1
+}

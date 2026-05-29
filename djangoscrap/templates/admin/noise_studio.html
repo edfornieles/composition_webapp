@@ -336,6 +336,10 @@
       <button class="preset-pill" data-preset="shimmer">SHIMMER</button>
       <button class="preset-pill" data-preset="pulse">PULSE</button>
       <button class="preset-pill" data-preset="basement">BASEMENT</button>
+      <button class="preset-pill" data-preset="perfect_lives" title="Robert Ashley: 72 BPM, slowed, mid notch carves voice room, basement reverb, heartbeat tremolo">P.LIVES</button>
+      <button class="preset-pill" data-preset="voice_bed" title="Transparent backdrop with deep mid notch so voice sits on top cleanly">VOICE BED</button>
+      <button class="preset-pill" data-preset="heartbeat" title="Pure rhythmic pulse at 72 BPM — pair with any of the other presets as a layer">HEARTBEAT</button>
+      <button class="preset-pill" data-preset="eastman" title="Julius Eastman: dry, hard-hammered piano character. Pair with the Eastman piano template.">EASTMAN</button>
       <div class="ns-preset-divider"></div>
       <button class="ns-btn warn" id="nsChance" title="Randomize all params">&#9670; Chance</button>
       <button class="ns-btn" id="nsReset">Reset</button>
@@ -616,6 +620,174 @@
       </div><!-- /ns-chain-wrap -->
     </div>
 
+    <!-- Audio → MIDI: server-side transcription via Spotify's basic-pitch model -->
+    <div class="ns-export-bar" style="background:#181a0d; border:1px solid #2f3015; margin-bottom:10px;">
+      <div class="ns-export-hd" style="color:#fff37a;">Audio → MIDI Transcriber</div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+        <div style="min-width:260px; flex:1;">
+          <label class="ns-label">Audio file (.wav / .mp3 / .flac / .m4a)</label>
+          <input type="file" id="nsA2mFile" class="ns-input" accept="audio/*,.wav,.mp3,.flac,.m4a,.ogg">
+        </div>
+        <button type="button" class="ns-btn" id="nsA2mTranscribe" style="background:#fff37a; color:#000; font-weight:bold;" disabled>↯ TRANSCRIBE</button>
+        <button type="button" class="ns-btn" id="nsA2mDownload" disabled title="Save the resulting .mid file to your machine">⬇ Download .mid</button>
+      </div>
+      <p style="font-size:10px; color:#444; margin:8px 0 0;" id="nsA2mSummary">
+        Picks notes out of monophonic or moderately-polyphonic piano-style audio using Spotify's basic-pitch model.
+        Transcription runs server-side and takes ~5-10s per minute of audio on Apple Silicon.
+        Result is auto-loaded into the MIDI Renderer below — pick an instrument and render.
+      </p>
+    </div>
+
+    <!-- MIDI Renderer: load a .mid file, pick a digital instrument, synthesize -->
+    <div class="ns-export-bar" style="background:#0d181a; border:1px solid #1a3030; margin-bottom:10px;">
+      <div class="ns-export-hd" style="color:#7affd5;">MIDI Renderer</div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+        <div style="min-width:220px; flex:1;">
+          <label class="ns-label">MIDI file (.mid / .midi)</label>
+          <input type="file" id="nsMidiFile" class="ns-input" accept=".mid,.midi,audio/midi">
+        </div>
+        <div style="width:200px;">
+          <label class="ns-label">Instrument</label>
+          <select id="nsMidiInstrument" class="ns-input">
+            <option value="realistic_piano" selected>★ Realistic Piano (Salamander C5)</option>
+            <option value="piano">Piano (matches Pulse)</option>
+            <option value="felt_piano">Felt Piano (muted)</option>
+            <option value="organ">Organ (drawbars)</option>
+            <option value="bell">Bell (long tail)</option>
+            <option value="glass">Glass (sine + 4×)</option>
+            <option value="pluck">Plucked String</option>
+            <option value="pad">Synth Pad</option>
+            <option value="sine">Pure Sine</option>
+          </select>
+        </div>
+        <div style="width:110px;">
+          <label class="ns-label">Target BPM</label>
+          <input type="number" id="nsMidiBpm" class="ns-input" min="40" max="200" step="0.1" placeholder="(keep)">
+        </div>
+      </div>
+      <div style="margin-top:10px;" class="ns-btn-row">
+        <button type="button" class="ns-btn" id="nsMidiRender" style="background:#7affd5; color:#000; font-weight:bold;" disabled>♫ RENDER MIDI</button>
+        <span style="font-size:10px; color:#666; align-self:center;" id="nsMidiSummary">Drop a MIDI file to start.</span>
+      </div>
+      <p style="font-size:10px; color:#444; margin:8px 0 0;">Renders the MIDI through the chosen digital instrument and loads it as the current source. Try the same MIDI through different instruments (piano → glass → bell → pad) for radically different chapter textures using the same underlying piece. Empty Target BPM keeps original tempo; type 72 to re-time for Ashley-style beds.</p>
+      <div style="margin-top:10px; padding-top:8px; border-top:1px dashed #2a3030;">
+        <div style="font-size:9px; color:#666; letter-spacing:2px; text-transform:uppercase; margin-bottom:6px;">Sample MIDI library — right-click → Save As, then load above</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; font-size:10px;">
+          <a href="{% static 'admin/midi_library/satie_gymnopedie_no_1.mid' %}" download style="color:#7affd5; text-decoration:underline;" title="Slow (40 BPM), 3:45, 1056 notes — perfect raw bed material">Satie · Gymnopédie No. 1</a>
+          <span style="color:#333;">·</span>
+          <a href="{% static 'admin/midi_library/satie_gnossienne_no_1.mid' %}" download style="color:#7affd5; text-decoration:underline;" title="Modal, hypnotic, 4:39, 5046 notes">Satie · Gnossienne No. 1</a>
+          <span style="color:#333;">·</span>
+          <a href="{% static 'admin/midi_library/bach_prelude_c_major_wtc1.mid' %}" download style="color:#7affd5; text-decoration:underline;" title="Already at 72 BPM (Ashley heart-rate). Pure arpeggio ostinato, 3:23.">Bach · Prelude in C (WTC I)</a>
+          <span style="color:#333;">·</span>
+          <a href="{% static 'admin/midi_library/chopin_prelude_op28_no_4_e_minor.mid' %}" download style="color:#7affd5; text-decoration:underline;" title="Famous descending chord repetition, anxious, 2:28">Chopin · Prelude Op.28 No. 4</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Piano Pulse Generator: synthesizes the Ashley/Tyranny repeated-key ostinato -->
+    <div class="ns-export-bar" style="background:#160d18; border:1px solid #2b1a30; margin-bottom:10px;">
+      <div class="ns-export-hd" style="color:#ff7ad5;">Piano Pulse Generator</div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+        <div style="width:88px;">
+          <label class="ns-label">BPM</label>
+          <input type="number" id="nsPianoBpm" class="ns-input" min="40" max="180" step="0.1" value="72">
+        </div>
+        <div style="width:96px;">
+          <label class="ns-label">Note (MIDI)</label>
+          <input type="number" id="nsPianoMidi" class="ns-input" min="24" max="96" step="1" value="60" title="60 = middle C. 48 = C3 (lower / darker), 72 = C5 (brighter)">
+        </div>
+        <div style="width:96px;">
+          <label class="ns-label">Subdivision</label>
+          <select id="nsPianoSub" class="ns-input">
+            <option value="1" selected>quarter</option>
+            <option value="2">8th</option>
+            <option value="3">triplet</option>
+            <option value="4">16th</option>
+          </select>
+        </div>
+        <div style="width:78px;">
+          <label class="ns-label">Bars</label>
+          <select id="nsPianoBars" class="ns-input">
+            <option value="2">2</option>
+            <option value="4" selected>4</option>
+            <option value="8">8</option>
+            <option value="16">16</option>
+          </select>
+        </div>
+        <div style="width:110px;">
+          <label class="ns-label">Pattern</label>
+          <select id="nsPianoPattern" class="ns-input">
+            <option value="single" selected>single (anxious)</option>
+            <option value="alternate">alternate (root+2)</option>
+            <option value="ostinato3">ostinato (1-5-7)</option>
+          </select>
+        </div>
+        <div style="flex:1; min-width:160px;">
+          <label class="ns-label"><span>Anxiety</span> <span id="nsPianoAnxietyVal" style="float:right;color:#ff7ad5;">35</span></label>
+          <input type="range" class="ns-range" id="nsPianoAnxiety" min="0" max="100" value="35" title="Drives timing jitter, velocity variance, ghost notes, and neighbor-tone substitutions">
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-top:8px;">
+        <div style="width:90px;">
+          <label class="ns-label">Layers</label>
+          <select id="nsPianoLayers" class="ns-input">
+            <option value="1" selected>1 voice</option>
+            <option value="2">2 voices</option>
+            <option value="3">3 voices</option>
+            <option value="4">4 voices (Eastman)</option>
+          </select>
+        </div>
+        <div style="width:138px;">
+          <label class="ns-label">Voice Spread</label>
+          <select id="nsPianoSpread" class="ns-input" title="How the multiple voices relate harmonically to the root">
+            <option value="single" selected>single (thicken)</option>
+            <option value="octaves">octaves (Eastman bass)</option>
+            <option value="fifths">fifths</option>
+            <option value="cluster">cluster (dissonant)</option>
+            <option value="d_minor">D-minor (Eastman feel)</option>
+            <option value="tritone">tritone stack</option>
+          </select>
+        </div>
+        <label style="display:flex; align-items:center; gap:5px; font-size:10px; color:#aaa; cursor:pointer; padding-bottom:4px;">
+          <input type="checkbox" id="nsPianoAdditive" style="accent-color:#ff7ad5;">
+          Additive build
+          <span style="color:#666;" title="Voices enter sequentially across the duration — Eastman's organic-accretion process. Voice 2 enters at the halfway point of voice 1, etc. Use with Layers≥2.">ⓘ</span>
+        </label>
+      </div>
+      <div style="margin-top:10px;" class="ns-btn-row">
+        <button type="button" class="ns-btn" id="nsPianoGenerate" style="background:#ff7ad5; color:#000; font-weight:bold;">♪ GENERATE PULSE</button>
+        <button type="button" class="ns-btn" id="nsTplAshley" title="72 BPM single C4 ostinato — Tyranny/Ashley">⌁ Ashley template</button>
+        <button type="button" class="ns-btn" id="nsTplEastman" title="136 BPM D2 hammered 8ths in D-minor, 4-voice additive build — Eastman">⌁ Eastman template</button>
+        <span style="font-size:10px; color:#666; align-self:center;" id="nsPianoSummary">4 bars @ 72 BPM = 13.33s of pure repeated C4.</span>
+      </div>
+      <p style="font-size:10px; color:#444; margin:8px 0 0;">Templates pre-fill all the fields. <b>Ashley</b> = 72 BPM single pulse for voiceover beds. <b>Eastman</b> = 136 BPM, low D, 8th-note hammered ostinato, 4 voices entering one bar at a time (additive accretion). Both can be further processed with any preset below; try EASTMAN's natural pair with high Drive + low Reverb.</p>
+    </div>
+
+    <!-- Tempo Lock: pull any record to a target BPM via playback-rate vinyl-shift -->
+    <div class="ns-export-bar" style="background:#0d1418; border:1px solid #1a2730; margin-bottom:10px;">
+      <div class="ns-export-hd" style="color:#00e5ff;">Tempo Lock</div>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+        <div style="width:110px;">
+          <label class="ns-label">Source BPM</label>
+          <input type="number" id="nsSrcBpm" class="ns-input" min="40" max="220" step="0.1" value="120" placeholder="120">
+        </div>
+        <div style="width:110px;">
+          <label class="ns-label">Target BPM</label>
+          <input type="number" id="nsTgtBpm" class="ns-input" min="40" max="200" step="0.1" value="72">
+        </div>
+        <button type="button" class="ns-btn cyan" id="nsTempoLock" title="Set Rate slider = source/target. Pitch shifts with tempo (vinyl mode). Clamped to 0.5–1.5x.">⇄ LOCK</button>
+        <div style="font-size:10px; color:#666; align-self:flex-end; padding-bottom:4px;" id="nsTempoSummary">Sets the Rate slider so the source plays at the target tempo. Pitch follows (vinyl).</div>
+      </div>
+      <div style="margin-top:8px;" class="ns-btn-row">
+        <span style="font-size:9px; color:#666; letter-spacing:1px; text-transform:uppercase; align-self:center;">CROP to whole bars @ target BPM:</span>
+        <button type="button" class="ns-btn" id="nsCrop4">4 bars (4/4)</button>
+        <button type="button" class="ns-btn" id="nsCrop5">5 bars (5/4 — Ashley)</button>
+        <button type="button" class="ns-btn" id="nsCrop8">8 bars (4/4)</button>
+        <button type="button" class="ns-btn" id="nsCrop16">16 bars (4/4)</button>
+      </div>
+      <p style="font-size:10px; color:#444; margin:8px 0 0;">Adjusts the trim values to capture exactly N bars from the start of the source after the playback-rate change. Use with any preset (try P.LIVES) for a 72 BPM loopable bed.</p>
+    </div>
+
     <!-- 5. Export bar -->
     <div class="ns-export-bar">
       <div class="ns-export-hd">Export</div>
@@ -693,6 +865,23 @@ const PRESETS = {
   shimmer:      { drive:12,  trim:80,  lp:16000, hp:200, delayMs:520, fb:45, crush:0,  noise:12, mix:65, master:72, noiseColor:"brown", drift:38, driftRate:20,  wobble:5,  wobbleRate:18,  wall:5,  ring:0,  ringFreq:1200,detune:0, rate:100, eqLow:-4, eqMid:0,  eqHigh:6,  eqMidFreq:2000, reverb:75, reverbDecay:48, chorus:30, chorusRate:8,  tremolo:0,  tremoloRate:40, gate:0, gateRate:8  },
   pulse:        { drive:65,  trim:95,  lp:7000,  hp:120, delayMs:140, fb:78, crush:4,  noise:8,  mix:52, master:82, noiseColor:"white", drift:6,  driftRate:110, wobble:15, wobbleRate:85,  wall:45, ring:55, ringFreq:220, detune:0, rate:100, eqLow:2,  eqMid:5,  eqHigh:-2, eqMidFreq:500,  reverb:12, reverbDecay:12, chorus:0,  chorusRate:6,  tremolo:55, tremoloRate:60, gate:70, gateRate:8  },
   basement:     { drive:35,  trim:88,  lp:5500,  hp:55,  delayMs:280, fb:32, crush:0,  noise:28, mix:48, master:75, noiseColor:"brown", drift:22, driftRate:18,  wobble:12, wobbleRate:20,  wall:38, ring:0,  ringFreq:80,  detune:0, rate:100, eqLow:8,  eqMid:-3, eqHigh:-7, eqMidFreq:600,  reverb:60, reverbDecay:42, chorus:8,  chorusRate:4,  tremolo:0,  tremoloRate:40, gate:0, gateRate:8  },
+  // Robert Ashley / Perfect Lives bed: slowed (rate 85 = ~15% slower, giving
+  // a vinyl-pitch-shifted feel), low-pass 4800 (off-broadcast warmth),
+  // tremolo at 12/10 = 1.2 Hz (=72 BPM heartbeat), eqMid notch at 350 Hz
+  // carves a hole for the voice, brown noise dust + basement reverb.
+  perfect_lives:{ drive:28,  trim:90,  lp:4800,  hp:75,  delayMs:180, fb:22, crush:0,  noise:10, mix:55, master:78, noiseColor:"brown", drift:14, driftRate:20,  wobble:6,  wobbleRate:25,  wall:18, ring:0,  ringFreq:80,  detune:0, rate:85,  eqLow:4,  eqMid:-6, eqHigh:-3, eqMidFreq:350,  reverb:35, reverbDecay:32, chorus:0,  chorusRate:6,  tremolo:18, tremoloRate:12, gate:0, gateRate:8  },
+  // Gentler version of perfect_lives — pure backdrop with a deeper mid notch
+  // (eqMid:-9 at 280Hz) so spoken voice cuts through with zero EQ fight.
+  voice_bed:    { drive:12,  trim:75,  lp:5500,  hp:90,  delayMs:240, fb:18, crush:0,  noise:6,  mix:45, master:65, noiseColor:"brown", drift:8,  driftRate:15,  wobble:4,  wobbleRate:18,  wall:8,  ring:0,  ringFreq:80,  detune:0, rate:90,  eqLow:2,  eqMid:-9, eqHigh:-5, eqMidFreq:280,  reverb:42, reverbDecay:38, chorus:0,  chorusRate:6,  tremolo:12, tremoloRate:12, gate:0, gateRate:8  },
+  // Pure rhythmic pulse — strips most of the harmonic content (heavy lowpass
+  // + deep eqMid/eqHigh cuts) and amplifies the heartbeat via strong tremolo
+  // at 1.2 Hz. Layer on top of perfect_lives/voice_bed for added push.
+  heartbeat:    { drive:55,  trim:100, lp:1800,  hp:35,  delayMs:60,  fb:8,  crush:2,  noise:18, mix:32, master:82, noiseColor:"brown", drift:0,  driftRate:20,  wobble:0,  wobbleRate:25,  wall:38, ring:0,  ringFreq:60,  detune:0, rate:100, eqLow:8,  eqMid:-12,eqHigh:-12,eqMidFreq:200,  reverb:8,  reverbDecay:10, chorus:0,  chorusRate:6,  tremolo:75, tremoloRate:12, gate:0, gateRate:8  },
+  // Julius Eastman aesthetic: harder drive, less reverb (no romantic wash —
+  // dry hammered pianos in a small concert hall), low-mid boost for the bass
+  // register weight that defines "Evil Nigger". No tremolo (forward motion
+  // comes from the additive layered ostinato itself, not modulation).
+  eastman:      { drive:48,  trim:95,  lp:7200,  hp:60,  delayMs:90,  fb:14, crush:1,  noise:6,  mix:48, master:85, noiseColor:"pink",  drift:6,  driftRate:30,  wobble:0,  wobbleRate:20,  wall:12, ring:0,  ringFreq:80,  detune:0, rate:100, eqLow:7,  eqMid:2,  eqHigh:-2, eqMidFreq:550,  reverb:14, reverbDecay:16, chorus:0,  chorusRate:6,  tremolo:0,  tremoloRate:40, gate:0, gateRate:8  },
 };
 
 // ── Trim / export helpers ─────────────────────────────────────────────────────
@@ -766,6 +955,531 @@ function buildNoiseBuffer(ctx, color) {
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
   }
   return buf;
+}
+
+// Voice-spread intervals (semitones from the root) for multi-layer modes.
+// Each defines how N stacked voices relate to the root MIDI note.
+const VOICE_SPREADS = {
+  single:    [0, 0, 0, 0],              // all voices on root (just thickens the attack)
+  octaves:   [0, -12, +12, -24],        // root + octaves up/down — Eastman bass register
+  fifths:    [0, +7, -5, +12],          // perfect-fifth stack
+  cluster:   [0, +1, +3, +4],           // tight cluster (m2/m3/M3 piled up) — dissonant
+  d_minor:   [0, +3, +7, -5],           // root, m3, P5, P4 below — Eastman D-minor feel
+  tritone:   [0, +6, +12, +18],         // stacked tritones — maximum harmonic anxiety
+};
+
+// Synthesize a Robert-Ashley / Julius-Eastman style ostinato: piano-like pitches
+// hammered repeatedly with slight humanization. With layers>1 it stacks multiple
+// voices (Eastman's 4-piano texture). With additive=true voices enter over the
+// duration, building density toward the end (Eastman additive process).
+//
+// opts: { bpm, subdivision, midiNote, bars, anxiety, pattern, layers, voiceSpread, additive }
+//   subdivision: 1=quarter, 2=8ths, 3=triplets, 4=16ths
+//   midiNote: 60 = middle C (default 60)
+//   bars: number of 4/4 bars to fill (default 4)
+//   anxiety: 0-100 — timing jitter, velocity variance, ghost notes, neighbor subs
+//   pattern: "single" | "alternate" | "ostinato3"
+//   layers: 1-4 simultaneous voices
+//   voiceSpread: key into VOICE_SPREADS — how the layer pitches relate to root
+//   additive: if true, voices enter at evenly-spaced points across the duration
+function buildPianoPulseBuffer(ctx, opts) {
+  const bpm           = Math.max(40, Math.min(220, Number(opts.bpm) || 72));
+  const sub           = Math.max(1, Math.min(6, Number(opts.subdivision) || 1));
+  const midi          = Math.max(24, Math.min(96, Number(opts.midiNote) || 60));
+  const bars          = Math.max(1, Math.min(32, Number(opts.bars) || 4));
+  const anxiety       = Math.max(0, Math.min(100, Number(opts.anxiety) || 35)) / 100;
+  const pattern       = opts.pattern || "single";
+  const sampleRate    = ctx.sampleRate;
+  const beatSec       = 60 / bpm;
+  const stepSec       = beatSec / sub;
+  const totalSec      = bars * 4 * beatSec;
+  const totalSamples  = Math.ceil(sampleRate * totalSec) + Math.ceil(sampleRate * 1.5);  // headroom for last note's decay tail
+  const buf           = ctx.createBuffer(1, totalSamples, sampleRate);
+  const d             = buf.getChannelData(0);
+
+  const midiToFreq = (n) => 440 * Math.pow(2, (n - 69) / 12);
+  const noteForStep = (stepIdx) => {
+    if (pattern === "alternate") {
+      // Hammered between the root and its upper neighbor (whole step) — Ashley's
+      // "two-note pendulum" device.
+      return stepIdx % 2 === 0 ? midi : midi + 2;
+    }
+    if (pattern === "ostinato3") {
+      // 3-against-4 cycle: root, +5 (fifth), +7 (fifth↑) — creates a phasing
+      // tension against the 4-beat bar lines.
+      const tones = [midi, midi + 5, midi + 7];
+      return tones[stepIdx % 3];
+    }
+    return midi;  // "single" — same pitch over and over (the most anxious)
+  };
+
+  // Render one piano-like note onset directly into the buffer.
+  function renderNote(onsetSec, freq, velocity) {
+    const start = Math.floor(onsetSec * sampleRate);
+    if (start < 0 || start >= totalSamples) return;
+    const decaySec = 1.6;  // exponential body decay
+    const attackSec = 0.004;  // sharp hammer attack
+    const noteLen = Math.min(totalSamples - start, Math.ceil(decaySec * sampleRate));
+    // Slight inharmonicity per partial (real pianos: stiffness pushes upper
+    // partials sharp). Tiny but audible — adds piano-like sparkle.
+    const partials = [
+      { mult: 1.000, amp: 1.00, decayMul: 1.00 },
+      { mult: 2.005, amp: 0.55, decayMul: 0.80 },
+      { mult: 3.012, amp: 0.30, decayMul: 0.65 },
+      { mult: 4.025, amp: 0.16, decayMul: 0.50 },
+      { mult: 5.040, amp: 0.08, decayMul: 0.40 },
+      { mult: 6.060, amp: 0.04, decayMul: 0.30 },
+    ];
+    for (let i = 0; i < noteLen; i++) {
+      const t = i / sampleRate;
+      const attackEnv = Math.min(1, t / attackSec);
+      // Brief noise burst on the attack — mimics the hammer hitting the string.
+      const hammerEnv = Math.exp(-t / 0.012);
+      const hammer = (Math.random() * 2 - 1) * hammerEnv * 0.18;
+      let body = 0;
+      for (let p = 0; p < partials.length; p++) {
+        const env = Math.exp(-t / (decaySec * partials[p].decayMul));
+        body += partials[p].amp * env * Math.sin(2 * Math.PI * freq * partials[p].mult * t);
+      }
+      const sample = (body * 0.20 + hammer) * velocity * attackEnv;
+      const idx = start + i;
+      // Mix-add so overlapping note tails layer correctly. Clamp later via the
+      // master stage; soft-saturate here to avoid runaway peaks.
+      let v = d[idx] + sample;
+      if (v >  1.0) v =  1.0;
+      else if (v < -1.0) v = -1.0;
+      d[idx] = v;
+    }
+  }
+
+  // Multi-voice setup. Each voice has a pitch offset from root, and an entry
+  // step — when additive=true, voice N waits until step floor(totalSteps * N/L).
+  const layers       = Math.max(1, Math.min(4, Number(opts.layers) || 1));
+  const additive     = Boolean(opts.additive);
+  const spreadKey    = opts.voiceSpread || "single";
+  const spread       = VOICE_SPREADS[spreadKey] || VOICE_SPREADS.single;
+  const totalSteps   = Math.floor(totalSec / stepSec);
+  // Each voice gets a velocity attenuator so 4 stacked voices don't clip — the
+  // total energy across layers is normalized.
+  const voiceAtten   = 1 / Math.sqrt(layers);
+
+  for (let voiceIdx = 0; voiceIdx < layers; voiceIdx++) {
+    const pitchOffset = spread[voiceIdx] || 0;
+    const entryStep   = additive ? Math.floor((totalSteps * voiceIdx) / layers) : 0;
+
+  for (let s = entryStep; s < totalSteps; s++) {
+    // Velocity humanization (anxiety = wider range, more contrast).
+    const vBase = 0.72 * voiceAtten;
+    const vRand = anxiety * 0.36 * voiceAtten;
+    let velocity = vBase + (Math.random() - 0.5) * vRand;
+    // Occasional accent on the downbeat for forward push.
+    if (s % (sub * 4) === 0) velocity *= 1.18;
+    // Additive fade-in: voice ramps in over its first 2 bars after entry —
+    // avoids hard "voice appears mid-pulse" pop, mirrors Eastman's organic
+    // accretion.
+    if (additive && voiceIdx > 0) {
+      const stepsSinceEntry = s - entryStep;
+      const fadeInSteps = sub * 4 * 2;  // 2 bars of subdivisions
+      if (stepsSinceEntry < fadeInSteps) {
+        velocity *= stepsSinceEntry / fadeInSteps;
+      }
+    }
+    // Timing jitter — up to 12ms at full anxiety, scaled by stepSec so it can
+    // never exceed a fraction of the gap and overlap into the next step. Per-
+    // voice independent jitter so the layers don't lock perfectly = more push.
+    const jitter = (Math.random() - 0.5) * anxiety * 0.024 * Math.min(1, stepSec / 0.5);
+    const noteMidi = noteForStep(s) + pitchOffset;
+    const baseOnset = s * stepSec + jitter;
+    renderNote(baseOnset, midiToFreq(noteMidi), velocity);
+    // Anxiety-driven extras: ghost-doubled note 60-110ms after the main hit.
+    if (anxiety > 0.5 && Math.random() < (anxiety - 0.5) * 0.5) {
+      const ghostDelay = 0.06 + Math.random() * 0.05;
+      renderNote(baseOnset + ghostDelay, midiToFreq(noteMidi), velocity * 0.42);
+    }
+    // Anxiety-driven extras: occasional neighbor-tone substitution (semitone
+    // up or down) — destabilizes the repetition without breaking the pulse.
+    if (anxiety > 0.6 && pattern === "single" && Math.random() < (anxiety - 0.6) * 0.4) {
+      const neighbor = noteMidi + (Math.random() < 0.5 ? -1 : 1);
+      renderNote(baseOnset, midiToFreq(neighbor), velocity * 0.55);
+    }
+  }
+  }  // end voice loop
+  return buf;
+}
+
+// ── MIDI parsing + instrument synthesis ───────────────────────────────────────
+// Minimal Standard MIDI File parser (format 0/1, tempo + note events only).
+// Returns { notes: [{onsetSec, freq, velocity, durationSec, channel}], duration }.
+function parseMidiFile(arrayBuffer) {
+  const view = new DataView(arrayBuffer);
+  const bytes = new Uint8Array(arrayBuffer);
+  let pos = 0;
+  function read32() { const v = view.getUint32(pos); pos += 4; return v; }
+  function read16() { const v = view.getUint16(pos); pos += 2; return v; }
+  function read8()  { return bytes[pos++]; }
+  function readChars(n) { let s = ""; for (let i = 0; i < n; i++) s += String.fromCharCode(bytes[pos++]); return s; }
+  function readVarLen() {
+    let v = 0;
+    while (true) {
+      const b = read8();
+      v = (v << 7) | (b & 0x7F);
+      if ((b & 0x80) === 0) break;
+    }
+    return v;
+  }
+  // Header
+  if (readChars(4) !== "MThd") throw new Error("Not a MIDI file (no MThd header)");
+  read32();  // header length, always 6
+  const format = read16();
+  const numTracks = read16();
+  const division = read16();
+  if (division & 0x8000) throw new Error("SMPTE time division not supported");
+  const ticksPerBeat = division;
+
+  // Walk all tracks, collect absolute-ticks events. Then pass 2 converts ticks
+  // to seconds using tempo changes.
+  const allEvents = [];  // {tick, type, ...}
+  for (let t = 0; t < numTracks; t++) {
+    if (readChars(4) !== "MTrk") throw new Error("Track header missing");
+    const trackLen = read32();
+    const trackEnd = pos + trackLen;
+    let tick = 0;
+    let lastStatus = 0;
+    while (pos < trackEnd) {
+      tick += readVarLen();
+      let status = bytes[pos];
+      if (status < 0x80) { status = lastStatus; }
+      else { pos++; lastStatus = status; }
+      const hi = status & 0xF0;
+      const ch = status & 0x0F;
+      if (status === 0xFF) {  // meta
+        const metaType = read8();
+        const len = readVarLen();
+        if (metaType === 0x51 && len === 3) {  // tempo
+          const tempo = (read8() << 16) | (read8() << 8) | read8();
+          allEvents.push({ tick, type: "tempo", microsPerBeat: tempo });
+        } else {
+          pos += len;
+        }
+      } else if (status === 0xF0 || status === 0xF7) {  // sysex
+        const len = readVarLen();
+        pos += len;
+      } else if (hi === 0x90) {  // note on
+        const note = read8(), vel = read8();
+        if (vel > 0) allEvents.push({ tick, type: "on", note, vel, ch });
+        else        allEvents.push({ tick, type: "off", note, ch });
+      } else if (hi === 0x80) {  // note off
+        const note = read8(); read8();
+        allEvents.push({ tick, type: "off", note, ch });
+      } else if (hi === 0xA0 || hi === 0xB0 || hi === 0xE0) {  // 2-byte (poly aftertouch, CC, pitchbend)
+        read8(); read8();
+      } else if (hi === 0xC0 || hi === 0xD0) {  // 1-byte (program, channel pressure)
+        read8();
+      }
+    }
+  }
+  // Sort by tick (multiple tracks were interleaved). Stable sort: tempo events first at same tick.
+  allEvents.sort((a, b) => (a.tick - b.tick) || (a.type === "tempo" ? -1 : 1));
+
+  // Pass 2: tick → seconds.
+  let currentTempo = 500000;  // default 120 BPM = 500000 µs/beat
+  let lastTick = 0;
+  let elapsedSec = 0;
+  const open = new Map();  // key = (ch<<8)|note → {onsetSec, vel}
+  const notes = [];
+  for (const ev of allEvents) {
+    const dt = ev.tick - lastTick;
+    elapsedSec += (dt * currentTempo) / (ticksPerBeat * 1_000_000);
+    lastTick = ev.tick;
+    if (ev.type === "tempo") {
+      currentTempo = ev.microsPerBeat;
+    } else if (ev.type === "on") {
+      open.set((ev.ch << 8) | ev.note, { onsetSec: elapsedSec, vel: ev.vel, channel: ev.ch });
+    } else if (ev.type === "off") {
+      const key = (ev.ch << 8) | ev.note;
+      const opened = open.get(key);
+      if (opened) {
+        open.delete(key);
+        const durationSec = Math.max(0.05, elapsedSec - opened.onsetSec);
+        notes.push({
+          onsetSec: opened.onsetSec,
+          freq: 440 * Math.pow(2, (ev.note - 69) / 12),
+          midi: ev.note,
+          velocity: opened.vel / 127,
+          durationSec,
+          channel: opened.channel,
+        });
+      }
+    }
+  }
+  // Close any dangling opens at end.
+  for (const [, opened] of open) {
+    notes.push({
+      onsetSec: opened.onsetSec,
+      freq: 440 * Math.pow(2, (60 - 69) / 12),
+      midi: 60,
+      velocity: opened.vel / 127,
+      durationSec: 0.5,
+      channel: opened.channel,
+    });
+  }
+  notes.sort((a, b) => a.onsetSec - b.onsetSec);
+  return { notes, duration: elapsedSec, format, ticksPerBeat };
+}
+
+// Instrument bank — each entry is a render function:
+//   render(d, sampleRate, onsetSec, freq, velocity, durationSec) -> void
+// Each writes into the mono Float32Array d, adding to whatever's there.
+const INSTRUMENTS = {
+  piano: {
+    label: "Piano (matches Piano Pulse)",
+    render(d, sr, onsetSec, freq, vel, durSec) {
+      const start = Math.floor(onsetSec * sr);
+      if (start < 0 || start >= d.length) return;
+      const decay = 1.6;
+      const attack = 0.004;
+      const noteLen = Math.min(d.length - start, Math.ceil(decay * sr));
+      const partials = [
+        [1.000, 1.00, 1.00], [2.005, 0.55, 0.80], [3.012, 0.30, 0.65],
+        [4.025, 0.16, 0.50], [5.040, 0.08, 0.40], [6.060, 0.04, 0.30],
+      ];
+      for (let i = 0; i < noteLen; i++) {
+        const t = i / sr;
+        const atk = Math.min(1, t / attack);
+        const hammer = (Math.random() * 2 - 1) * Math.exp(-t / 0.012) * 0.18;
+        let body = 0;
+        for (let p = 0; p < partials.length; p++) {
+          body += partials[p][1] * Math.exp(-t / (decay * partials[p][2])) * Math.sin(2 * Math.PI * freq * partials[p][0] * t);
+        }
+        let v = d[start + i] + (body * 0.20 + hammer) * vel * atk;
+        if (v > 1) v = 1; else if (v < -1) v = -1;
+        d[start + i] = v;
+      }
+    },
+  },
+  felt_piano: {
+    label: "Felt Piano (muted, intimate)",
+    render(d, sr, onsetSec, freq, vel, durSec) {
+      const start = Math.floor(onsetSec * sr);
+      if (start < 0 || start >= d.length) return;
+      const decay = 2.2;
+      const attack = 0.018;  // slower attack — felt damper
+      const noteLen = Math.min(d.length - start, Math.ceil(decay * sr));
+      // Only lower partials; upper ones decay much faster (felt absorbs them).
+      const partials = [
+        [1.000, 1.00, 1.00], [2.005, 0.32, 0.55], [3.012, 0.12, 0.35], [4.025, 0.04, 0.22],
+      ];
+      for (let i = 0; i < noteLen; i++) {
+        const t = i / sr;
+        const atk = Math.min(1, t / attack);
+        let body = 0;
+        for (let p = 0; p < partials.length; p++) {
+          body += partials[p][1] * Math.exp(-t / (decay * partials[p][2])) * Math.sin(2 * Math.PI * freq * partials[p][0] * t);
+        }
+        let v = d[start + i] + body * 0.32 * vel * atk;
+        if (v > 1) v = 1; else if (v < -1) v = -1;
+        d[start + i] = v;
+      }
+    },
+  },
+  organ: {
+    label: "Organ (sustained drawbars)",
+    render(d, sr, onsetSec, freq, vel, durSec) {
+      const start = Math.floor(onsetSec * sr);
+      if (start < 0 || start >= d.length) return;
+      const release = 0.08;
+      const attack = 0.006;
+      const noteSamp = Math.min(d.length - start, Math.ceil((durSec + release) * sr));
+      // Drawbar stack: 16', 8', 5⅓', 4', 2⅔', 2' (octaves + 5ths)
+      const partials = [
+        [0.5, 0.6], [1.0, 1.0], [1.5, 0.5], [2.0, 0.7], [3.0, 0.3], [4.0, 0.4],
+      ];
+      for (let i = 0; i < noteSamp; i++) {
+        const t = i / sr;
+        // Sustained envelope: attack ramp, hold, exponential release after durSec.
+        let env;
+        if (t < attack) env = t / attack;
+        else if (t < durSec) env = 1;
+        else env = Math.exp(-(t - durSec) / release);
+        let s = 0;
+        for (let p = 0; p < partials.length; p++) {
+          s += partials[p][1] * Math.sin(2 * Math.PI * freq * partials[p][0] * t);
+        }
+        let v = d[start + i] + s * 0.10 * vel * env;
+        if (v > 1) v = 1; else if (v < -1) v = -1;
+        d[start + i] = v;
+      }
+    },
+  },
+  bell: {
+    label: "Bell (inharmonic, long tail)",
+    render(d, sr, onsetSec, freq, vel, durSec) {
+      const start = Math.floor(onsetSec * sr);
+      if (start < 0 || start >= d.length) return;
+      const decay = 4.5;  // long bell ring
+      const attack = 0.002;
+      const noteLen = Math.min(d.length - start, Math.ceil(decay * sr));
+      // Inharmonic partial ratios approximating tubular bells.
+      const partials = [
+        [0.5, 0.50, 1.00], [1.000, 1.00, 1.20], [2.756, 0.70, 0.70],
+        [5.404, 0.40, 0.45], [8.933, 0.22, 0.25], [13.346, 0.10, 0.15],
+      ];
+      for (let i = 0; i < noteLen; i++) {
+        const t = i / sr;
+        const atk = Math.min(1, t / attack);
+        let body = 0;
+        for (let p = 0; p < partials.length; p++) {
+          body += partials[p][1] * Math.exp(-t / (decay * partials[p][2])) * Math.sin(2 * Math.PI * freq * partials[p][0] * t);
+        }
+        let v = d[start + i] + body * 0.14 * vel * atk;
+        if (v > 1) v = 1; else if (v < -1) v = -1;
+        d[start + i] = v;
+      }
+    },
+  },
+  glass: {
+    label: "Glass (sine + high partial)",
+    render(d, sr, onsetSec, freq, vel, durSec) {
+      const start = Math.floor(onsetSec * sr);
+      if (start < 0 || start >= d.length) return;
+      const decay = 2.4;
+      const attack = 0.045;  // slow attack — crystalline
+      const noteLen = Math.min(d.length - start, Math.ceil(decay * sr));
+      for (let i = 0; i < noteLen; i++) {
+        const t = i / sr;
+        const atk = Math.min(1, t / attack);
+        const env = Math.exp(-t / decay);
+        // Just a sine + a delicate high octave partial.
+        const s = Math.sin(2 * Math.PI * freq * t) + 0.25 * Math.sin(2 * Math.PI * freq * 4 * t);
+        let v = d[start + i] + s * 0.22 * vel * atk * env;
+        if (v > 1) v = 1; else if (v < -1) v = -1;
+        d[start + i] = v;
+      }
+    },
+  },
+  pluck: {
+    label: "Plucked String (Karplus-Strong)",
+    render(d, sr, onsetSec, freq, vel, durSec) {
+      const start = Math.floor(onsetSec * sr);
+      if (start < 0 || start >= d.length) return;
+      const decay = 1.8;
+      const noteLen = Math.min(d.length - start, Math.ceil(decay * sr));
+      // Karplus-Strong: delay line of length = sr/freq, init with noise, feedback through avg.
+      const N = Math.max(2, Math.round(sr / freq));
+      const ring = new Float32Array(N);
+      for (let i = 0; i < N; i++) ring[i] = (Math.random() * 2 - 1) * vel;
+      let ringIdx = 0;
+      const damp = 0.996;
+      for (let i = 0; i < noteLen; i++) {
+        const cur = ring[ringIdx];
+        const next = ring[(ringIdx + 1) % N];
+        const newSample = (cur + next) * 0.5 * damp;
+        ring[ringIdx] = newSample;
+        let v = d[start + i] + cur * 0.55;
+        if (v > 1) v = 1; else if (v < -1) v = -1;
+        d[start + i] = v;
+        ringIdx = (ringIdx + 1) % N;
+      }
+    },
+  },
+  pad: {
+    label: "Synth Pad (slow attack)",
+    render(d, sr, onsetSec, freq, vel, durSec) {
+      const start = Math.floor(onsetSec * sr);
+      if (start < 0 || start >= d.length) return;
+      const release = 0.6;
+      const attack = 0.25;
+      const totalSec = Math.max(durSec, 0.5) + release;
+      const noteLen = Math.min(d.length - start, Math.ceil(totalSec * sr));
+      // Detuned saw stack via additive (3 saws slightly detuned).
+      const detunes = [0.99, 1.00, 1.01];
+      // Simple sawtooth via partial sum (limit to 12 partials to avoid aliasing at high pitches).
+      const maxK = Math.min(12, Math.floor(sr / (3 * freq)));
+      for (let i = 0; i < noteLen; i++) {
+        const t = i / sr;
+        let env;
+        if (t < attack) env = t / attack;
+        else if (t < durSec) env = 1;
+        else env = Math.exp(-(t - durSec) / release);
+        let s = 0;
+        for (let dt = 0; dt < detunes.length; dt++) {
+          const f = freq * detunes[dt];
+          for (let k = 1; k <= maxK; k++) {
+            s += (1 / k) * Math.sin(2 * Math.PI * f * k * t);
+          }
+        }
+        s *= 0.05 / detunes.length;
+        let v = d[start + i] + s * vel * env;
+        if (v > 1) v = 1; else if (v < -1) v = -1;
+        d[start + i] = v;
+      }
+    },
+  },
+  sine: {
+    label: "Pure Sine (minimal)",
+    render(d, sr, onsetSec, freq, vel, durSec) {
+      const start = Math.floor(onsetSec * sr);
+      if (start < 0 || start >= d.length) return;
+      const release = 0.4;
+      const attack = 0.03;
+      const noteLen = Math.min(d.length - start, Math.ceil((durSec + release) * sr));
+      for (let i = 0; i < noteLen; i++) {
+        const t = i / sr;
+        let env;
+        if (t < attack) env = t / attack;
+        else if (t < durSec) env = 1;
+        else env = Math.exp(-(t - durSec) / release);
+        let v = d[start + i] + Math.sin(2 * Math.PI * freq * t) * 0.28 * vel * env;
+        if (v > 1) v = 1; else if (v < -1) v = -1;
+        d[start + i] = v;
+      }
+    },
+  },
+};
+
+// Render an entire parsed-MIDI structure to an AudioBuffer via the chosen
+// instrument. Done in chunks via setTimeout so the UI doesn't freeze on long
+// files. onProgress(done, total) is called periodically.
+async function renderMidiToBuffer(ctx, parsed, instrumentKey, opts) {
+  const inst = INSTRUMENTS[instrumentKey] || INSTRUMENTS.piano;
+  const targetBpm = opts && opts.targetBpm > 0 ? opts.targetBpm : null;
+  let notes = parsed.notes;
+  let totalDur = parsed.duration;
+  if (targetBpm) {
+    // Heuristic time-rescale: estimate the median inter-onset gap and treat it
+    // as one beat in the source; rescale all times so a beat = 60/targetBpm.
+    const starts = notes.map(n => n.onsetSec).sort((a, b) => a - b);
+    const gaps = [];
+    for (let i = 1; i < starts.length; i++) {
+      const g = starts[i] - starts[i - 1];
+      if (g > 0.01) gaps.push(g);
+    }
+    gaps.sort((a, b) => a - b);
+    const medianGap = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 0.5;
+    const scale = (60 / targetBpm) / medianGap;
+    notes = notes.map(n => ({ ...n, onsetSec: n.onsetSec * scale, durationSec: n.durationSec * scale }));
+    totalDur *= scale;
+  }
+  const sr = ctx.sampleRate;
+  const tailSec = 4.5;  // bell + pad releases need lots of tail
+  const totalSamples = Math.ceil((totalDur + tailSec) * sr);
+  const buf = ctx.createBuffer(1, totalSamples, sr);
+  const d = buf.getChannelData(0);
+  const BATCH = 200;  // notes per setTimeout chunk
+  return new Promise((resolve) => {
+    let i = 0;
+    function step() {
+      const end = Math.min(notes.length, i + BATCH);
+      for (; i < end; i++) {
+        const n = notes[i];
+        inst.render(d, sr, n.onsetSec, n.freq, n.velocity, n.durationSec);
+      }
+      if (opts && typeof opts.onProgress === "function") opts.onProgress(i, notes.length);
+      if (i < notes.length) setTimeout(step, 0);
+      else resolve(buf);
+    }
+    step();
+  });
 }
 
 function makeImpulseResponse(ctx, duration, decay) {
@@ -1196,7 +1910,15 @@ function disconnectGraph() {
 }
 
 // ── Playback ──────────────────────────────────────────────────────────────────
-function startPlaybackBuffer(buffer) {
+// Track playback start so we can compute the live playhead position. An
+// AudioBufferSourceNode is fire-and-forget — there's no .currentTime — so we
+// derive position from (ctx.currentTime - playStartCtxTime) * playbackRate
+// plus the offset we started at, modulo the buffer duration when looping.
+let playStartCtxTime = 0;
+let playStartOffset  = 0;
+let playLastPosSec   = 0;  // updated each frame so pause() can freeze the head
+
+function startPlaybackBuffer(buffer, offsetSec = 0) {
   disconnectGraph();
   const ctx = ensureCtx(); ctx.resume();
   graph = wireGraph(ctx, ctx.destination, readParams().noiseColor);
@@ -1209,7 +1931,12 @@ function startPlaybackBuffer(buffer) {
     bufferSource.detune.value = Math.max(-1200, Math.min(1200, p.detuneSemi * 100));
   }
   bufferSource.connect(graph.inputGain);
-  bufferSource.start(0);
+  // start(when, offset) — Web Audio supports per-call offsets.
+  const safeOffset = Math.max(0, Math.min(buffer.duration - 0.001, offsetSec || 0));
+  bufferSource.start(0, safeOffset);
+  playStartCtxTime = ctx.currentTime;
+  playStartOffset  = safeOffset;
+  playLastPosSec   = safeOffset;
   setBarState("playing");
   startViz();
   el("nsPlay").textContent = "⏸ Pause";
@@ -1254,6 +1981,14 @@ function setBarState(state) {
 }
 
 // ── Waveform draw ─────────────────────────────────────────────────────────────
+// Cached waveform image — drawn once when a buffer is loaded, then reused
+// every animation frame as the background for the moving playhead. Avoids
+// re-traversing the audio data 60×/sec.
+let waveformImage = null;
+let waveformW = 0;
+let waveformH = 0;
+let waveformDuration = 0;
+
 function drawWaveform(buffer) {
   const canvas = el("nsWaveform");
   if (!canvas || !buffer) return;
@@ -1284,6 +2019,36 @@ function drawWaveform(buffer) {
     ctx2.lineTo(x, y2);
   }
   ctx2.stroke();
+  // Cache for fast playhead redraws.
+  waveformImage = ctx2.getImageData(0, 0, W, H);
+  waveformW = W;
+  waveformH = H;
+  waveformDuration = buffer.duration;
+}
+
+// Draw the cached waveform + a vertical playhead at the given time-in-seconds.
+// Cheap: putImageData + one line stroke per frame.
+function drawPlayhead(timeSec) {
+  const canvas = el("nsWaveform");
+  if (!canvas || !waveformImage) return;
+  const ctx2 = canvas.getContext("2d");
+  ctx2.putImageData(waveformImage, 0, 0);
+  if (!waveformDuration) return;
+  const frac = Math.max(0, Math.min(1, timeSec / waveformDuration));
+  const x = Math.round(frac * waveformW);
+  // Filled hairline that pops above the cyan waveform.
+  ctx2.strokeStyle = "#ff3366";
+  ctx2.lineWidth = 2;
+  ctx2.beginPath(); ctx2.moveTo(x, 0); ctx2.lineTo(x, waveformH); ctx2.stroke();
+  // Soft glow under the line.
+  ctx2.fillStyle = "rgba(255,51,102,0.18)";
+  ctx2.fillRect(Math.max(0, x - 4), 0, 8, waveformH);
+  // Time readout in the top-left.
+  ctx2.fillStyle = "rgba(0,0,0,0.55)";
+  ctx2.fillRect(2, 2, 64, 12);
+  ctx2.fillStyle = "#ff8aa6";
+  ctx2.font = "10px ui-monospace, monospace";
+  ctx2.fillText(timeSec.toFixed(2) + " s", 6, 12);
 }
 
 // ── Oscilloscope + VU animation loop ──────────────────────────────────────────
@@ -1299,6 +2064,25 @@ function startViz() {
   function tick() {
     animRafId = requestAnimationFrame(tick);
     if (!graph || !graph.analyser) return;
+
+    // Playhead on the waveform canvas — derived from ctx time + offset + rate.
+    // mediaEl path: just use element.currentTime. bufferSource path: compute
+    // from (ctx.currentTime - playStartCtxTime) * playbackRate (handles the
+    // rate slider changes correctly enough for a visual cue).
+    if (waveformImage) {
+      let pos = playLastPosSec;
+      if (mediaEl) {
+        pos = mediaEl.currentTime;
+      } else if (bufferSource && audioCtx) {
+        const rate = bufferSource.playbackRate ? bufferSource.playbackRate.value : 1;
+        const elapsed = audioCtx.currentTime - playStartCtxTime;
+        pos = playStartOffset + elapsed * rate;
+        // Loop wrap so the playhead resets at duration when looping is on.
+        if (waveformDuration > 0) pos = ((pos % waveformDuration) + waveformDuration) % waveformDuration;
+      }
+      playLastPosSec = pos;
+      drawPlayhead(pos);
+    }
 
     // Oscilloscope
     if (ctx2 && oscCanvas) {
@@ -1501,6 +2285,390 @@ function applyPresetKey(key) {
 document.querySelectorAll(".preset-pill").forEach((btn) => {
   btn.addEventListener("click", () => applyPresetKey(btn.dataset.preset));
 });
+
+// ── Audio → MIDI Transcriber ──────────────────────────────────────────────────
+// POSTs the audio file to the server's basic-pitch endpoint. Result is a .mid
+// binary blob — we both auto-populate the MIDI Renderer's parsedMidi (so the
+// user can hit RENDER MIDI immediately with their chosen instrument) AND keep
+// the blob around for the optional Download button.
+let lastTranscribedBlob = null;
+let lastTranscribedName = "";
+
+el("nsA2mFile")?.addEventListener("change", (ev) => {
+  const f = ev.target.files && ev.target.files[0];
+  el("nsA2mTranscribe").disabled = !f;
+  if (f) {
+    el("nsA2mSummary").textContent = `Ready to transcribe: ${f.name} (${(f.size / (1024 * 1024)).toFixed(1)} MB).`;
+  }
+});
+
+el("nsA2mTranscribe")?.addEventListener("click", async () => {
+  const f = el("nsA2mFile").files && el("nsA2mFile").files[0];
+  if (!f) return;
+  if (f.size > 60 * 1024 * 1024) {
+    el("nsA2mSummary").textContent = "File exceeds 60 MB server limit. Trim audio shorter first.";
+    return;
+  }
+  el("nsA2mTranscribe").disabled = true;
+  el("nsA2mDownload").disabled = true;
+  el("nsA2mSummary").textContent = "Transcribing… (~5-10s per minute of audio)";
+  setStatus("Transcribing audio → MIDI via basic-pitch…");
+  try {
+    const fd = new FormData();
+    fd.append("audio", f);
+    fd.append("csrfmiddlewaretoken", csrfToken);
+    const r = await fetch("{% url 'noise_studio_audio_to_midi' %}", {
+      method: "POST",
+      body: fd,
+      headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
+    });
+    if (!r.ok) {
+      const errText = await r.text().catch(() => "");
+      throw new Error(`server returned ${r.status}: ${errText.slice(0, 200)}`);
+    }
+    const elapsed = r.headers.get("X-Transcribe-Seconds") || "?";
+    const blob = await r.blob();
+    lastTranscribedBlob = blob;
+    lastTranscribedName = (f.name.replace(/\.[^.]+$/, "") || "transcribed") + "_basic_pitch.mid";
+    el("nsA2mDownload").disabled = false;
+    // Auto-feed into the MIDI Renderer panel below — parse and stage so the
+    // user just needs to pick instrument + click RENDER MIDI.
+    const ab = await blob.arrayBuffer();
+    parsedMidi = parseMidiFile(ab);
+    parsedMidiBytes = new Uint8Array(ab);
+    parsedMidiSourceName = lastTranscribedName || "transcribed.mid";
+    el("nsMidiRender").disabled = false;
+    el("nsMidiSummary").textContent =
+      `From transcription: ${parsedMidi.notes.length} notes, ${parsedMidi.duration.toFixed(1)}s. Pick instrument + render.`;
+    el("nsA2mSummary").textContent =
+      `Transcribed in ${elapsed}s → ${parsedMidi.notes.length} notes. Ready in MIDI Renderer below ↓`;
+    setStatus(`Transcription complete: ${parsedMidi.notes.length} notes in ${elapsed}s.`);
+  } catch (err) {
+    el("nsA2mSummary").textContent = "Transcription failed: " + (err && err.message ? err.message : String(err));
+    setStatus("Transcription failed.");
+  } finally {
+    el("nsA2mTranscribe").disabled = !el("nsA2mFile").files[0];
+  }
+});
+
+el("nsA2mDownload")?.addEventListener("click", () => {
+  if (!lastTranscribedBlob) return;
+  const url = URL.createObjectURL(lastTranscribedBlob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = lastTranscribedName || "transcribed.mid";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+// ── MIDI Renderer ─────────────────────────────────────────────────────────────
+// Load a MIDI file via browser FileReader, parse it, render through the chosen
+// instrument from INSTRUMENTS, load result as currentBuffer (same plumbing as
+// the Piano Pulse Generator → flows through the distortion chain).
+let parsedMidi = null;
+// Preserve the raw MIDI bytes so we can POST them to the server for the
+// SoundFont (Salamander) rendering path. The JS instruments work off
+// `parsedMidi` directly; only `realistic_piano` needs the raw upload.
+let parsedMidiBytes = null;
+let parsedMidiSourceName = "";
+
+el("nsMidiFile")?.addEventListener("change", async (ev) => {
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  try {
+    setStatus("Parsing MIDI…");
+    const ab = await f.arrayBuffer();
+    parsedMidi = parseMidiFile(ab);
+    parsedMidiBytes = new Uint8Array(ab);
+    parsedMidiSourceName = f.name;
+    el("nsMidiRender").disabled = false;
+    el("nsMidiSummary").textContent =
+      `${parsedMidi.notes.length} notes, ${parsedMidi.duration.toFixed(1)}s @ original tempo. Pick instrument & render.`;
+    setStatus(`MIDI loaded: ${f.name} (${parsedMidi.notes.length} notes)`);
+  } catch (err) {
+    parsedMidi = null;
+    parsedMidiBytes = null;
+    el("nsMidiRender").disabled = true;
+    el("nsMidiSummary").textContent = "Parse failed: " + (err && err.message ? err.message : String(err));
+    setStatus("MIDI parse failed.");
+  }
+});
+
+el("nsMidiRender")?.addEventListener("click", async () => {
+  if (!parsedMidi) return;
+  const instKey = el("nsMidiInstrument").value || "piano";
+  const targetBpm = Number(el("nsMidiBpm").value) || 0;
+
+  // ─── Realistic Piano path: server-side render via FluidSynth + Salamander ───
+  // The server returns a stereo 44.1k WAV; we decode it into an AudioBuffer
+  // and feed it into the same currentBuffer pipeline as everything else.
+  if (instKey === "realistic_piano") {
+    if (!parsedMidiBytes) {
+      setStatus("Realistic Piano needs the original MIDI file — re-pick it in the file input.");
+      return;
+    }
+    try {
+      ensureCtx();
+      setStatus(`Rendering ${parsedMidi.notes.length} notes via Salamander Grand Piano…`);
+      el("nsMidiRender").disabled = true;
+      el("nsMidiSummary").textContent = "Server rendering through Salamander C5… (typically 2-10s)";
+      const fd = new FormData();
+      const blob = new Blob([parsedMidiBytes], { type: "audio/midi" });
+      fd.append("midi", blob, parsedMidiSourceName || "input.mid");
+      if (targetBpm > 0) fd.append("bpm", String(targetBpm));
+      fd.append("csrfmiddlewaretoken", csrfToken);
+      const r = await fetch("{% url 'noise_studio_render_soundfont' %}", {
+        method: "POST",
+        body: fd,
+        headers: { "X-CSRFToken": csrfToken, "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (!r.ok) {
+        const errText = await r.text().catch(() => "");
+        throw new Error(`server returned ${r.status}: ${errText.slice(0, 200)}`);
+      }
+      const elapsed = r.headers.get("X-Render-Seconds") || "?";
+      const ab = await r.arrayBuffer();
+      const buf = await audioCtx.decodeAudioData(ab);
+      currentBuffer = buf;
+      const midiName = (parsedMidiSourceName || "midi").replace(/\.[^.]+$/, "");
+      const bpmTag = targetBpm > 0 ? `_${Math.round(targetBpm)}bpm` : "";
+      lastLoadedTrackName = `${midiName}_salamander${bpmTag}.wav`;
+      mediaEl = null;
+      el("nsVizInfo").textContent = `${buf.duration.toFixed(1)}s  ${buf.sampleRate} Hz  (Salamander C5)`;
+      drawWaveform(buf);
+      el("nsTrimStart").value = "0";
+      el("nsTrimEnd").value = "0";
+      updateTrimSummary();
+      el("nsExport").disabled = false;
+      el("nsSaveLib").disabled = false;
+      setBarSource(lastLoadedTrackName);
+      setBarState("loaded");
+      startPlaybackBuffer(buf);
+      el("nsMidiSummary").textContent =
+        `Rendered via Salamander in ${elapsed}s → ${buf.duration.toFixed(1)}s of real Yamaha C5 audio.`;
+      setStatus(`Loaded Salamander rendering — sounds like a real piano, ready for distortion chain.`);
+    } catch (err) {
+      setStatus("Salamander render failed: " + (err && err.message ? err.message : String(err)));
+      el("nsMidiSummary").textContent = "Salamander render failed: " + (err && err.message ? err.message : String(err));
+    } finally {
+      el("nsMidiRender").disabled = false;
+    }
+    return;
+  }
+
+  // ─── Browser-side synthesis path (additive, fast iteration) ───
+  try {
+    ensureCtx();
+    const ctx = audioCtx;
+    setStatus(`Rendering ${parsedMidi.notes.length} notes through ${instKey}…`);
+    el("nsMidiRender").disabled = true;
+    const buf = await renderMidiToBuffer(ctx, parsedMidi, instKey, {
+      targetBpm: targetBpm > 0 ? targetBpm : null,
+      onProgress: (done, total) => {
+        if (done % 1000 === 0 || done === total) {
+          el("nsMidiSummary").textContent = `Rendering: ${done}/${total} notes…`;
+        }
+      },
+    });
+    el("nsMidiRender").disabled = false;
+    currentBuffer = buf;
+    const midiName = el("nsMidiFile").files[0]?.name?.replace(/\.[^.]+$/, "") || "midi";
+    const bpmTag = targetBpm > 0 ? `_${Math.round(targetBpm)}bpm` : "";
+    lastLoadedTrackName = `${midiName}_${instKey}${bpmTag}.wav`;
+    mediaEl = null;
+    el("nsVizInfo").textContent = `${buf.duration.toFixed(1)}s  ${buf.sampleRate} Hz  (${instKey})`;
+    drawWaveform(buf);
+    el("nsTrimStart").value = "0";
+    el("nsTrimEnd").value = "0";
+    updateTrimSummary();
+    el("nsExport").disabled = false;
+    el("nsSaveLib").disabled = false;
+    setBarSource(lastLoadedTrackName);
+    setBarState("loaded");
+    startPlaybackBuffer(buf);
+    el("nsMidiSummary").textContent =
+      `Rendered: ${parsedMidi.notes.length} notes via ${instKey} → ${buf.duration.toFixed(1)}s.`;
+    setStatus(`Loaded ${instKey} rendering — press Play, dial in a preset, render to library.`);
+  } catch (err) {
+    el("nsMidiRender").disabled = false;
+    setStatus("MIDI render failed: " + (err && err.message ? err.message : String(err)));
+  }
+});
+
+// ── Piano Pulse Generator ─────────────────────────────────────────────────────
+// Synthesizes a piano-ostinato AudioBuffer and loads it as the source so the
+// rest of the studio's distortion / EQ / reverb chain can colour it. The
+// "Anxiety" slider drives both audible humanization and texture variance.
+function midiNoteName(midi) {
+  const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const octave = Math.floor(midi / 12) - 1;
+  return names[midi % 12] + octave;
+}
+function updatePianoSummary() {
+  const sum = el("nsPianoSummary");
+  if (!sum) return;
+  const bpm    = Number(el("nsPianoBpm").value) || 72;
+  const bars   = Number(el("nsPianoBars").value) || 4;
+  const midi   = Number(el("nsPianoMidi").value) || 60;
+  const sub    = Number(el("nsPianoSub").value) || 1;
+  const ptn    = el("nsPianoPattern").value;
+  const layers = Number(el("nsPianoLayers").value) || 1;
+  const spread = el("nsPianoSpread").value;
+  const add    = el("nsPianoAdditive").checked;
+  const lenSec = (bars * 4 * 60) / bpm;
+  const subLbl = { "1": "quarter", "2": "8th", "3": "triplet", "4": "16th" }[String(sub)] || "quarter";
+  const layerLbl = layers > 1 ? ` × ${layers} voices (${spread}${add ? ", additive" : ""})` : "";
+  sum.textContent = `${bars} bars @ ${bpm} BPM (${subLbl}, ${ptn})${layerLbl} = ${lenSec.toFixed(2)}s of ${midiNoteName(midi)}.`;
+}
+["nsPianoBpm", "nsPianoMidi", "nsPianoSub", "nsPianoBars", "nsPianoPattern",
+ "nsPianoLayers", "nsPianoSpread", "nsPianoAdditive"].forEach((id) => {
+  el(id)?.addEventListener("input", updatePianoSummary);
+  el(id)?.addEventListener("change", updatePianoSummary);
+});
+
+// Template buttons: pre-fill the entire generator panel to a known composer-aesthetic.
+function setPianoFields(opts) {
+  if (opts.bpm        != null) el("nsPianoBpm").value = String(opts.bpm);
+  if (opts.midi       != null) el("nsPianoMidi").value = String(opts.midi);
+  if (opts.sub        != null) el("nsPianoSub").value = String(opts.sub);
+  if (opts.bars       != null) el("nsPianoBars").value = String(opts.bars);
+  if (opts.pattern    != null) el("nsPianoPattern").value = opts.pattern;
+  if (opts.anxiety    != null) { el("nsPianoAnxiety").value = String(opts.anxiety); el("nsPianoAnxietyVal").textContent = String(opts.anxiety); }
+  if (opts.layers     != null) el("nsPianoLayers").value = String(opts.layers);
+  if (opts.spread     != null) el("nsPianoSpread").value = opts.spread;
+  if (opts.additive   != null) el("nsPianoAdditive").checked = Boolean(opts.additive);
+  updatePianoSummary();
+}
+el("nsTplAshley")?.addEventListener("click", () => {
+  setPianoFields({ bpm: 72, midi: 60, sub: 1, bars: 4, pattern: "single", anxiety: 35, layers: 1, spread: "single", additive: false });
+  setStatus("Loaded Ashley template — 72 BPM single C4 quarter-note ostinato.");
+});
+el("nsTplEastman")?.addEventListener("click", () => {
+  // Derived from librosa analysis of "Evil Nigger" (1979): tempo median 136 BPM,
+  // strongest pitch classes D/A♯/A, very dark spectral centroid (~993 Hz)
+  // implying low register. 8th-note hammered ostinato in D2 with 4 voices in
+  // D-minor spread, additive entry, high anxiety = the Eastman propulsion.
+  setPianoFields({ bpm: 136, midi: 38, sub: 2, bars: 16, pattern: "single", anxiety: 60, layers: 4, spread: "d_minor", additive: true });
+  setStatus("Loaded Eastman template — 136 BPM D2 hammered 8ths, 4-voice D-minor additive build.");
+});
+el("nsPianoAnxiety")?.addEventListener("input", () => {
+  el("nsPianoAnxietyVal").textContent = el("nsPianoAnxiety").value;
+});
+updatePianoSummary();
+
+el("nsPianoGenerate")?.addEventListener("click", async () => {
+  try {
+    ensureCtx();
+    const ctx = audioCtx;
+    const opts = {
+      bpm:         Number(el("nsPianoBpm").value) || 72,
+      midiNote:    Number(el("nsPianoMidi").value) || 60,
+      subdivision: Number(el("nsPianoSub").value) || 1,
+      bars:        Number(el("nsPianoBars").value) || 4,
+      anxiety:     Number(el("nsPianoAnxiety").value) || 35,
+      pattern:     el("nsPianoPattern").value || "single",
+      layers:      Number(el("nsPianoLayers").value) || 1,
+      voiceSpread: el("nsPianoSpread").value || "single",
+      additive:    el("nsPianoAdditive").checked,
+    };
+    setStatus("Synthesizing piano pulse…");
+    // synthesis is fast but yield to UI once so the status text paints.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const buf = buildPianoPulseBuffer(ctx, opts);
+    currentBuffer = buf;
+    // Build a synthetic "name" so the rest of the studio (waveform viz, save
+    // dialog) has something to display + the saved file gets a meaningful name.
+    lastLoadedTrackName = `piano_pulse_${opts.bpm}bpm_${midiNoteName(opts.midiNote)}_${opts.bars}bar.wav`;
+    mediaEl = null;
+    el("nsVizInfo").textContent = buf.duration.toFixed(1) + "s  " + buf.sampleRate + " Hz  (synthesized)";
+    drawWaveform(buf);
+    el("nsTrimStart").value = "0";
+    el("nsTrimEnd").value = "0";
+    updateTrimSummary();
+    el("nsExport").disabled = false;
+    el("nsSaveLib").disabled = false;
+    setBarSource(lastLoadedTrackName);
+    setBarState("loaded");
+    startPlaybackBuffer(buf);
+    setStatus(`Loaded piano pulse: ${buf.duration.toFixed(2)}s. Press Play, dial in a preset, render to library.`);
+  } catch (err) {
+    setStatus("Piano pulse generation failed: " + (err && err.message ? err.message : String(err)));
+  }
+});
+
+// ── Tempo Lock ────────────────────────────────────────────────────────────────
+// Pulls any record to a target BPM by scaling the playback rate. Pitch shifts
+// with tempo (vinyl-style) — for the Perfect Lives aesthetic this is a feature,
+// not a bug. Web Audio's AudioBufferSourceNode.playbackRate is clamped to
+// 0.5-1.5x by the rest of the chain, so very tempo-far sources cap there.
+function computeLockRate(src, tgt) {
+  const s = Number(src) || 0;
+  const t = Number(tgt) || 0;
+  if (s <= 0 || t <= 0) return null;
+  return Math.max(0.5, Math.min(1.5, t / s));
+}
+
+function updateTempoSummary() {
+  const sum = el("nsTempoSummary");
+  if (!sum) return;
+  const r = computeLockRate(el("nsSrcBpm").value, el("nsTgtBpm").value);
+  if (r == null) { sum.textContent = "Enter source + target BPM."; return; }
+  const pct = (r * 100).toFixed(1);
+  const clamped = (r === 0.5 || r === 1.5);
+  sum.textContent = `Rate will be ${pct}% (${r.toFixed(3)}x).` + (clamped ? "  ⚠ clamped" : "");
+}
+
+el("nsSrcBpm")?.addEventListener("input", updateTempoSummary);
+el("nsTgtBpm")?.addEventListener("input", updateTempoSummary);
+updateTempoSummary();
+
+el("nsTempoLock")?.addEventListener("click", () => {
+  const r = computeLockRate(el("nsSrcBpm").value, el("nsTgtBpm").value);
+  if (r == null) return;
+  // nsRate slider stores rate * 100 (50-150).
+  el("nsRate").value = String(Math.round(r * 100));
+  // Drop any active preset highlight — user has manually overridden rate.
+  document.querySelectorAll(".preset-pill").forEach((p) => p.classList.remove("active"));
+  updateLabels();
+  applyParams(graph);
+  // Also push to any live playback so the change is audible immediately.
+  if (typeof bufferSource !== "undefined" && bufferSource) {
+    try { bufferSource.playbackRate.value = r; } catch (_) {}
+  }
+  if (typeof mediaEl !== "undefined" && mediaEl) {
+    try { mediaEl.playbackRate = r; } catch (_) {}
+  }
+  setStatus(`Tempo locked: rate = ${r.toFixed(3)}x  (${el("nsSrcBpm").value} → ${el("nsTgtBpm").value} BPM)`);
+});
+
+// CROP to N bars at the TARGET BPM. The buffer is played back at `rate` so a
+// bar at the target tempo corresponds to `bar_seconds_target / rate` seconds
+// of source. Sets trim values to capture exactly N target-tempo bars starting
+// from the current trim_start.
+function cropToBars(bars, beatsPerBar) {
+  if (!currentBuffer) { setStatus("Load a source first."); return; }
+  const tgt = Number(el("nsTgtBpm").value) || 72;
+  const src = Number(el("nsSrcBpm").value) || tgt;
+  const rate = computeLockRate(src, tgt) || 1;
+  // Seconds of SOURCE we need so that, when played at `rate`, it occupies
+  // exactly N bars × beatsPerBar / target_bps seconds of output.
+  const outputSec = (bars * beatsPerBar * 60) / tgt;
+  const sourceSec = outputSec * rate;
+  const startNum = Number(el("nsTrimStart").value) || 0;
+  const avail = Math.max(0, currentBuffer.duration - startNum);
+  const captureSec = Math.min(sourceSec, avail);
+  const endTrim = Math.max(0, currentBuffer.duration - startNum - captureSec);
+  el("nsTrimEnd").value = endTrim.toFixed(3);
+  updateTrimSummary();
+  setStatus(`Cropped to ${bars} bars (${beatsPerBar}/4) at ${tgt} BPM = ${outputSec.toFixed(2)}s output (${sourceSec.toFixed(2)}s source @ ${rate.toFixed(3)}x).`);
+}
+
+el("nsCrop4")?.addEventListener("click", () => cropToBars(4, 4));
+el("nsCrop5")?.addEventListener("click", () => cropToBars(5, 5));  // Ashley's 5-beat phrasing
+el("nsCrop8")?.addEventListener("click", () => cropToBars(8, 4));
+el("nsCrop16")?.addEventListener("click", () => cropToBars(16, 4));
 
 // ── Reset ─────────────────────────────────────────────────────────────────────
 el("nsReset").addEventListener("click", () => {
@@ -1829,6 +2997,49 @@ el("nsQuickSave").disabled = true;
   c.beginPath(); c.moveTo(0, H/2); c.lineTo(W, H/2); c.stroke();
   c.fillStyle = "#1a2020"; c.font = "10px monospace";
   c.textAlign = "center"; c.fillText("load a source", W/2, H/2 + 4);
+
+  // Click / drag on the waveform to seek. For bufferSource playback we have
+  // to stop the current source and create a new one at the desired offset
+  // (Web Audio's AudioBufferSourceNode isn't seekable). For mediaEl playback
+  // we can just set .currentTime.
+  canvas.style.cursor = "pointer";
+  canvas.title = "Click to seek";
+  function xToTime(clientX) {
+    if (!waveformDuration || !waveformW) return 0;
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+    return (x / rect.width) * waveformDuration;
+  }
+  function seekTo(timeSec) {
+    if (mediaEl) {
+      try { mediaEl.currentTime = Math.max(0, Math.min(mediaEl.duration - 0.05, timeSec)); } catch (_) {}
+      playLastPosSec = timeSec;
+      drawPlayhead(timeSec);
+      return;
+    }
+    if (currentBuffer) {
+      // Restart the buffer source at the new offset. Keeps current params.
+      try { if (bufferSource) bufferSource.stop(); } catch (_) {}
+      startPlaybackBuffer(currentBuffer, timeSec);
+      return;
+    }
+  }
+  let dragging = false;
+  canvas.addEventListener("mousedown", (ev) => {
+    if (!waveformDuration) return;
+    dragging = true;
+    seekTo(xToTime(ev.clientX));
+  });
+  window.addEventListener("mousemove", (ev) => {
+    if (!dragging) return;
+    seekTo(xToTime(ev.clientX));
+  });
+  window.addEventListener("mouseup", () => { dragging = false; });
+  canvas.addEventListener("touchstart", (ev) => {
+    if (!waveformDuration || !ev.touches.length) return;
+    ev.preventDefault();
+    seekTo(xToTime(ev.touches[0].clientX));
+  }, { passive: false });
 })();
 
 // Draw empty oscilloscope placeholder

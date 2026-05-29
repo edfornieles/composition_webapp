@@ -195,6 +195,27 @@
                                     <button type="submit" formaction="{% url 'delete_source_files' bucket_name %}" class="btn btn-sm btn-danger" id="deleteSelectedBtn">Delete selected</button>
                                     <button type="submit" formaction="{% url 'delete_duplicate_source_images' bucket_name %}" class="btn btn-sm btn-warning" id="deleteDuplicatesBtn">Delete duplicate images</button>
                                     <button type="submit" formaction="{% url 'trim_source_borders' bucket_name %}" class="btn btn-sm btn-outline-dark" id="trimBordersBtn">Trim borders</button>
+                                    <button type="submit" formaction="{% url 'convert_to_png' bucket_name %}" class="btn btn-sm btn-outline-primary" id="convertToPngBtn" title="Convert every .webp / .jpg / .jpeg file in this source to .png in place. If files are selected only those are converted; otherwise the whole source is converted. JPEG is lossy so the original quality cap is baked in; conversion itself is lossless from that point. Originals are deleted on success.">→ PNG</button>
+                                    <button type="submit" formaction="{% url 'remove_white_background' bucket_name %}" class="btn btn-sm btn-outline-info" id="removeWhiteBgBtn" title="Auto-remove white backgrounds from images: edge-touching near-white regions become transparent. The result is saved as PNG (originals replaced). White areas inside the subject are preserved — only background-connected regions are cut.">Remove white BG</button>
+                                    <button type="submit" formaction="{% url 'remove_black_background' bucket_name %}" class="btn btn-sm btn-outline-info" id="removeBlackBgBtn" title="Auto-remove black backgrounds — same as Remove white BG but for near-black regions.">Remove black BG</button>
+                                    <div class="btn-group btn-group-sm" role="group" aria-label="Smart background removal" style="vertical-align:top;">
+                                        <button type="submit" formaction="{% url 'smart_cut_background' bucket_name %}" class="btn btn-sm btn-success" id="smartCutBtn" title="AI cut-out — runs each image through an open-source segmentation model that finds the subject regardless of background colour. Handles fuzzy fur, hair, glass, same-color subject/bg. First click downloads ~170 MB of weights; cached after.">🤖 Smart cut</button>
+                                        <select class="form-control form-control-sm" name="model" form="fileSelectionForm" id="smartCutModel" title="Choose model: faster vs. higher quality." style="max-width:170px;">
+                                            <option value="isnet-general-use" selected>General · IS-Net (~2s)</option>
+                                            <option value="birefnet-general">High quality · BiRefNet (~6s)</option>
+                                            <option value="u2net">Classic · U²-Net</option>
+                                            <option value="u2netp">Light · U²-Net small</option>
+                                            <option value="u2net_human_seg">Human portrait</option>
+                                            <option value="silueta">Silueta (tight contour)</option>
+                                            <option value="bria-rmbg">BRIA RMBG</option>
+                                        </select>
+                                        <label class="btn btn-sm btn-outline-success" style="margin:0;" title="Alpha matting: softer, more accurate edges. Adds ~1s per image.">
+                                            <input type="checkbox" name="matting" value="1" form="fileSelectionForm" id="smartCutMatting" style="vertical-align:middle; margin-right:4px;"> Soft edges
+                                        </label>
+                                        <label class="btn btn-sm btn-outline-success" style="margin:0;" title="Fill subject holes: re-fills any transparent region that isn't connected to the image edge. Fixes cases like a clock with a white face on a white background, where the model carves out the interior. Untick if your subject is genuinely ring-shaped (donut, frame, etc.)">
+                                            <input type="checkbox" name="fill_holes" value="1" form="fileSelectionForm" id="smartCutFillHoles" checked style="vertical-align:middle; margin-right:4px;"> Fill holes
+                                        </label>
+                                    </div>
                                 </div>
                                 <div class="mb-3 d-flex gap-2 flex-wrap align-items-center border rounded p-2 bg-light source-size-row">
                                     <span class="small text-muted">Select images by size:</span>

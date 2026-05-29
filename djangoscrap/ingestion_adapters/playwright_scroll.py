@@ -113,7 +113,7 @@ class _PlaywrightScroller:
     glue code can be tested without a browser.
     """
 
-    def __init__(self, *, timeout_s: int = 30, max_idle_passes: int = 3):
+    def __init__(self, *, timeout_s: int = 60, max_idle_passes: int = 5):
         self._timeout = timeout_s
         self._max_idle = max_idle_passes
 
@@ -135,11 +135,23 @@ class _PlaywrightScroller:
         idle_passes = 0
         try:
             with sync_playwright() as pw:
-                browser = pw.chromium.launch(headless=True)
-                context = browser.new_context(user_agent="Mozilla/5.0 CompositionWebapp")
+                browser = pw.chromium.launch(
+                    headless=True,
+                    args=["--disable-blink-features=AutomationControlled"],
+                )
+                context = browser.new_context(
+                    user_agent=(
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36"
+                    ),
+                    viewport={"width": 1440, "height": 900},
+                )
                 page = context.new_page()
-                page.goto(url, timeout=15000)
-                page.wait_for_load_state("domcontentloaded", timeout=10000)
+                page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                # Give JS-heavy pages (Pinterest) time to render initial results
+                # before we start scraping and scrolling.
+                page.wait_for_timeout(2500)
                 while True:
                     if time.monotonic() - started > self._timeout:
                         break
@@ -161,7 +173,7 @@ class _PlaywrightScroller:
                     else:
                         idle_passes = 0
                     page.mouse.wheel(0, 4000)
-                    page.wait_for_timeout(600)
+                    page.wait_for_timeout(800)
                 context.close()
                 browser.close()
         except Exception as exc:

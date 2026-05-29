@@ -1,0 +1,603 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>3d studio</title>
+<style>
+  html,body { margin:0; padding:0; height:100%; background:#0e0f12; color:#e7e7e2;
+              font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif; overflow:hidden; }
+  #stage { position:fixed; left:300px; right:0; top:0; bottom:0; }
+  #sidebar {
+    position:fixed; left:0; top:0; bottom:0; width:300px;
+    background:#15171c; border-right:1px solid #23262e; overflow-y:auto;
+    padding:14px 12px; box-sizing:border-box;
+  }
+  #sidebar h1 { font-size:13px; margin:0 0 4px; color:#e7e7e2; letter-spacing:.08em; text-transform:uppercase; }
+  #sidebar .meta { font-size:10px; color:#5a5e68; margin-bottom:14px; }
+  .cat { margin-bottom:14px; }
+  .cat-name { font-size:10px; color:#8a8e98; text-transform:uppercase; letter-spacing:.1em;
+              margin:0 0 4px; padding:4px 6px; cursor:pointer; user-select:none;
+              border-radius:3px; display:flex; justify-content:space-between; align-items:center; }
+  .cat-name:hover { background:#1c1f25; }
+  .cat-name .arrow { font-size:9px; color:#5a5e68; }
+  .cat-models { display:none; padding-left:6px; }
+  .cat.open .cat-models { display:block; }
+  .cat.open .cat-name .arrow { transform:rotate(90deg); }
+  .model, .anim {
+    display:flex; flex-direction:column; padding:5px 8px; cursor:pointer;
+    border-left:2px solid transparent; font-size:11px;
+  }
+  .model:hover, .anim:hover { background:#1c1f25; border-left-color:#3a3d44; }
+  .model.active { background:#1c1f25; border-left-color:#9ec25c; color:#9ec25c; }
+  .anim.active { background:#1c1f25; border-left-color:#d49b58; color:#d49b58; }
+  .anim.disabled { opacity:0.4; cursor:not-allowed; }
+  .model .nm, .anim .nm { font-weight:500; }
+  .model .sub, .anim .sub { font-size:9px; color:#5a5e68; font-family:monospace; margin-top:1px; }
+  .model .ext, .anim .ext { font-size:9px; color:#8a8e98; text-transform:uppercase; }
+
+  #hud { position:fixed; top:14px; right:16px; font-size:11px; color:#5a5e68;
+         font-variant-numeric:tabular-nums; text-align:right; pointer-events:none; }
+  #hud b { color:#e7e7e2; }
+  #status { position:fixed; bottom:14px; right:16px; font-size:11px; color:#5a5e68;
+            font-variant-numeric:tabular-nums; }
+  #status.err { color:#d49b58; }
+
+  #ctrls { position:fixed; bottom:14px; left:316px; display:flex; gap:6px; flex-wrap:wrap;
+           font-size:11px; color:#8a8e98; }
+  #ctrls button, #ctrls select {
+    background:#15171c; border:1px solid #23262e; color:#8a8e98;
+    padding:5px 10px; border-radius:3px; cursor:pointer;
+    text-transform:uppercase; letter-spacing:.08em; font-size:10px;
+  }
+  #ctrls button:hover { color:#e7e7e2; border-color:#3a3d44; }
+  #ctrls button.on { color:#9ec25c; border-color:#3a3d44; }
+  #ctrls select { text-transform:none; letter-spacing:0; min-width:140px; }
+  .empty { color:#5a5e68; font-size:11px; padding:8px; }
+
+  #facepanel { position:fixed; top:14px; left:316px; width:240px;
+               background:#15171c; border:1px solid #23262e; border-radius:4px;
+               padding:10px 12px; font-size:11px; color:#8a8e98; display:none; }
+  #facepanel h2 { margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:.1em; color:#e7e7e2; }
+  #facepanel .row { display:flex; align-items:center; gap:8px; margin:4px 0; }
+  #facepanel .row label { flex:0 0 80px; font-size:10px; color:#8a8e98; font-family:monospace; }
+  #facepanel .row input[type=range] { flex:1; accent-color:#9ec25c; }
+  #facepanel .row .val { flex:0 0 28px; text-align:right; font-family:monospace; font-size:10px; color:#5a5e68; }
+  #facepanel .preset-row { display:flex; gap:4px; flex-wrap:wrap; margin-top:8px; }
+  #facepanel .preset-row button {
+    background:#1c1f25; border:1px solid #23262e; color:#8a8e98;
+    padding:3px 7px; border-radius:2px; cursor:pointer; font-size:9px;
+    text-transform:uppercase; letter-spacing:.05em;
+  }
+  #facepanel .preset-row button:hover { color:#9ec25c; border-color:#3a3d44; }
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <h1>3d studio</h1>
+  <div class="meta">{{ model_count }} model{{ model_count|pluralize }} · {{ category_count }} categor{{ category_count|pluralize:"y,ies" }}</div>
+  {% for cat in library %}
+    <div class="cat" data-cat="{{ forloop.counter }}">
+      <div class="cat-name">
+        <span>{{ cat.category }}</span>
+        <span><span style="color:#5a5e68">{{ cat.models|length }}</span> <span class="arrow">›</span></span>
+      </div>
+      <div class="cat-models">
+        {% for m in cat.models %}
+          <div class="model" data-url="{{ m.url }}" data-ext="{{ m.ext }}" data-name="{{ m.name }}">
+            <span class="nm">{{ m.name }} <span class="ext">.{{ m.ext }}</span></span>
+            <span class="sub">{{ m.subdir }} · {{ m.size_mb }} MB</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% empty %}
+    <div class="empty">No loadable models found in <code>3d studio/3d_assets/</code>.</div>
+  {% endfor %}
+
+  <h1 style="margin-top:18px">animations</h1>
+  <div class="meta">{{ anim_count }} clip{{ anim_count|pluralize }} · drop FBX/GLB into any <code>animations/</code> folder</div>
+  {% if animations %}
+    <div class="cat open" data-cat="anim">
+      <div class="cat-models" style="display:block; padding-left:0">
+        {% for a in animations %}
+          <div class="anim" data-url="{{ a.url }}" data-ext="{{ a.ext }}" data-name="{{ a.name }}">
+            <span class="nm">{{ a.name }} <span class="ext">.{{ a.ext }}</span></span>
+            <span class="sub">{{ a.subdir }} · {{ a.size_mb }} MB</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% else %}
+    <div class="empty">No animations yet. Create <code>3d_assets/&lt;model&gt;/animations/</code> and drop Mixamo-style FBX clips there.</div>
+  {% endif %}
+</div>
+
+<div id="stage"></div>
+
+<div id="hud">
+  <div><b id="hudName">—</b></div>
+  <div id="hudStats">drag=orbit · scroll=zoom</div>
+</div>
+
+<div id="ctrls">
+  <button id="btnSpin" class="on">spin</button>
+  <button id="btnWire">wire</button>
+  <button id="btnLight">light bg</button>
+  <button id="btnGrid" class="on">grid</button>
+  <button id="btnReset">reset cam</button>
+  <select id="selAnim" style="display:none"></select>
+  <button id="btnPlay" class="on" style="display:none">play</button>
+</div>
+
+<div id="facepanel">
+  <h2>face rig</h2>
+  <div id="faceSliders"></div>
+  <div class="preset-row" id="facePresets"></div>
+</div>
+
+<div id="status">select a model →</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { STLLoader } from "three/addons/loaders/STLLoader.js";
+import { ColladaLoader } from "three/addons/loaders/ColladaLoader.js";
+import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
+
+const stage = document.getElementById("stage");
+const status = document.getElementById("status");
+const hudName = document.getElementById("hudName");
+const hudStats = document.getElementById("hudStats");
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0e0f12);
+
+let camera = new THREE.PerspectiveCamera(35, 1, 0.1, 50000);
+camera.position.set(0, 160, 420);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+stage.appendChild(renderer.domElement);
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+window.addEventListener("resize", resize);
+resize();
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x222230, 0.45));
+const key = new THREE.DirectionalLight(0xfff2dd, 1.6); key.position.set(200, 320, 240); scene.add(key);
+const fill = new THREE.DirectionalLight(0x88aacc, 0.5); fill.position.set(-260, 180, -120); scene.add(fill);
+const rim = new THREE.DirectionalLight(0xffe3b8, 0.8); rim.position.set(0, 220, -340); scene.add(rim);
+
+const grid = new THREE.GridHelper(1000, 20, 0x23262e, 0x1a1c22);
+scene.add(grid);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+
+const matSolid = new THREE.MeshStandardMaterial({ color:0xf2eadf, roughness:0.62, metalness:0.02 });
+const matWire  = new THREE.MeshBasicMaterial({ color:0x9ec25c, wireframe:true, transparent:true, opacity:0.55 });
+
+let pivot = new THREE.Group(); scene.add(pivot);
+let mesh = null;
+let mixer = null;
+let actions = [];
+let activeAction = null;
+let morphTargets = []; // [{mesh, index, name}]
+const clock = new THREE.Clock();
+
+function scanMorphTargets(root) {
+  morphTargets = [];
+  root.traverse((c) => {
+    if (c.isMesh && c.morphTargetDictionary && c.morphTargetInfluences) {
+      for (const [name, idx] of Object.entries(c.morphTargetDictionary)) {
+        morphTargets.push({ mesh: c, index: idx, name });
+      }
+    }
+  });
+  if (!morphTargets.length) return;
+
+  // Build sliders
+  const wrap = document.getElementById("faceSliders");
+  const presetWrap = document.getElementById("facePresets");
+  wrap.innerHTML = ""; presetWrap.innerHTML = "";
+  // dedupe by name (multiple meshes sharing same morph)
+  const seen = new Set();
+  const unique = morphTargets.filter(mt => {
+    if (seen.has(mt.name)) return false;
+    seen.add(mt.name); return true;
+  });
+  unique.forEach(mt => {
+    const row = document.createElement("div");
+    row.className = "row";
+    const lab = document.createElement("label"); lab.textContent = mt.name;
+    const inp = document.createElement("input");
+    inp.type = "range"; inp.min = 0; inp.max = 1; inp.step = 0.01; inp.value = 0;
+    const val = document.createElement("span"); val.className = "val"; val.textContent = "0.00";
+    inp.addEventListener("input", () => {
+      const v = parseFloat(inp.value);
+      val.textContent = v.toFixed(2);
+      // apply to all meshes that have this morph
+      morphTargets.filter(m => m.name === mt.name).forEach(m => {
+        m.mesh.morphTargetInfluences[m.index] = v;
+      });
+    });
+    row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
+    wrap.appendChild(row);
+  });
+
+  // Preset buttons
+  const presets = {
+    'reset':     {},
+    'happy':     { smile: 0.9, brow_up_L: 0.4, brow_up_R: 0.4 },
+    'sad':       { frown: 0.8, brow_down_L: 0.6, brow_down_R: 0.6 },
+    'shock':     { surprised: 0.9 },
+    'wink':      { blink_L: 1.0, smile: 0.4 },
+    'blink':     { blink_L: 1.0, blink_R: 1.0 },
+    'doomer':    { frown: 0.6, brow_down_L: 0.5, brow_down_R: 0.5, mouth_open: 0.15 },
+  };
+  Object.entries(presets).forEach(([label, vals]) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.addEventListener("click", () => {
+      // zero all then apply
+      const inputs = wrap.querySelectorAll("input[type=range]");
+      inputs.forEach(inp => {
+        const lab = inp.parentElement.querySelector("label").textContent;
+        const v = vals[lab] || 0;
+        inp.value = v;
+        inp.parentElement.querySelector(".val").textContent = v.toFixed(2);
+        morphTargets.filter(m => m.name === lab).forEach(m => {
+          m.mesh.morphTargetInfluences[m.index] = v;
+        });
+      });
+    });
+    presetWrap.appendChild(b);
+  });
+
+  document.getElementById("facepanel").style.display = "block";
+}
+
+function clearModel() {
+  if (mixer) { mixer.stopAllAction(); mixer = null; }
+  actions = []; activeAction = null;
+  const sel = document.getElementById("selAnim");
+  sel.innerHTML = ""; sel.style.display = "none";
+  document.getElementById("btnPlay").style.display = "none";
+  // clear face panel
+  const fp = document.getElementById("facepanel");
+  document.getElementById("faceSliders").innerHTML = "";
+  document.getElementById("facePresets").innerHTML = "";
+  fp.style.display = "none";
+  morphTargets = [];
+  while (pivot.children.length) {
+    const child = pivot.children.pop();
+    child.traverse?.((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) {
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        mats.forEach(m => m.dispose());
+      }
+    });
+  }
+  pivot.scale.setScalar(1);
+  pivot.position.set(0,0,0);
+  pivot.rotation.set(0,0,0);
+  mesh = null;
+}
+
+function frameObject(obj) {
+  const box = new THREE.Box3().setFromObject(obj);
+  const size = new THREE.Vector3(); box.getSize(size);
+  const center = new THREE.Vector3(); box.getCenter(center);
+  obj.position.sub(center);
+  const target = 220;
+  const maxDim = Math.max(size.x, size.y, size.z) || 1;
+  const scale = target / maxDim;
+  pivot.scale.setScalar(scale);
+  controls.target.set(0, 0, 0);
+  camera.position.set(0, target * 0.25, target * 1.9);
+  controls.update();
+  return { size, center, scale };
+}
+
+function applyMatToMesh(obj, mat) {
+  obj.traverse((c) => {
+    if (c.isMesh) {
+      // preserve textured materials, only swap if no texture
+      if (!c._origMat) c._origMat = c.material;
+      const isTextured = (() => {
+        const m = c._origMat;
+        if (!m) return false;
+        const arr = Array.isArray(m) ? m : [m];
+        return arr.some(x => x && (x.map || x.normalMap || x.emissiveMap));
+      })();
+      if (mat === matWire) c.material = matWire;
+      else if (isTextured) c.material = c._origMat;
+      else c.material = matSolid;
+      c.geometry?.computeVertexNormals?.();
+    }
+  });
+}
+
+function reportStats(obj, dt) {
+  let verts = 0, tris = 0;
+  obj.traverse((c) => {
+    if (c.isMesh && c.geometry) {
+      verts += c.geometry.attributes.position?.count || 0;
+      const idx = c.geometry.index;
+      tris += (idx ? idx.count : (c.geometry.attributes.position?.count || 0)) / 3;
+    }
+  });
+  hudStats.textContent = `${verts.toLocaleString()} verts · ${Math.round(tris).toLocaleString()} tris · ${dt.toFixed(2)}s`;
+}
+
+async function loadModel(url, ext, name) {
+  clearModel();
+  status.classList.remove("err");
+  status.textContent = `loading ${name}.${ext}…`;
+  hudName.textContent = name;
+  const t0 = performance.now();
+
+  const onProgress = (e) => {
+    if (e.lengthComputable) {
+      status.textContent = `loading ${name}… ${(e.loaded/1e6).toFixed(1)}/${(e.total/1e6).toFixed(1)} MB`;
+    } else {
+      status.textContent = `loading ${name}… ${(e.loaded/1e6).toFixed(1)} MB`;
+    }
+  };
+  const onError = (err) => {
+    console.error(err);
+    status.classList.add("err");
+    status.textContent = `failed: ${err.message || err}`;
+  };
+  const dt = () => (performance.now() - t0) / 1000;
+
+  try {
+    if (ext === "obj") {
+      const obj = await new Promise((res, rej) =>
+        new OBJLoader().load(url, res, onProgress, rej));
+      applyMatToMesh(obj, wire ? matWire : matSolid);
+      pivot.add(obj); mesh = obj;
+      frameObject(obj);
+      reportStats(obj, dt());
+      status.textContent = `loaded · ${dt().toFixed(2)}s`;
+    } else if (ext === "fbx") {
+      const obj = await new Promise((res, rej) =>
+        new FBXLoader().load(url, res, onProgress, rej));
+      applyMatToMesh(obj, wire ? matWire : matSolid);
+      pivot.add(obj); mesh = obj;
+      frameObject(obj);
+      scanMorphTargets(obj);
+
+      if (obj.animations && obj.animations.length) {
+        mixer = new THREE.AnimationMixer(obj);
+        const sel = document.getElementById("selAnim");
+        sel.innerHTML = "";
+        obj.animations.forEach((clip, i) => {
+          const label = obj.animations.length > 1
+            ? `${name} · ${clip.name || i}` : name;
+          const opt = document.createElement("option");
+          opt.value = i; opt.textContent = label;
+          sel.appendChild(opt);
+          actions.push(mixer.clipAction(clip));
+        });
+        sel.style.display = "";
+        document.getElementById("btnPlay").style.display = "";
+        playAnim(0);
+      }
+      reportStats(obj, dt());
+      status.textContent = `loaded · ${dt().toFixed(2)}s${obj.animations?.length ? ` · ${obj.animations.length} clip(s)` : ""}`;
+    } else if (ext === "glb" || ext === "gltf") {
+      const gltf = await new Promise((res, rej) =>
+        new GLTFLoader().load(url, res, onProgress, rej));
+      const obj = gltf.scene || gltf.scenes[0];
+      applyMatToMesh(obj, wire ? matWire : matSolid);
+      pivot.add(obj); mesh = obj;
+      frameObject(obj);
+      scanMorphTargets(obj);
+
+      if (gltf.animations && gltf.animations.length) {
+        mixer = new THREE.AnimationMixer(obj);
+        const sel = document.getElementById("selAnim");
+        sel.innerHTML = "";
+        gltf.animations.forEach((clip, i) => {
+          const label = gltf.animations.length > 1
+            ? `${name} · ${clip.name || i}` : name;
+          const opt = document.createElement("option");
+          opt.value = i; opt.textContent = label;
+          sel.appendChild(opt);
+          actions.push(mixer.clipAction(clip));
+        });
+        sel.style.display = "";
+        document.getElementById("btnPlay").style.display = "";
+        playAnim(0);
+      }
+      reportStats(obj, dt());
+      status.textContent = `loaded · ${dt().toFixed(2)}s${gltf.animations?.length ? ` · ${gltf.animations.length} clip(s)` : ""}`;
+    } else if (ext === "stl") {
+      const geom = await new Promise((res, rej) =>
+        new STLLoader().load(url, res, onProgress, rej));
+      const m = new THREE.Mesh(geom, wire ? matWire : matSolid);
+      pivot.add(m); mesh = m;
+      frameObject(m);
+      reportStats(m, dt());
+      status.textContent = `loaded · ${dt().toFixed(2)}s`;
+    } else if (ext === "ply") {
+      const geom = await new Promise((res, rej) =>
+        new PLYLoader().load(url, res, onProgress, rej));
+      geom.computeVertexNormals();
+      const m = new THREE.Mesh(geom, wire ? matWire : matSolid);
+      pivot.add(m); mesh = m;
+      frameObject(m);
+      reportStats(m, dt());
+      status.textContent = `loaded · ${dt().toFixed(2)}s`;
+    } else if (ext === "dae") {
+      const dae = await new Promise((res, rej) =>
+        new ColladaLoader().load(url, res, onProgress, rej));
+      const obj = dae.scene;
+      applyMatToMesh(obj, wire ? matWire : matSolid);
+      pivot.add(obj); mesh = obj;
+      frameObject(obj);
+      reportStats(obj, dt());
+      status.textContent = `loaded · ${dt().toFixed(2)}s`;
+    } else {
+      status.classList.add("err");
+      status.textContent = `unsupported: .${ext}`;
+    }
+  } catch (err) { onError(err); }
+}
+
+function playAnim(idx) {
+  if (!actions.length) return;
+  if (activeAction) activeAction.fadeOut(0.2);
+  activeAction = actions[idx];
+  activeAction.reset().fadeIn(0.2).play();
+  activeAction.paused = !animPlaying;
+}
+
+let animPlaying = true;
+document.getElementById("selAnim").onchange = (e) => playAnim(+e.target.value);
+document.getElementById("btnPlay").onclick = () => {
+  animPlaying = !animPlaying;
+  document.getElementById("btnPlay").classList.toggle("on", animPlaying);
+  if (activeAction) activeAction.paused = !animPlaying;
+};
+
+// scene controls
+let spin = true, wire = false, lightBg = false, gridOn = true;
+const btnSpin  = document.getElementById("btnSpin");
+const btnWire  = document.getElementById("btnWire");
+const btnLight = document.getElementById("btnLight");
+const btnGrid  = document.getElementById("btnGrid");
+const btnReset = document.getElementById("btnReset");
+
+btnSpin.onclick  = () => { spin = !spin; btnSpin.classList.toggle("on", spin); };
+btnWire.onclick  = () => {
+  wire = !wire; btnWire.classList.toggle("on", wire);
+  if (mesh) applyMatToMesh(mesh, wire ? matWire : matSolid);
+};
+btnLight.onclick = () => {
+  lightBg = !lightBg; btnLight.classList.toggle("on", lightBg);
+  scene.background = new THREE.Color(lightBg ? 0xe7e7e2 : 0x0e0f12);
+};
+btnGrid.onclick  = () => { gridOn = !gridOn; grid.visible = gridOn; btnGrid.classList.toggle("on", gridOn); };
+btnReset.onclick = () => {
+  if (mesh) frameObject(mesh);
+  else { camera.position.set(0,60,420); controls.target.set(0,0,0); controls.update(); }
+};
+
+// sidebar interaction
+document.querySelectorAll(".cat-name").forEach(el => {
+  el.addEventListener("click", () => el.parentElement.classList.toggle("open"));
+});
+document.querySelectorAll(".model").forEach(el => {
+  el.addEventListener("click", () => {
+    document.querySelectorAll(".model.active").forEach(x => x.classList.remove("active"));
+    el.classList.add("active");
+    loadModel(el.dataset.url, el.dataset.ext, el.dataset.name);
+  });
+});
+
+// ---- external animations: bind clips from a separate FBX/GLB to current model ----
+async function loadExternalAnim(url, ext, name) {
+  // first-click convenience: if no model is loaded, treat the anim FBX as a
+  // self-contained character (Mixamo exports include the rigged mesh).
+  if (!mesh) {
+    return loadModel(url, ext, name);
+  }
+  status.classList.remove("err");
+  status.textContent = `loading anim ${name}…`;
+  try {
+    let clips = [];
+    if (ext === "fbx") {
+      const obj = await new Promise((res, rej) =>
+        new FBXLoader().load(url, res, undefined, rej));
+      clips = obj.animations || [];
+    } else if (ext === "glb" || ext === "gltf") {
+      const gltf = await new Promise((res, rej) =>
+        new GLTFLoader().load(url, res, undefined, rej));
+      clips = gltf.animations || [];
+    }
+    if (!clips.length) {
+      status.classList.add("err");
+      status.textContent = `no clips found in ${name}`;
+      return;
+    }
+    // bind to current model: AnimationMixer retargets by track name (bone name).
+    // Mixamo clips on Mixamo-rigged models match out of the box.
+    if (!mixer) mixer = new THREE.AnimationMixer(mesh);
+    const sel = document.getElementById("selAnim");
+    const before = actions.length;
+    clips.forEach((clip, i) => {
+      // Mixamo names every clip "mixamo.com" — label by source filename instead
+      const label = clips.length > 1 ? `${name} · ${clip.name || i}` : name;
+      if ([...sel.options].some(o => o.textContent === label)) return;
+      const opt = document.createElement("option");
+      opt.value = actions.length;
+      opt.textContent = label;
+      sel.appendChild(opt);
+      actions.push(mixer.clipAction(clip));
+    });
+    if (actions.length === before) {
+      status.textContent = `${name} already loaded`;
+      sel.value = before - clips.length;
+      playAnim(+sel.value);
+      return;
+    }
+    sel.style.display = "";
+    document.getElementById("btnPlay").style.display = "";
+    // play the first newly-added clip
+    sel.value = actions.length - clips.length;
+    playAnim(+sel.value);
+    status.textContent = `applied ${clips.length} clip(s) from ${name}`;
+  } catch (err) {
+    console.error(err);
+    status.classList.add("err");
+    status.textContent = `anim load failed: ${err.message || err}`;
+  }
+}
+
+document.querySelectorAll(".anim").forEach(el => {
+  el.addEventListener("click", () => {
+    document.querySelectorAll(".anim.active").forEach(x => x.classList.remove("active"));
+    el.classList.add("active");
+    loadExternalAnim(el.dataset.url, el.dataset.ext, el.dataset.name);
+  });
+});
+
+// auto-open first category
+document.querySelector(".cat")?.classList.add("open");
+
+function tick() {
+  const dt = clock.getDelta();
+  if (spin) pivot.rotation.y += dt * 0.35;
+  if (mixer && animPlaying) mixer.update(dt);
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+tick();
+</script>
+</body>
+</html>

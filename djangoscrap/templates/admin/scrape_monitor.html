@@ -1,0 +1,215 @@
+{% extends "layouts/admin.html" %}
+{% block content %}
+<div class="content-wrapper" style="background:#0e0f12;">
+  <section class="content pt-3 pb-5">
+    <div class="container-fluid" style="color:#e7e7e2; max-width: 1400px;">
+
+      <style>
+        .sm-h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; color:#e7e7e2; }
+        .sm-sub { color: #8a8e98; font-size: 12px; margin-bottom: 18px; }
+
+        .sm-headline { display:grid; grid-template-columns: minmax(200px, max-content) minmax(200px, 1fr); gap: 32px; margin-bottom: 18px; align-items:end; }
+        .sm-headline .lbl { font-size:10px; color:#8a8e98; text-transform:uppercase; letter-spacing:.12em; margin-bottom:4px; }
+        .sm-headline .total { font-size: 56px; font-weight: 700; font-variant-numeric: tabular-nums; line-height:1; }
+        .sm-headline .rate { font-size: 16px; color: #9ec25c; font-variant-numeric: tabular-nums; }
+        .sm-headline .stale { color: #d49b58; }
+        .sm-headline .meta { font-size:11px; color:#5a5e68; margin-top:4px; }
+
+        .sm-targets { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 24px; }
+        .sm-target { background:#15171c; border:1px solid #23262e; border-radius:6px; padding:12px 16px; }
+        .sm-target .lbl { font-size: 10px; color:#8a8e98; text-transform:uppercase; letter-spacing:.12em; }
+        .sm-target .val { font-size: 22px; font-weight:600; font-variant-numeric: tabular-nums; }
+        .sm-target .eta { font-size: 11px; color:#5a5e68; margin-top:2px; }
+        .sm-target .bar { height: 5px; background:#0e0f12; border-radius:3px; margin-top:8px; overflow:hidden; }
+        .sm-target .bar > div { height:100%; background:linear-gradient(90deg, #9ec25c, #5a8aa8); transition: width .4s ease; }
+
+        .sm-cols { display:grid; grid-template-columns: 1fr minmax(360px, 420px); gap: 18px; align-items:start; }
+        @media (max-width: 1100px) { .sm-cols { grid-template-columns: 1fr; } }
+
+        .sm-source { background:#15171c; border:1px solid #23262e; border-radius:6px; margin-bottom:16px; overflow:hidden; }
+        .sm-source-head { padding: 12px 16px; border-bottom:1px solid #23262e; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:12px; }
+        .sm-source-head .label { font-weight:600; font-size:14px; color:#e7e7e2; }
+        .sm-source-head .meta { font-size: 11px; color:#8a8e98; font-variant-numeric: tabular-nums; }
+        .sm-source-head .count { font-size: 22px; font-weight:600; font-variant-numeric: tabular-nums; }
+        .sm-boards { padding: 4px 8px 12px; overflow-x:auto; }
+        .sm-boards table { width:100%; border-collapse:collapse; font-size:12px; font-variant-numeric: tabular-nums; }
+        .sm-boards th, .sm-boards td { padding: 5px 10px; text-align:right; border-bottom:1px solid #1a1c22; white-space:nowrap; }
+        .sm-boards th { color:#5a5e68; font-weight:500; text-transform:uppercase; font-size:10px; letter-spacing:.08em; }
+        .sm-boards td.b { text-align:left; color:#e7e7e2; font-family:'SF Mono', Menlo, monospace; min-width:80px; }
+        .sm-boards .bar-cell { width:140px; text-align:left !important; }
+        .sm-boards .bar-cell .bar { height: 6px; background:#0e0f12; border-radius:3px; overflow:hidden; }
+        .sm-boards .bar-cell .bar > div { height:100%; background:#5a8aa8; }
+        .sm-empty { color:#5a5e68; padding: 12px; font-size:12px; }
+
+        .sm-samples { background:#15171c; border:1px solid #23262e; border-radius:6px; padding: 12px 14px; position:sticky; top: 12px; max-height: calc(100vh - 60px); overflow-y:auto; }
+        .sm-samples h3 { font-size: 12px; color:#8a8e98; text-transform:uppercase; letter-spacing:.12em; margin: 0 0 10px; font-weight:500; display:flex; justify-content:space-between; align-items:center; }
+        .sm-samples h3 button { background:transparent; border:1px solid #23262e; color:#8a8e98; font-size:10px; padding:2px 8px; border-radius:3px; cursor:pointer; text-transform:uppercase; letter-spacing:.08em; }
+        .sm-samples h3 button:hover { color:#e7e7e2; border-color:#3a3d44; }
+        .sm-sample { padding: 10px 0; border-bottom: 1px solid #1a1c22; font-size: 12px; line-height: 1.45; }
+        .sm-sample:last-child { border-bottom: none; }
+        .sm-sample .head { font-size: 10px; color:#5a8aa8; font-family:'SF Mono', Menlo, monospace; margin-bottom: 4px; letter-spacing:.04em; }
+        .sm-sample .head .op { background:rgba(212,155,88,0.15); color:#d49b58; padding:0 5px; border-radius:2px; font-size:9px; margin-left:4px; }
+        .sm-sample .subj { font-weight: 600; color:#e7e7e2; margin-bottom: 4px; }
+        .sm-sample .body { color:#c5c8d0; white-space: pre-wrap; word-wrap:break-word; }
+        .sm-sample .body .gt { color:#9ec25c; }
+      </style>
+
+      <h1 class="sm-h1">Scrape progress</h1>
+      <div class="sm-sub">refreshes every 5s · counts read from JSONL shards · ETA from rolling rate</div>
+
+      <div class="sm-headline">
+        <div>
+          <div class="lbl">Total posts</div>
+          <div class="total" id="grandTotal">—</div>
+          <div class="meta" id="lastUpdate">last update: —</div>
+        </div>
+        <div>
+          <div class="lbl">Rate (recent / long)</div>
+          <div class="rate" id="grandRate">— / — posts/s</div>
+        </div>
+      </div>
+
+      <div class="sm-targets" id="targets"></div>
+
+      <div class="sm-cols">
+        <div id="sources"></div>
+        <div>
+          <div class="sm-samples">
+            <h3>Random sample <button id="resampleBtn" type="button">resample</button></h3>
+            <div id="samples"><div class="sm-empty">loading…</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  function fmtInt(n) { return Number(n).toLocaleString(); }
+  function fmtETA(seconds) {
+    if (seconds == null) return '—';
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.round(seconds/60)}m`;
+    if (seconds < 86400) return `${(seconds/3600).toFixed(1)}h`;
+    return `${(seconds/86400).toFixed(1)}d`;
+  }
+  function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+  }
+  function renderGreentext(text) {
+    return escapeHtml(text || '').split("\n").map(line => {
+      if (/^&gt;[^&]/.test(line) || /^&gt;$/.test(line)) {
+        return `<span class="gt">${line}</span>`;
+      }
+      return line;
+    }).join("\n");
+  }
+
+  function renderTargets(targets) {
+    $("targets").innerHTML = targets.map(t => `
+      <div class="sm-target">
+        <div class="lbl">Toward ${fmtInt(t.target)}</div>
+        <div class="val">${t.pct.toFixed(2)}%</div>
+        <div class="eta">ETA: ${fmtETA(t.eta_seconds)}</div>
+        <div class="bar"><div style="width:${Math.min(100, t.pct)}%"></div></div>
+      </div>
+    `).join("");
+  }
+
+  function renderSources(sources) {
+    const maxBoardPosts = Math.max(1, ...sources.flatMap(s => s.boards.map(b => b.posts)));
+    $("sources").innerHTML = sources.map(s => {
+      const boardRows = s.boards.length === 0
+        ? `<div class="sm-empty">no posts written yet</div>`
+        : `<table>
+            <thead><tr>
+              <th class="b" style="text-align:left">board</th>
+              <th>posts</th>
+              <th>last page</th>
+              <th>threads</th>
+              <th class="bar-cell">share</th>
+            </tr></thead>
+            <tbody>
+              ${s.boards.map(b => `
+                <tr>
+                  <td class="b">/${b.board}/</td>
+                  <td>${fmtInt(b.posts)}</td>
+                  <td>${b.last_page}</td>
+                  <td>${fmtInt(b.threads_done)}</td>
+                  <td class="bar-cell"><div class="bar"><div style="width:${(100*b.posts/maxBoardPosts).toFixed(1)}%"></div></div></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>`;
+      return `
+        <div class="sm-source">
+          <div class="sm-source-head">
+            <div>
+              <div class="label">${escapeHtml(s.label)}</div>
+              <div class="meta">${s.boards.length} boards · ${s.errors} errors · elapsed ${fmtETA(s.elapsed_seconds)}</div>
+            </div>
+            <div style="text-align:right">
+              <div class="count">${fmtInt(s.total_posts)}</div>
+              <div class="meta">${s.rps_recent.toFixed(2)} / ${s.rps_long.toFixed(2)} posts/s</div>
+            </div>
+          </div>
+          <div class="sm-boards">${boardRows}</div>
+        </div>`;
+    }).join("");
+  }
+
+  function renderSamples(samples) {
+    if (!samples || samples.length === 0) {
+      $("samples").innerHTML = '<div class="sm-empty">no samples yet</div>';
+      return;
+    }
+    $("samples").innerHTML = samples.map(s => `
+      <div class="sm-sample">
+        <div class="head">
+          /${escapeHtml(s.board)}/ · t${escapeHtml(s.thread_num)} · #${escapeHtml(s.post_num)}
+          ${s.is_op ? '<span class="op">OP</span>' : ''}
+        </div>
+        ${s.subject ? `<div class="subj">${escapeHtml(s.subject)}</div>` : ''}
+        <div class="body">${renderGreentext(s.comment)}</div>
+      </div>
+    `).join("");
+  }
+
+  let lastTotal = 0;
+  let lastTotalAt = 0;
+  async function tick() {
+    try {
+      const r = await fetch("/api/scrape-monitor/", { credentials: "same-origin" });
+      const d = await r.json();
+      $("grandTotal").textContent = fmtInt(d.grand_total);
+      const stale = (d.grand_total === lastTotal) && (Date.now() - lastTotalAt > 30000);
+      $("grandRate").textContent = `${d.rps_recent.toFixed(2)} / ${d.rps_long.toFixed(2)} posts/s`;
+      $("grandRate").classList.toggle("stale", stale);
+      if (d.grand_total !== lastTotal) {
+        lastTotal = d.grand_total;
+        lastTotalAt = Date.now();
+      }
+      $("lastUpdate").textContent = `last update: ${new Date(d.ts*1000).toLocaleTimeString()}`;
+      renderTargets(d.targets);
+      renderSources(d.sources);
+    } catch (e) {
+      $("lastUpdate").textContent = `last update: error (${e})`;
+    }
+  }
+  async function fetchSamples() {
+    try {
+      const r = await fetch("/api/scrape-monitor/samples/", { credentials: "same-origin" });
+      const d = await r.json();
+      renderSamples(d.samples);
+    } catch (e) { /* ignore */ }
+  }
+  $("resampleBtn").addEventListener("click", fetchSamples);
+  tick(); fetchSamples();
+  setInterval(tick, 5000);
+  setInterval(fetchSamples, 30000);
+</script>
+{% endblock %}

@@ -181,16 +181,27 @@ def fit_chat_page(request):
             persona=persona,
             name=f"thread-{_dt.datetime.utcnow().strftime('%Y%m%d-%H%M%S')}",
         )
-    return render(request, "fit_chat.html", {
+    response = render(request, "fit_chat.html", {
         "persona": persona,
         "session_id": session.id,
         "slug": _FIT_SLUG,
     })
+    # Pass-2-diag2: prevent browser caching ANY redirect or page state, so
+    # autocomplete history (e.g. /s3/<bucket>/ from the admin source-library)
+    # cannot persist a stale path.
+    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response["Pragma"] = "no-cache"
+    response["Expires"] = "0"
+    return response
 
 
 def fit_stream_page(request):
     """Standalone 'be me' thought stream with keep/skip feedback."""
-    return render(request, "fit_stream.html", {})
+    response = render(request, "fit_stream.html", {})
+    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response["Pragma"] = "no-cache"
+    response["Expires"] = "0"
+    return response
 
 
 @csrf_exempt

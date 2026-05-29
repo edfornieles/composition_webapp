@@ -115,6 +115,70 @@ from ._ingestion_dedup import *
 s3 = boto3.client('s3')
 
 
+# Whitelist of preset keys the client-side renderer understands. Anything else
+# falls back to 'static' silently so a typo never crashes a save.
+_TEXT_LAYER_PRESETS = {
+    "static", "flash", "flicker", "typewriter", "scroll-band", "scroll-up",
+    "bounce", "karaoke", "glitch", "rgb-shift", "strobe", "drop-in",
+}
+_TEXT_LAYER_POSITIONS = {"top", "center", "bottom", "top-left", "top-right", "bottom-left", "bottom-right"}
+_TEXT_LAYER_Z_TARGETS = {"above-bg", "above-fg", "above-overlay", "top"}
+_TEXT_LAYER_MAX = 1
+
+def _parse_text_layers_from_post(post) -> list[dict]:
+    """Pull text-layer rows out of the admin form into a clean list of dicts
+    suitable for the JSONField. Empty rows (no text) are dropped so the user
+    doesn't accidentally save garbage entries.
+
+    Form fields per row i (1..N):
+      text_layer_text_<i>           — the actual string (required)
+      text_layer_preset_<i>         — one of _TEXT_LAYER_PRESETS
+      text_layer_position_<i>       — one of _TEXT_LAYER_POSITIONS (or empty for custom)
+      text_layer_z_target_<i>       — one of _TEXT_LAYER_Z_TARGETS
+      text_layer_font_family_<i>    — CSS font-family
+      text_layer_font_size_pct_<i>  — number 1..50 (% of viewport height)
+      text_layer_color_<i>          — #RRGGBB
+      text_layer_start_sec_<i>      — number ≥ 0
+      text_layer_duration_sec_<i>   — number > 0  (0 → omitted, runs indefinitely)
+    """
+    out = []
+    for i in range(1, _TEXT_LAYER_MAX + 1):
+        text = (post.get(f"text_layer_text_{i}") or "").strip()
+        if not text:
+            continue
+        preset = (post.get(f"text_layer_preset_{i}") or "static").strip().lower()
+        if preset not in _TEXT_LAYER_PRESETS:
+            preset = "static"
+        position = (post.get(f"text_layer_position_{i}") or "center").strip().lower()
+        if position not in _TEXT_LAYER_POSITIONS:
+            position = "center"
+        z_target = (post.get(f"text_layer_z_target_{i}") or "above-overlay").strip().lower()
+        if z_target not in _TEXT_LAYER_Z_TARGETS:
+            z_target = "above-overlay"
+        try: font_size_pct = max(1.0, min(50.0, float(post.get(f"text_layer_font_size_pct_{i}") or 6)))
+        except (TypeError, ValueError): font_size_pct = 6.0
+        try: start_sec = max(0.0, float(post.get(f"text_layer_start_sec_{i}") or 0))
+        except (TypeError, ValueError): start_sec = 0.0
+        try: duration_sec = max(0.0, float(post.get(f"text_layer_duration_sec_{i}") or 0))
+        except (TypeError, ValueError): duration_sec = 0.0
+        color = (post.get(f"text_layer_color_{i}") or "#ffffff").strip()[:9] or "#ffffff"
+        font_family = (post.get(f"text_layer_font_family_{i}") or "").strip()[:80]
+        entry = {
+            "text": text[:500],
+            "preset": preset,
+            "position": position,
+            "z_target": z_target,
+            "font_family": font_family or "Inter, sans-serif",
+            "font_size_pct": font_size_pct,
+            "color": color,
+            "start_sec": start_sec,
+        }
+        if duration_sec > 0:
+            entry["duration_sec"] = duration_sec
+        out.append(entry)
+    return out
+
+
 def _r2_client():
     account_id = (os.getenv("R2_ACCOUNT_ID") or "").strip()
     access_key = (os.getenv("R2_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID") or "").strip()
@@ -247,30 +311,72 @@ def _resolve_composition_relative_media_path(relative_path: str) -> tuple[str, P
 
 
 def _trigger_poster_generation(composition_id: int) -> None:
-    """Spawn a daemon thread to generate/refresh the poster for a composition."""
-    def _run(cid):
-        try:
-            from ..nft_media import generate_composition_media_assets
-            from ..models import Composition as _Comp
-            comp = _Comp.objects.prefetch_related("media_assets").get(id=cid)
-            if not comp.url:
-                return
-            generate_composition_media_assets(comp, kinds=["poster"])
-        except Exception:
-            pass
-    t = threading.Thread(target=_run, args=(composition_id,), daemon=True)
-    t.start()
+    """Generate the composition's poster in a *detached subprocess*.
+
+    Why subprocess and not a daemon thread: poster generation launches Playwright
+    Chromium, which can balloon RSS by 200-500 MB. With one gunicorn worker
+    × 96 threads, several concurrent posters can OOM the worker — taking the
+    whole site down. A subprocess is in its own address space, so OOM there
+    only kills the capture, not the web server. The supervisor loop in
+    run_gunicorn.sh also auto-restarts if a worker does die for any other reason.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path as _Path
+    project_root = _Path(__file__).resolve().parent.parent.parent
+    script = (
+        "import os, sys, time, traceback, django\n"
+        f"sys.path.insert(0, {str(project_root)!r})\n"
+        f"os.chdir({str(project_root)!r})\n"
+        "os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'djangoscrap.settings')\n"
+        "django.setup()\n"
+        "from djangoscrap.nft_media import generate_composition_media_assets\n"
+        "from djangoscrap.models import Composition\n"
+        f"_cid = {int(composition_id)}\n"
+        "_label = f'comp={_cid} kinds=poster (auto-on-save)'\n"
+        "_t = time.time()\n"
+        "print(f'[{time.strftime(\"%H:%M:%S\")}] START {_label}', flush=True)\n"
+        "try:\n"
+        "    c = Composition.objects.prefetch_related('media_assets').get(id=_cid)\n"
+        "    if c.url:\n"
+        "        res = generate_composition_media_assets(c, kinds=['poster'])\n"
+        "        dt = time.time() - _t\n"
+        "        print(f'[{time.strftime(\"%H:%M:%S\")}] DONE  {_label} in {dt:.1f}s -> {list(res.keys()) if res else []}', flush=True)\n"
+        "    else:\n"
+        "        print(f'[{time.strftime(\"%H:%M:%S\")}] SKIP  {_label} (no public URL yet)', flush=True)\n"
+        "except Exception as e:\n"
+        "    dt = time.time() - _t\n"
+        "    print(f'[{time.strftime(\"%H:%M:%S\")}] FAIL  {_label} after {dt:.1f}s: {type(e).__name__}: {e}', flush=True)\n"
+        "    traceback.print_exc()\n"
+    )
+    log_path = str(project_root / "media_gen.log")
+    try:
+        with open(log_path, "ab") as logf:
+            subprocess.Popen(
+                [sys.executable, "-c", script],
+                stdout=logf,
+                stderr=logf,
+                start_new_session=True,  # detach from gunicorn's process group
+                close_fds=True,
+            )
+    except Exception:
+        # If subprocess spawn itself fails (rare), don't propagate — caller
+        # already returned a redirect to the user; we just lose this poster.
+        pass
 
 
 def add_composition(request, composition_id=None):
-    # Define paths for downloaded images & videos 
-    TEMP_BG_FOLDER = "media/temp_s3_back_files"
-    TEMP_FG_FOLDER = "media/temp_s3_fore_files"
-    VIDEO_DIR = "media/videos"
-    TEMP_IMAGE_FOLDER = "media/temp_images"
-    THUMBNAIL_DIR = "static/composition_thumbnails"
-    AUDIO_DIR = "compositions/audios"
-    MERGED_IMAGE_DIR = "media/merged_images"
+    # Define paths for downloaded images & videos. Anchor to BASE_DIR so these
+    # resolve correctly regardless of the worker's cwd — gunicorn workers don't
+    # preserve `runserver`'s implicit project-root cwd, so relative paths break.
+    _BASE = settings.BASE_DIR
+    TEMP_BG_FOLDER = str(_BASE / "media/temp_s3_back_files")
+    TEMP_FG_FOLDER = str(_BASE / "media/temp_s3_fore_files")
+    VIDEO_DIR = str(_BASE / "media/videos")
+    TEMP_IMAGE_FOLDER = str(_BASE / "media/temp_images")
+    THUMBNAIL_DIR = str(_BASE / "static/composition_thumbnails")
+    AUDIO_DIR = str(_BASE / "compositions/audios")
+    MERGED_IMAGE_DIR = str(_BASE / "media/merged_images")
     
     # Ensure necessary directories exist
     os.makedirs(TEMP_BG_FOLDER, exist_ok=True)
@@ -298,6 +404,16 @@ def add_composition(request, composition_id=None):
             return redirect(f"{reverse('composition-view')}?page={return_page}")
         return redirect("composition-view")
 
+    def redirect_to_form():
+        if composition:
+            url = reverse("composition-edit", kwargs={"composition_id": composition.id})
+            if return_folder:
+                url += f"?return_folder={return_folder}"
+            elif return_page:
+                url += f"?return_page={return_page}"
+            return redirect(url)
+        return redirect("composition-add")
+
     if request.method == "POST":
         def normalize_transition_mode(raw_value: str, fallback: str = "none") -> str:
             raw = (raw_value or fallback or "none").strip().lower()
@@ -306,6 +422,8 @@ def add_composition(request, composition_id=None):
                 return "crossfade"
             if compact == "fade":
                 return "fade"
+            if compact == "melt":
+                return "melt"
             return "none"
 
         composition_type = (request.POST.get("type") or "classic").strip()
@@ -348,30 +466,30 @@ def add_composition(request, composition_id=None):
         if composition_type in {"classic", "psychedelic-classic", "circle-foreground", "circle-foreground-rotate", "circle-foreground-rotate-mirror", "cross-foreground", "cross-foreground-rotate", "cross-foreground-tunnel", "bat-foreground", "bat-foreground-rotate", "left-to-right", "top-and-bottom", "strobe-double", "tunnel-double", "mash-fine-double"} and source_type != "upload":
             if not background_sources or not foreground_sources:
                 messages.error(request, "Please select at least one background and one foreground source.")
-                return redirect("composition-add")
-        if composition_type in {"cylinder-room", "triple-cylinder-room"} and source_type != "upload":
+                return redirect_to_form()
+        if composition_type in {"cylinder-room", "triple-cylinder-room", "rotating-cube", "rotating-cube-strobe", "road-trip"} and source_type != "upload":
             if not foreground_sources:
                 messages.error(request, "Please select at least one foreground source.")
-                return redirect("composition-add")
+                return redirect_to_form()
         if composition_type in {"single", "vibrate", "morph-fast", "eye-morph", "center-shift", "star-shift", "prism-burst", "prism-burst-neon", "sleep-drift", "calm-wave", "anger-surge", "anxiety-loop", "box-room"} and source_type != "upload":
             if not background_sources:
                 messages.error(request, "Please select at least one background source.")
-                return redirect("composition-add")
+                return redirect_to_form()
         if composition_type in {"psychedelic", "psychedelic-calm", "psychedelic-intense"} and source_type != "upload":
             if not background_sources:
                 messages.error(request, "Please select at least one background source.")
-                return redirect("composition-add")
+                return redirect_to_form()
         if composition_type == "kaleidoscope" and source_type != "upload":
             if not background_sources:
                 messages.error(request, "Please select at least one background source.")
-                return redirect("composition-add")
+                return redirect_to_form()
         if composition_type == "strobe" and source_type != "upload":
             if not background_sources:
                 messages.error(request, "Please select at least one background source.")
-                return redirect("composition-add")
-        if composition_type in {"tunnel", "psychedelic-tunnel", "tunnel-burst", "swirl", "quad", "mash", "mash-fine", "mash-fine-flux", "mash-superfine", "mash-superfine-flux", "vertical-stripes", "horizontal-stripes", "vertical-stripes-thick", "horizontal-stripes-thick", "social-scroll", "dirty-scroll", "scrollhole", "strobe", "vibrate", "morph-fast", "eye-morph", "center-shift", "star-shift", "prism-burst", "prism-burst-neon", "sleep-drift", "calm-wave", "anger-surge", "anxiety-loop", "box-room", "liquid-mirror", "liquid-mirror-extreme", "wax-melt"} and not background_sources:
+                return redirect_to_form()
+        if composition_type in {"tunnel", "psychedelic-tunnel", "tunnel-burst", "zoom-forward", "zoom-slow", "swirl", "quad", "mash", "mash-fine", "mash-fine-flux", "mash-superfine", "mash-superfine-flux", "vertical-stripes", "horizontal-stripes", "vertical-stripes-thick", "horizontal-stripes-thick", "social-scroll", "dirty-scroll", "scrollhole", "strobe", "vibrate", "morph-fast", "eye-morph", "center-shift", "star-shift", "prism-burst", "prism-burst-neon", "sleep-drift", "calm-wave", "anger-surge", "anxiety-loop", "box-room", "liquid-mirror", "liquid-mirror-extreme", "wax-melt", "slot-machine", "eye-wake"} and not background_sources:
             messages.error(request, "Please select at least one background source.")
-            return redirect("composition-add")
+            return redirect_to_form()
         if composition_type == "associations":
             has_seed_url = bool((request.POST.get("associations_seed_url") or "").strip())
             has_seed_source = bool((request.POST.get("associations_seed_source") or "").strip())
@@ -379,14 +497,14 @@ def add_composition(request, composition_id=None):
             has_local_pool = bool(background_sources or foreground_sources)
             if not (has_seed_url or has_seed_source or has_seed_upload or has_local_pool):
                 messages.error(request, "Associations mode needs a seed image (URL, upload, or source folder) or local sources.")
-                return redirect("composition-add")
+                return redirect_to_form()
 
         base_url = request.POST.get("base_url", "").rstrip("/") or f"http://{request.get_host()}"
         url_slug = request.POST.get("url_slug", "").strip().strip("/")
         requested_name = (request.POST.get("name") or "").strip()
         if not url_slug and requested_name:
             url_slug = slugify(requested_name.replace(" ", "_"))
-        full_url = f"{base_url}/{url_slug}" if base_url and url_slug else None
+        full_url = f"/{url_slug}" if url_slug else None
         page_link = normalize_page_link(request.POST.get("page_link"), request)
         selected_series = None
         if series_submitted:
@@ -419,6 +537,14 @@ def add_composition(request, composition_id=None):
             overlay_effect = "orb"
         elif overlay_effect_alias in {"rotate3d", "spin3d", "rotate"}:
             overlay_effect = "rotate_3d"
+        elif overlay_effect_alias in {"rotate3dreverse", "spin3dreverse", "rotatereverse",
+                                      "rotateopposite", "rotatebackwards", "rotateccw"}:
+            overlay_effect = "rotate_3d_reverse"
+        elif overlay_effect_alias in {"rotate3dvertical", "spin3dvertical", "rotatevertical",
+                                      "rotateflip", "rotateforward", "rotatetumble", "verticalrotate"}:
+            overlay_effect = "rotate_3d_vertical"
+        elif overlay_effect_alias in {"liquidmirror", "liquid", "mirror", "ripple", "liquidwarp"}:
+            overlay_effect = "liquid_mirror"
         elif overlay_effect_alias in {"kaleidoquad", "kaleido4"}:
             overlay_effect = "kaleido_quad"
         elif overlay_effect_alias in {"kaleidoocta", "kaleido8"}:
@@ -536,6 +662,21 @@ def add_composition(request, composition_id=None):
             "overlay_landscape_only": request.POST.get("overlay_landscape_only") == "on",
             "overlay_speed": max(0.25, min(3.0, float(request.POST.get("overlay_speed", 1.0) or 1.0))),
             "overlay_scale": max(0.2, min(3.0, float(request.POST.get("overlay_scale", 1.0) or 1.0))),
+            "overlay_opacity": max(0.0, min(1.0, float(request.POST.get("overlay_opacity", 1.0) or 1.0))),
+            "color_layer_enabled": request.POST.get("color_layer_enabled") == "on",
+            "color_layer_color": (
+                request.POST.get("color_layer_color") or "#000000"
+            ).strip()[:9] or "#000000",
+            "color_layer_opacity": max(0.0, min(1.0, float(request.POST.get("color_layer_opacity", 0.3) or 0.3))),
+            "color_layer_target": (
+                (request.POST.get("color_layer_target") or "background").strip().lower()
+                if (request.POST.get("color_layer_target") or "background").strip().lower() in {"background", "overlay"}
+                else "background"
+            ),
+            # Text layers — up to 4 cards in the admin form, each named
+            # text_layer_<field>_<index>. We accept blank rows silently and
+            # only persist entries whose text field is non-empty.
+            "text_layers": _parse_text_layers_from_post(request.POST),
             "overlay_rotate": request.POST.get("overlay_rotate") == "on",
             "overlay_fit": (
                 (request.POST.get("overlay_fit") or "free").lower().strip()
@@ -574,7 +715,7 @@ def add_composition(request, composition_id=None):
             fg_upload = request.FILES.get("foreground_video")
             if not bg_upload or not fg_upload:
                 messages.error(request, "Please upload both background and foreground videos.")
-                return redirect("composition-add")
+                return redirect_to_form()
             bg_name = default_storage.save(os.path.join("videos/backgrounds", bg_upload.name), ContentFile(bg_upload.read()))
             fg_name = default_storage.save(os.path.join("videos/foregrounds", fg_upload.name), ContentFile(fg_upload.read()))
             create_kwargs["background_video"] = bg_name
@@ -636,7 +777,7 @@ def add_composition(request, composition_id=None):
                     return redirect("composition-add")
                 
                 # ✅ Construct full URL and slug
-                full_url = f"{base_url}/{url_slug}" if base_url and url_slug else None
+                full_url = f"/{url_slug}" if url_slug else None
                 slug = url_slug or ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
                 
                 downloaded_background_files = []
@@ -774,7 +915,7 @@ def add_composition(request, composition_id=None):
                 return redirect("composition-add")
 
             # ✅ Construct full URL and slug
-            full_url = f"{base_url}/{url_slug}" if base_url and url_slug else None
+            full_url = f"/{url_slug}" if url_slug else None
             slug = url_slug or ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
 
             # Debugging print
@@ -881,7 +1022,7 @@ def add_composition(request, composition_id=None):
                 return redirect("composition-add")
 
             # ✅ Construct full URL and slug
-            full_url = f"{base_url}/{url_slug}" if base_url and url_slug else None
+            full_url = f"/{url_slug}" if url_slug else None
             slug = url_slug or ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
             
             downloaded_background_files = []
@@ -1031,7 +1172,7 @@ def add_composition(request, composition_id=None):
                 return redirect("composition-add")
 
             # ✅ Construct full URL and slug
-            full_url = f"{base_url}/{url_slug}" if base_url and url_slug else None
+            full_url = f"/{url_slug}" if url_slug else None
             slug = url_slug or ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
             
             downloaded_background_files = []
@@ -1488,12 +1629,15 @@ def _composition_list_thumbnail_src(comp: Composition) -> str:
 
 def composition_view(request):
     search_query = (request.GET.get("q") or "").strip()
-    # Only folder roots in the main library — generated grid children
+    # Default browse view shows only folder roots — generated grid children
     # (cell_index 2..9) live inside their folder page, not in this list.
-    compositions_list = (
-        Composition.objects.filter(grid_cell_index__lte=1)
-        .prefetch_related("media_assets")
-    )
+    # BUT when the user has typed a search query, drop the cell_index filter
+    # so they also see grid children that match (otherwise orphaned grids —
+    # cells 2-9 whose folder root was deleted — become invisible from
+    # library search, which is what bit us with `bla_bla_bling`).
+    compositions_list = Composition.objects.prefetch_related("media_assets")
+    if not search_query:
+        compositions_list = compositions_list.filter(grid_cell_index__lte=1)
     if (request.GET.get("ready") or "").strip() == "1":
         compositions_list = compositions_list.filter(ready_for_deployment=True)
     if search_query:
@@ -1960,7 +2104,7 @@ def _build_seed_composition_kwargs(character: str, palette: dict, taken_slugs: s
     name = f"{name_base} {get_random_string(4).lower()}"
 
     slug = _unique_slug(name, taken_slugs)
-    full_url = f"{host_origin.rstrip('/')}/{slug}/" if host_origin else f"/{slug}/"
+    full_url = f"/{slug}/"
 
     audio_path = ""
     if audio_pool and random.random() < 0.7:
@@ -2001,9 +2145,12 @@ def _build_seed_composition_kwargs(character: str, palette: dict, taken_slugs: s
         "overlay_sources": ov,
         "overlay_landscape_only": False,
         "overlay_speed": round(random.uniform(0.6, 1.4), 2),
-        "overlay_scale": round(random.uniform(0.7, 1.3), 2),
+        # Free-fit overlays scale relative to the full viewport. Scales >=1.0 produce
+        # an overlay that covers the entire background, hiding it. Cap at 0.7 and pair
+        # with a random fit so most seeded overlays sit comfortably inside their pane.
+        "overlay_scale": round(random.uniform(0.45, 0.7), 2),
         "overlay_rotate": overlay_effect == "rotate_3d",
-        "overlay_fit": "free",
+        "overlay_fit": random.choice(("square", "framed", "framed", "free")),
         "overlay_frame_margin": 0.12,
         "composition_hashtags": list(palette.get("hashtags") or []),
         "composition_emotions": list(palette.get("emotions") or []),
@@ -2527,32 +2674,21 @@ def _find_composition_by_slug(page_slug: str) -> Composition | None:
     """
     Resolve the composition for /<page_slug>/.
 
-    Matching only on ``url.endswith('/' + slug)`` was incorrect: paths such as
-    ``/projects/helpme`` also end with ``/helpme``, so visiting ``/helpme/``
-    could load the wrong row (wrong sources / settings). Prefer URLs whose
-    path is exactly ``/<slug>``, then fall back to any URL whose last path
-    segment equals the slug (newest id wins if ambiguous).
+    Prefer URLs whose path is exactly ``/<slug>``, then fall back to any URL
+    whose last path segment equals the slug (newest id wins if ambiguous).
+    Uses DB queries instead of a Python loop for O(1) performance.
     """
+    from django.db.models import Q
     want = (page_slug or "").strip().strip("/").lower()
     if not want:
         return None
     qs = Composition.objects.exclude(url__isnull=True).exclude(url__exact="")
-    exact: list[Composition] = []
-    nested: list[Composition] = []
-    for comp in qs:
-        parsed = urlparse((comp.url or "").strip())
-        parts = [p.lower() for p in (parsed.path or "").split("/") if p]
-        if not parts or parts[-1] != want:
-            continue
-        if len(parts) == 1:
-            exact.append(comp)
-        else:
-            nested.append(comp)
+    # Exact: single-segment URL like /dragonsass
+    exact = qs.filter(url=f"/{want}").order_by("-id").first()
     if exact:
-        return max(exact, key=lambda c: int(c.id))
-    if nested:
-        return max(nested, key=lambda c: int(c.id))
-    return None
+        return exact
+    # Nested: URL ending with /want or /want/ (grid cells, etc.)
+    return qs.filter(Q(url__endswith=f"/{want}") | Q(url__endswith=f"/{want}/")).order_by("-id").first()
 
 
 
@@ -2599,9 +2735,26 @@ def composition_live_by_id(request, composition_id):
     return _render_composition_public(request, matched)
 
 
+_RANDOM_LINKS_CACHE_KEY = "composition_random_links_all"
+_RANDOM_LINKS_CACHE_TTL = 90  # seconds
+
+
+def _get_random_links(exclude_id: int) -> list:
+    links = cache.get(_RANDOM_LINKS_CACHE_KEY)
+    if links is None:
+        links = list(
+            Composition.objects.exclude(url__isnull=True)
+            .exclude(url__exact="")
+            .values_list("url", flat=True)
+        )
+        links = [u for u in links if u]
+        cache.set(_RANDOM_LINKS_CACHE_KEY, links, _RANDOM_LINKS_CACHE_TTL)
+    matched_url = Composition.objects.filter(id=exclude_id).values_list("url", flat=True).first() or ""
+    return [u for u in links if u != matched_url]
+
+
 def _render_composition_public(request, matched):
-    candidates = Composition.objects.exclude(url__isnull=True).exclude(url__exact="").exclude(id=matched.id)
-    random_links = [comp.url for comp in candidates if comp.url]
+    random_links = _get_random_links(matched.id)
     layer_transitions = ((matched.filter_settings or {}).get("layer_transitions") or {})
     if not isinstance(layer_transitions, dict):
         layer_transitions = {}
@@ -2613,6 +2766,11 @@ def _render_composition_public(request, matched):
         "composition": matched,
         "composition_mood_rating": (matched.mood_rating or "mid").lower(),
         "render_mode": request.GET.get("render") == "1",
+        # Distinguishes a *still* poster capture (single frame, motion-modes
+        # should freeze on a good frame) from a *video* render (motion modes
+        # must actually run). Set by capture_composition_still via the URL
+        # param `&capture=still`; absent for the 10s/45s video captures.
+        "still_capture": request.GET.get("capture") == "still",
         "muted": request.GET.get("muted") == "1",
         "composition_type": (matched.type or "").lower(),
         "composition_transition": (matched.transition or "none").lower(),
@@ -2638,6 +2796,11 @@ def _render_composition_public(request, matched):
         "overlay_landscape_only": bool(getattr(matched, "overlay_landscape_only", False)),
         "overlay_speed": matched.overlay_speed if matched.overlay_speed is not None else 1.0,
         "overlay_scale": matched.overlay_scale if matched.overlay_scale is not None else 1.0,
+        "overlay_opacity": matched.overlay_opacity if matched.overlay_opacity is not None else 1.0,
+        "color_layer_enabled": bool(getattr(matched, "color_layer_enabled", False)),
+        "color_layer_color": getattr(matched, "color_layer_color", None) or "#000000",
+        "color_layer_opacity": matched.color_layer_opacity if matched.color_layer_opacity is not None else 0.3,
+        "color_layer_target": (getattr(matched, "color_layer_target", None) or "background"),
         "overlay_rotate": bool(getattr(matched, "overlay_rotate", False)),
         "overlay_effect": overlay_effect,
         "overlay_fit": (matched.overlay_fit or "free"),
@@ -2657,8 +2820,45 @@ def _render_composition_public(request, matched):
             matched.foreground_sources,
             landscape_only=bool(getattr(matched, "landscape_only", False)),
         ),
+        "text_layers": list(getattr(matched, "text_layers", None) or []),
     }
+
+    # Road-trip slot semantics for the four foreground source slots:
+    #   slot 1 → left ground (perspective-warped, on the same plane as road)
+    #   slot 2 → right ground (perspective-warped)
+    #   slot 3 → sky (first source)
+    #   slot 4 → sky (second source)
+    # The road itself reads from the background source slot.
+    # Other composition types ignore these — they're populated
+    # unconditionally so the template can json_script them without a
+    # per-type check, but the arrays are empty when irrelevant.
+    _fg_sources = list(matched.foreground_sources or [])
+    if (matched.type or "").lower() == "road-trip":
+        _ground_left_sources = _fg_sources[0:1]
+        _ground_right_sources = _fg_sources[1:2]
+        _sky_sources = _fg_sources[2:4]
+    else:
+        _ground_left_sources = []
+        _ground_right_sources = []
+        _sky_sources = []
+    _landscape_only = bool(getattr(matched, "landscape_only", False))
+    context["road_ground_left_assets"] = collect_source_assets(
+        _ground_left_sources, landscape_only=_landscape_only,
+    ) if _ground_left_sources else []
+    context["road_ground_right_assets"] = collect_source_assets(
+        _ground_right_sources, landscape_only=_landscape_only,
+    ) if _ground_right_sources else []
+    context["road_sky_assets"] = collect_source_assets(
+        _sky_sources, landscape_only=_landscape_only,
+    ) if _sky_sources else []
     context["poster_url"] = _composition_list_thumbnail_src(matched)
+    audio_url = ""
+    audio_file = getattr(matched, "audio_file", None)
+    if audio_file:
+        audio_name = getattr(audio_file, "name", "") or ""
+        if audio_name and default_storage.exists(audio_name):
+            audio_url = audio_file.url
+    context["composition_audio_url"] = audio_url
     return render(request, "composition_public.html", context)
 
 
@@ -2808,8 +3008,20 @@ def composition_voucher_record_redeem(request, composition_id):
 @require_POST
 @csrf_exempt
 def composition_generate_media_single(request, composition_id):
-    from ..nft_media import generate_composition_media_assets
-    import threading
+    """Library-page cog menu posts here to (re)generate poster / 10s clip / all
+    media for one composition.
+
+    Critical: runs the work in a *detached subprocess*, not a daemon thread.
+    Playwright + Chromium can spike RSS by 200-500 MB per launch. With the
+    single gunicorn worker doing the in-process threaded approach, a few
+    consecutive clicks would OOM the worker — and the bare `except Exception:
+    pass` swallowed every failure, so the UI silently never updated.
+    Subprocess isolates the heavy work and lets the watchdog catch real
+    hangs.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path as _Path
 
     comp = get_object_or_404(Composition, id=composition_id)
     kinds_param = (request.POST.get("kinds") or "poster,preview_10s").strip()
@@ -2818,14 +3030,51 @@ def composition_generate_media_single(request, composition_id):
         return JsonResponse({"error": "No valid kinds specified."}, status=400)
     force = request.POST.get("force") == "1"
 
-    def _run():
-        try:
-            generate_composition_media_assets(comp, force=force, kinds=kinds)
-        except Exception:
-            pass
+    project_root = _Path(__file__).resolve().parent.parent.parent
+    # Self-describing subprocess: prints a START line the instant it boots and
+    # a DONE / FAIL line on exit (with elapsed seconds + which asset kinds
+    # were written). That makes `tail -f media_gen.log` a live progress feed
+    # so you can see at a glance what's being generated and what failed.
+    script = (
+        "import os, sys, time, traceback, django\n"
+        f"sys.path.insert(0, {str(project_root)!r})\n"
+        f"os.chdir({str(project_root)!r})\n"
+        "os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'djangoscrap.settings')\n"
+        "django.setup()\n"
+        "from djangoscrap.nft_media import generate_composition_media_assets\n"
+        "from djangoscrap.models import Composition\n"
+        f"_cid = {int(composition_id)}\n"
+        f"_kinds = {kinds!r}\n"
+        f"_force = {bool(force)!r}\n"
+        "_label = f'comp={_cid} kinds={\",\".join(_kinds)} force={_force}'\n"
+        "_t = time.time()\n"
+        "print(f'[{time.strftime(\"%H:%M:%S\")}] START {_label}', flush=True)\n"
+        "try:\n"
+        "    c = Composition.objects.prefetch_related('media_assets').get(id=_cid)\n"
+        "    res = generate_composition_media_assets(c, force=_force, kinds=_kinds)\n"
+        "    dt = time.time() - _t\n"
+        "    written = list(res.keys()) if res else []\n"
+        "    print(f'[{time.strftime(\"%H:%M:%S\")}] DONE  {_label} in {dt:.1f}s -> {written}', flush=True)\n"
+        "except Exception as e:\n"
+        "    dt = time.time() - _t\n"
+        "    print(f'[{time.strftime(\"%H:%M:%S\")}] FAIL  {_label} after {dt:.1f}s: {type(e).__name__}: {e}', flush=True)\n"
+        "    traceback.print_exc()\n"
+    )
 
-    threading.Thread(target=_run, daemon=True).start()
-    return JsonResponse({"queued": True, "composition_id": composition_id, "kinds": kinds})
+    log_path = str(project_root / "media_gen.log")
+    try:
+        with open(log_path, "ab") as logf:
+            subprocess.Popen(
+                [sys.executable, "-c", script],
+                stdout=logf,
+                stderr=logf,
+                start_new_session=True,
+                close_fds=True,
+            )
+    except Exception as e:
+        return JsonResponse({"error": f"spawn_failed: {type(e).__name__}: {e}"}, status=500)
+
+    return JsonResponse({"queued": True, "composition_id": composition_id, "kinds": kinds, "force": force})
 
 
 def composition_media_status(request, composition_id):

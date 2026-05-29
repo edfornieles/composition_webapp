@@ -104,7 +104,32 @@ class Composition(models.Model):
     overlay_landscape_only = models.BooleanField(default=False)
     overlay_speed = models.FloatField(default=1.0)
     overlay_scale = models.FloatField(default=1.0)
+    overlay_opacity = models.FloatField(default=1.0)
     overlay_rotate = models.BooleanField(default=False)
+
+    # Optional flat-color tint layer applied either above the background (below
+    # foreground/overlay) or above the overlay (above everything).
+    COLOR_LAYER_TARGET_CHOICES = [
+        ("background", "Above background"),
+        ("overlay", "Above overlay"),
+    ]
+    color_layer_enabled = models.BooleanField(default=False)
+    color_layer_color = models.CharField(max_length=9, default="#000000")
+    color_layer_opacity = models.FloatField(default=0.3)
+    color_layer_target = models.CharField(
+        max_length=16, choices=COLOR_LAYER_TARGET_CHOICES, default="background"
+    )
+
+    # Text layers (Paik / Ashley TV-opera-inspired). Up to ~4 entries; each is
+    # a dict with keys:
+    #   text, preset, font_family, font_size_pct, color, position, z_target,
+    #   start_sec, duration_sec
+    # `preset` is the named effect (static / flicker / typewriter / scroll-band
+    # / scroll-up / bounce / karaoke / glitch / rgb-shift / strobe / drop-in /
+    # flash). The live template renders each entry with the matching CSS/JS
+    # animation. JSON-only so we can add new presets without further
+    # migrations.
+    text_layers = models.JSONField(default=list, blank=True)
     OVERLAY_FIT_CHOICES = [
         ("free", "Free (unconstrained)"),
         ("framed", "Framed (cropped, even borders)"),

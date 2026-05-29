@@ -37,7 +37,7 @@
     <div class="sidebar">
       <nav class="mt-2">
         <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview">
-          <li class="nav-item">
+          <li class="nav-item has-treeview">
             <a href="javascript:void(0)" class="nav-link">
               <i class="nav-icon fas fa-user"></i>
               <p>Compositions <i class="fas fa-angle-left right"></i></p>
@@ -72,7 +72,7 @@
             </ul>
           </li>
           
-          <li class="nav-item">
+          <li class="nav-item has-treeview">
             <a href="javascript:void(0)" class="nav-link">
               <i class="nav-icon fas fa-user"></i>
               <p>Sources <i class="fas fa-angle-left right"></i></p>
@@ -100,7 +100,7 @@
               </li>
             </ul>
           </li> 
-          <li class="nav-item">
+          <li class="nav-item has-treeview">
             <a href="javascript:void(0)" class="nav-link">
               <i class="nav-icon fas fa-music"></i>
               <p>Audio Sources <i class="fas fa-angle-left right"></i></p>
@@ -124,10 +124,16 @@
                   <p>Noise Studio</p>
                 </a>
               </li>
+              <li class="nav-item">
+                <a href="{% url 'voiceover-composer' %}" class="nav-link">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Composition Studio</p>
+                </a>
+              </li>
             </ul>
           </li>
 
-          <li class="nav-item">
+          <li class="nav-item has-treeview">
             <a href="javascript:void(0)" class="nav-link">
               <i class="nav-icon fas fa-brain"></i>
               <p>Character thoughts <i class="fas fa-angle-left right"></i></p>
@@ -154,7 +160,7 @@
             </ul>
           </li>
 
-          <li class="nav-item">
+          <li class="nav-item has-treeview">
             <a href="javascript:void(0)" class="nav-link">
               <i class="nav-icon fas fa-th"></i>
               <p>Thoughtscape <i class="fas fa-angle-left right"></i></p>
@@ -175,7 +181,7 @@
             </ul>
           </li>
 
-          <li class="nav-item">
+          <li class="nav-item has-treeview">
             <a href="javascript:void(0)" class="nav-link">
               <i class="nav-icon fas fa-project-diagram"></i>
               <p>Associations <i class="fas fa-angle-left right"></i></p>
@@ -208,7 +214,7 @@
             </a>
           </li> -->
 
-          <li class="nav-item">
+          <li class="nav-item has-treeview">
             <a href="javascript:void(0)" class="nav-link">
               <i class="nav-icon fas fa-mask"></i>
               <p>Masks <i class="fas fa-angle-left right"></i></p>
@@ -235,7 +241,40 @@
             </ul>
           </li>
           
-          <li class="nav-item">
+          <li class="nav-item has-treeview">
+            <a href="javascript:void(0)" class="nav-link">
+              <i class="nav-icon fas fa-cube"></i>
+              <p>3D Studio <i class="fas fa-angle-left right"></i></p>
+            </a>
+            <ul class="nav nav-treeview">
+              <li class="nav-item">
+                <a href="{% url 'studio_3d_page' %}" class="nav-link">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Studio</p>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="{% url 'avatar_page' %}" class="nav-link">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Avatar</p>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="{% url 'wojak_play_page' %}" class="nav-link">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Wojak Playground</p>
+                </a>
+              </li>
+              <li class="nav-item">
+                <a href="{% url 'template_play_page' %}" class="nav-link">
+                  <i class="far fa-circle nav-icon"></i>
+                  <p>Template Playground</p>
+                </a>
+              </li>
+            </ul>
+          </li>
+
+          <li class="nav-item has-treeview">
             <a href="javascript:void(0)" class="nav-link">
               <i class="nav-icon fas fa-gem"></i>
               <p>NFT <i class="fas fa-angle-left right"></i></p>

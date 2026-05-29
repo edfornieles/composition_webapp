@@ -75,6 +75,18 @@
         from { transform: rotateY(0deg); }
         to   { transform: rotateY(360deg); }
     }
+    /* Reverse-direction variant — pairs with the "Rotate (reverse)" effect
+       so two layered folders can spin in opposite directions. */
+    @keyframes overlaySpinContinuousReverse {
+        from { transform: rotateY(0deg); }
+        to   { transform: rotateY(-360deg); }
+    }
+    /* Vertical (X-axis) spin — top-to-bottom tumble for the
+       "Rotate (vertical)" overlay effect. */
+    @keyframes overlaySpinContinuousVertical {
+        from { transform: rotateX(0deg); }
+        to   { transform: rotateX(360deg); }
+    }
     @keyframes overlaySpinFrontHalf {
         0%   { transform: perspective(1000px) rotateY(-90deg); }
         22%  { transform: perspective(1000px) rotateY(0deg); }
@@ -145,6 +157,11 @@
                                                 <option value="box-room" {% if composition.type == 'box-room' %}selected{% endif %}>Box Room 3D</option>
                                                 <option value="cylinder-room" {% if composition.type == 'cylinder-room' %}selected{% endif %}>Cylinder Room 3D</option>
                                                 <option value="triple-cylinder-room" {% if composition.type == 'triple-cylinder-room' %}selected{% endif %}>Triple Cylinder 3D</option>
+                                                <option value="rotating-cube" {% if composition.type == 'rotating-cube' %}selected{% endif %}>Rotating Cube 3D</option>
+                                                <option value="rotating-cube-strobe" {% if composition.type == 'rotating-cube-strobe' %}selected{% endif %}>Rotating Cube 3D (Strobe)</option>
+                                                <option value="road-trip" {% if composition.type == 'road-trip' %}selected{% endif %}>Road Trip (driving on images)</option>
+                                                <option value="slot-machine" {% if composition.type == 'slot-machine' %}selected{% endif %}>Slot Machine (spinning reels)</option>
+                                                <option value="eye-wake" {% if composition.type == 'eye-wake' %}selected{% endif %}>Eye Wake (blinking glimpses)</option>
                                             </optgroup>
                                             <optgroup label="Classic &amp; Single">
                                                 <option value="classic" {% if composition.type == 'classic' %}selected{% endif %}>Classic</option>
@@ -222,6 +239,8 @@
                                                 <option value="tunnel" {% if composition.type == 'tunnel' %}selected{% endif %}>Tunnel</option>
                                                 <option value="tunnel-burst" {% if composition.type == 'tunnel-burst' %}selected{% endif %}>Tunnel Burst (Explode)</option>
                                                 <option value="tunnel-double" {% if composition.type == 'tunnel-double' %}selected{% endif %}>Tunnel Double</option>
+                                                <option value="zoom-forward" {% if composition.type == 'zoom-forward' %}selected{% endif %}>Zoom Forward (Hyperspace)</option>
+                                                <option value="zoom-slow" {% if composition.type == 'zoom-slow' %}selected{% endif %}>Zoom Slow (Large Screen)</option>
                                             </optgroup>
                                             <optgroup label="Liquid &amp; Wax">
                                                 <option value="liquid-mirror" {% if composition.type == 'liquid-mirror' %}selected{% endif %}>Liquid Mirror</option>
@@ -246,6 +265,7 @@
                                                     <div class="row ">
 
                                                         <div class="col-md-3">
+                                                            <small class="slot-role-label text-info fw-bold d-none" data-slot-role="bg1"></small>
                                                             <select name="background_sources1"
                                                                 class="form-control mb-2" title="Background source 1">
                                                                 <option value="">Select a Source</option>
@@ -256,6 +276,7 @@
                                                         </div>
 
                                                         <div class="col-md-3">
+                                                            <small class="slot-role-label text-info fw-bold d-none" data-slot-role="bg2"></small>
                                                             <select name="background_sources2"
                                                                 class="form-control mb-2" title="Background source 2">
                                                                 <option value="">Select a Source</option>
@@ -266,6 +287,7 @@
                                                         </div>
 
                                                         <div class="col-md-3">
+                                                            <small class="slot-role-label text-info fw-bold d-none" data-slot-role="bg3"></small>
                                                             <select name="background_sources3"
                                                                 class="form-control mb-2" title="Background source 3">
                                                                 <option value="">Select a Source</option>
@@ -276,6 +298,7 @@
                                                         </div>
 
                                                         <div class="col-md-3">
+                                                            <small class="slot-role-label text-info fw-bold d-none" data-slot-role="bg4"></small>
                                                             <select name="background_sources4"
                                                                 class="form-control mb-2" title="Background source 4">
                                                                 <option value="">Select a Source</option>
@@ -310,6 +333,7 @@
                                                     <div class="row ">
 
                                                         <div class="col-md-3">
+                                                            <small class="slot-role-label text-info fw-bold d-none" data-slot-role="fg1"></small>
                                                             <select name="foreground_sources1"
                                                                 class="form-control mb-2" title="Foreground source 1">
                                                                 <option value="">Select a Source</option>
@@ -320,6 +344,7 @@
                                                         </div>
 
                                                         <div class="col-md-3">
+                                                            <small class="slot-role-label text-info fw-bold d-none" data-slot-role="fg2"></small>
                                                             <select name="foreground_sources2"
                                                                 class="form-control mb-2" title="Foreground source 2">
                                                                 <option value="">Select a Source</option>
@@ -330,6 +355,7 @@
                                                         </div>
 
                                                         <div class="col-md-3">
+                                                            <small class="slot-role-label text-info fw-bold d-none" data-slot-role="fg3"></small>
                                                             <select name="foreground_sources3"
                                                                 class="form-control mb-2" title="Foreground source 3">
                                                                 <option value="">Select a Source</option>
@@ -340,6 +366,7 @@
                                                         </div>
 
                                                         <div class="col-md-3">
+                                                            <small class="slot-role-label text-info fw-bold d-none" data-slot-role="fg4"></small>
                                                             <select name="foreground_sources4"
                                                                 class="form-control mb-2" title="Foreground source 4">
                                                                 <option value="">Select a Source</option>
@@ -431,6 +458,7 @@
                                                     <option value="none" {% if selected_overlay_transition|default:'none' == 'none' %}selected{% endif %}>No transition</option>
                                                     <option value="fade" {% if selected_overlay_transition == 'fade' %}selected{% endif %}>Fade</option>
                                                     <option value="crossfade" {% if selected_overlay_transition == 'crossfade' %}selected{% endif %}>Crossfade</option>
+                                                    <option value="melt" {% if selected_overlay_transition == 'melt' %}selected{% endif %}>Melt (slow, blurred)</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -555,6 +583,9 @@
                                                 <label for="overlay_speed" class="form-label">Overlay Speed: <span id="overlaySpeedValue">{{ composition.overlay_speed|default:1.0 }}</span>x</label>
                                                 <input type="range" id="overlay_speed" name="overlay_speed" class="form-control-range"
                                                        min="0.25" max="3.0" step="0.01" value="{{ composition.overlay_speed|default:1.0 }}">
+                                                <label for="overlay_opacity" class="form-label mt-2">Overlay Opacity: <span id="overlayOpacityValue">{{ composition.overlay_opacity|default:1.0 }}</span></label>
+                                                <input type="range" id="overlay_opacity" name="overlay_opacity" class="form-control-range"
+                                                       min="0.0" max="1.0" step="0.01" value="{{ composition.overlay_opacity|default:1.0 }}">
                                             </div>
                                         </div>
                                         <div class="row mt-2">
@@ -569,6 +600,9 @@
                                                 <select id="overlay_effect" name="overlay_effect" class="form-control mb-2" title="Overlay effect mode">
                                                     <option value="none" {% if selected_overlay_effect|default:'none' == 'none' %}selected{% endif %}>None</option>
                                                     <option value="rotate_3d" {% if selected_overlay_effect == 'rotate_3d' %}selected{% endif %}>Rotate</option>
+                                                    <option value="rotate_3d_reverse" {% if selected_overlay_effect == 'rotate_3d_reverse' %}selected{% endif %}>Rotate (reverse)</option>
+                                                    <option value="rotate_3d_vertical" {% if selected_overlay_effect == 'rotate_3d_vertical' %}selected{% endif %}>Rotate (vertical / top-to-bottom)</option>
+                                                    <option value="liquid_mirror" {% if selected_overlay_effect == 'liquid_mirror' %}selected{% endif %}>Liquid mirror</option>
                                                     <option value="circle_rotate" {% if selected_overlay_effect == 'circle_rotate' %}selected{% endif %}>Circle rotate</option>
                                                     <option value="circle_rotate_mirror" {% if selected_overlay_effect == 'circle_rotate_mirror' %}selected{% endif %}>Circle rotate mirror</option>
                                                     <option value="mash" {% if selected_overlay_effect == 'mash' %}selected{% endif %}>Mash</option>
@@ -618,6 +652,138 @@
                                                 <small class="text-muted">Even border on all sides in Framed mode. 0% = overlay fills the screen.</small>
                                             </div>
                                         </div>
+                                        <hr class="my-4">
+                                        <div class="row">
+                                            <div class="col-12">
+                                                <div class="form-check mb-2">
+                                                    <input id="color_layer_enabled" name="color_layer_enabled" type="checkbox" class="form-check-input"
+                                                        {% if composition and composition.color_layer_enabled %}checked{% endif %}>
+                                                    <label for="color_layer_enabled" class="form-check-label">Enable color layer</label>
+                                                    <small class="text-muted d-block">Adds a flat-color tint over the chosen layer.</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row mt-2" id="color_layer_controls">
+                                            <div class="col-md-3">
+                                                <label for="color_layer_color" class="form-label">Color</label>
+                                                <input type="color" id="color_layer_color" name="color_layer_color"
+                                                       class="form-control form-control-color"
+                                                       value="{{ composition.color_layer_color|default:'#000000' }}">
+                                            </div>
+                                            <div class="col-md-5">
+                                                <label for="color_layer_opacity" class="form-label">Opacity: <span id="colorLayerOpacityValue">{{ composition.color_layer_opacity|default:0.3 }}</span></label>
+                                                <input type="range" id="color_layer_opacity" name="color_layer_opacity" class="form-control-range"
+                                                       min="0.0" max="1.0" step="0.01" value="{{ composition.color_layer_opacity|default:0.3 }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label for="color_layer_target" class="form-label">Apply over</label>
+                                                <select id="color_layer_target" name="color_layer_target" class="form-control">
+                                                    <option value="background" {% if not composition or composition.color_layer_target == 'background' or not composition.color_layer_target %}selected{% endif %}>Above background (below overlay)</option>
+                                                    <option value="overlay" {% if composition.color_layer_target == 'overlay' %}selected{% endif %}>Above overlay (top of stack)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <hr class="my-4">
+                                        {# ── TEXT LAYERS — Paik / Ashley TV-opera-inspired ── #}
+                                        <div class="row">
+                                            <div class="col-12">
+                                                <h6 class="mb-2">Text layers</h6>
+                                                <small class="text-muted d-block mb-3">One typographic overlay per composition. Pick a preset effect (typewriter, scroll-band, bounce, karaoke, flicker, glitch…). Leave the text blank to disable.</small>
+                                            </div>
+                                        </div>
+                                        {{ composition.text_layers|json_script:"existing-text-layers" }}
+                                        <div id="textLayerCards"></div>
+                                        <script>
+                                          (function () {
+                                            const PRESETS = [
+                                              {v:"static",      l:"Static — appears, no animation"},
+                                              {v:"flash",       l:"Flash — fade in, hold, fade out"},
+                                              {v:"flicker",     l:"Flicker — Paik CRT glitch"},
+                                              {v:"typewriter",  l:"Typewriter — characters appear one-by-one"},
+                                              {v:"scroll-band", l:"Scroll band — horizontal ticker (right→left)"},
+                                              {v:"scroll-up",   l:"Scroll up — credits-style vertical roll"},
+                                              {v:"bounce",      l:"Bounce — text bounces L↔R across screen"},
+                                              {v:"karaoke",     l:"Karaoke — bouncing ball traces words"},
+                                              {v:"glitch",      l:"Glitch — sliced & shifted"},
+                                              {v:"rgb-shift",   l:"RGB shift — chromatic aberration"},
+                                              {v:"strobe",      l:"Strobe — flashing on/off"},
+                                              {v:"drop-in",     l:"Drop in — fall from top with bounce"},
+                                            ];
+                                            const POSITIONS = [
+                                              "top","center","bottom","top-left","top-right","bottom-left","bottom-right"
+                                            ];
+                                            const Z_TARGETS = [
+                                              {v:"above-bg",      l:"Above background"},
+                                              {v:"above-fg",      l:"Above foreground"},
+                                              {v:"above-overlay", l:"Above overlay (default)"},
+                                              {v:"top",           l:"On top of everything"},
+                                            ];
+                                            let existing = [];
+                                            try { existing = JSON.parse(document.getElementById("existing-text-layers").textContent || "[]") || []; }
+                                            catch (e) { existing = []; }
+                                            const MAX = 1;
+                                            const host = document.getElementById("textLayerCards");
+                                            for (let i = 1; i <= MAX; i++) {
+                                              const cur = existing[i - 1] || {};
+                                              const card = document.createElement("div");
+                                              card.className = "card mb-2";
+                                              card.style.background = "#fafafa";
+                                              card.innerHTML = `
+                                                <div class="card-body p-2">
+                                                  <div class="row">
+                                                    <div class="col-md-9">
+                                                      <label class="form-label mb-1"><strong>Layer ${i}</strong> — text</label>
+                                                      <textarea name="text_layer_text_${i}" rows="2" class="form-control form-control-sm" placeholder="(leave blank to skip this slot)">${(cur.text || "").replace(/</g,"&lt;")}</textarea>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                      <label class="form-label mb-1">Effect preset</label>
+                                                      <select name="text_layer_preset_${i}" class="form-control form-control-sm">
+                                                        ${PRESETS.map(p => `<option value="${p.v}"${(cur.preset||"static")===p.v?" selected":""}>${p.l}</option>`).join("")}
+                                                      </select>
+                                                    </div>
+                                                  </div>
+                                                  <div class="row mt-2">
+                                                    <div class="col-md-3">
+                                                      <label class="form-label mb-1">Position</label>
+                                                      <select name="text_layer_position_${i}" class="form-control form-control-sm">
+                                                        ${POSITIONS.map(p => `<option value="${p}"${(cur.position||"center")===p?" selected":""}>${p}</option>`).join("")}
+                                                      </select>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                      <label class="form-label mb-1">Layer above</label>
+                                                      <select name="text_layer_z_target_${i}" class="form-control form-control-sm">
+                                                        ${Z_TARGETS.map(z => `<option value="${z.v}"${(cur.z_target||"above-overlay")===z.v?" selected":""}>${z.l}</option>`).join("")}
+                                                      </select>
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                      <label class="form-label mb-1">Color</label>
+                                                      <input type="color" name="text_layer_color_${i}" class="form-control form-control-color form-control-sm" value="${cur.color || "#ffffff"}" title="Text color">
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                      <label class="form-label mb-1">Size (% of height)</label>
+                                                      <input type="number" name="text_layer_font_size_pct_${i}" class="form-control form-control-sm" min="1" max="50" step="0.5" value="${cur.font_size_pct || 6}">
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                      <label class="form-label mb-1">Font family</label>
+                                                      <input type="text" name="text_layer_font_family_${i}" class="form-control form-control-sm" placeholder="Inter, sans-serif" value="${(cur.font_family || "").replace(/"/g,"&quot;")}">
+                                                    </div>
+                                                  </div>
+                                                  <div class="row mt-2">
+                                                    <div class="col-md-3">
+                                                      <label class="form-label mb-1">Start (sec)</label>
+                                                      <input type="number" name="text_layer_start_sec_${i}" class="form-control form-control-sm" min="0" step="0.1" value="${cur.start_sec || 0}">
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                      <label class="form-label mb-1" title="Duration in seconds. 0 = run indefinitely (loop / infinite effects).">Duration (sec, 0 = ∞)</label>
+                                                      <input type="number" name="text_layer_duration_sec_${i}" class="form-control form-control-sm" min="0" step="0.1" value="${cur.duration_sec || 0}">
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              `;
+                                              host.appendChild(card);
+                                            }
+                                          })();
+                                        </script>
                                         <hr class="my-4">
                                         <div class="row">
                                             <div class="col-md-6">
@@ -1321,6 +1487,7 @@
         const overlayLandscapeOnlyInput = document.getElementById("overlay_landscape_only");
         const overlaySpeedInput = document.getElementById("overlay_speed");
         const overlayScaleInput = document.getElementById("overlay_scale");
+        const overlayOpacityInput = document.getElementById("overlay_opacity");
         const overlayRotateInput = document.getElementById("overlay_rotate");
         const sourcePlaybackModeInput = document.getElementById("source_playback_mode");
         const landscapeOnlyInput = document.getElementById("landscape_only");
@@ -1331,6 +1498,7 @@
         const speedValue = document.getElementById("speedValue");
         const overlaySpeedValue = document.getElementById("overlaySpeedValue");
         const overlayScaleValue = document.getElementById("overlayScaleValue");
+        const overlayOpacityValue = document.getElementById("overlayOpacityValue");
         const associationsControls = document.getElementById("associations_controls");
         const associationsSeedSourceInput = document.getElementById("associations_seed_source");
         const associationsSeedUrlInput = document.getElementById("associations_seed_url");
@@ -2375,7 +2543,7 @@
             const iframe = document.createElement("iframe");
             iframe.dataset.livePreview = "1";
             iframe.dataset.compId = String(cid);
-            iframe.src = `/composition-live/${cid}/?t=${Date.now()}`;
+            iframe.src = `/composition-live/${cid}/?muted=1&t=${Date.now()}`;
             iframe.style.cssText = [
                 "position:absolute", "inset:0",
                 "width:100%", "height:100%",
@@ -6053,7 +6221,12 @@
             filterPreviewOverlay.innerHTML = "";
             if (!overlayPreviewAssets.length) return;
 
-            const isRotate3d = document.getElementById("overlay_effect")?.value === "rotate_3d";
+            const overlayEffectValue = document.getElementById("overlay_effect")?.value;
+            const isRotate3d = overlayEffectValue === "rotate_3d"
+                            || overlayEffectValue === "rotate_3d_reverse"
+                            || overlayEffectValue === "rotate_3d_vertical";
+            const isReverseRotate  = overlayEffectValue === "rotate_3d_reverse";
+            const isVerticalRotate = overlayEffectValue === "rotate_3d_vertical";
 
             if (isRotate3d) {
                 const stageW = filterPreviewMedia ? Math.max(100, filterPreviewMedia.clientWidth) : 400;
@@ -6075,7 +6248,9 @@
                 front.style.cssText = "position:absolute;inset:0;backface-visibility:visible;";
 
                 const back = document.createElement("div");
-                back.style.cssText = "position:absolute;inset:0;transform:rotateY(180deg);backface-visibility:visible;";
+                back.style.cssText = "position:absolute;inset:0;transform:"
+                    + (isVerticalRotate ? "rotateX(180deg)" : "rotateY(180deg)")
+                    + ";backface-visibility:visible;";
 
                 rotator.appendChild(front);
                 rotator.appendChild(back);
@@ -6105,13 +6280,17 @@
                             el.alt = "";
                         }
                         el.style.cssText = "width:100%;height:100%;object-fit:contain;object-position:center;display:block;";
-                        if (faceIdx === 1) el.style.transform = "scaleX(-1)";
+                        if (faceIdx === 1) el.style.transform = isVerticalRotate ? "scaleY(-1)" : "scaleX(-1)";
                         face.appendChild(el);
                     });
                 };
 
                 loadFaces();
-                rotator.style.animation = `overlaySpinContinuous ${fullTurnMs}ms linear infinite`;
+                rotator.style.animation = `${
+                    isVerticalRotate ? "overlaySpinContinuousVertical" :
+                    isReverseRotate  ? "overlaySpinContinuousReverse"  :
+                                       "overlaySpinContinuous"
+                } ${fullTurnMs}ms linear infinite`;
 
                 if (overlayPreviewAssets.length > 1) {
                     overlayPreviewTicker = setInterval(() => {
@@ -6444,9 +6623,51 @@
                 startOverlayPreviewTicker();
             });
         }
+        if (overlayOpacityInput) {
+            const syncOpacity = () => {
+                const v = Number(overlayOpacityInput.value || 1);
+                if (overlayOpacityValue) overlayOpacityValue.textContent = v.toFixed(2);
+                startOverlayPreviewTicker();
+            };
+            overlayOpacityInput.addEventListener("input", syncOpacity);
+            overlayOpacityInput.addEventListener("change", syncOpacity);
+        }
         const overlayEffectSelect = document.getElementById("overlay_effect");
         if (overlayEffectSelect) {
             overlayEffectSelect.addEventListener("change", startOverlayPreviewTicker);
+        }
+        const colorLayerEnabledInput = document.getElementById("color_layer_enabled");
+        const colorLayerColorInput = document.getElementById("color_layer_color");
+        const colorLayerOpacityInput = document.getElementById("color_layer_opacity");
+        const colorLayerOpacityValue = document.getElementById("colorLayerOpacityValue");
+        const colorLayerTargetInput = document.getElementById("color_layer_target");
+        const colorLayerControls = document.getElementById("color_layer_controls");
+        function updateColorLayerControlsVisibility() {
+            if (!colorLayerControls) return;
+            colorLayerControls.style.opacity = colorLayerEnabledInput && colorLayerEnabledInput.checked ? "1" : "0.4";
+        }
+        updateColorLayerControlsVisibility();
+        if (colorLayerEnabledInput) {
+            colorLayerEnabledInput.addEventListener("change", () => {
+                updateColorLayerControlsVisibility();
+                startOverlayPreviewTicker();
+            });
+        }
+        if (colorLayerColorInput) {
+            colorLayerColorInput.addEventListener("input", startOverlayPreviewTicker);
+            colorLayerColorInput.addEventListener("change", startOverlayPreviewTicker);
+        }
+        if (colorLayerOpacityInput) {
+            const syncColorOpacity = () => {
+                const v = Number(colorLayerOpacityInput.value || 0);
+                if (colorLayerOpacityValue) colorLayerOpacityValue.textContent = v.toFixed(2);
+                startOverlayPreviewTicker();
+            };
+            colorLayerOpacityInput.addEventListener("input", syncColorOpacity);
+            colorLayerOpacityInput.addEventListener("change", syncColorOpacity);
+        }
+        if (colorLayerTargetInput) {
+            colorLayerTargetInput.addEventListener("change", startOverlayPreviewTicker);
         }
         const overlayFrameMarginInput = document.getElementById("overlay_frame_margin");
         const overlayFrameMarginValue = document.getElementById("overlayFrameMarginValue");
@@ -6790,6 +7011,46 @@
                 $('#uploadRadiol').hide();
             }
         });
+
+        // Per-slot role labels — show what each source slot drives for
+        // composition types that assign distinct semantic roles to slots
+        // (e.g., road-trip: slot 1 = Left Land, slot 2 = Right Land, etc.).
+        // The labels appear above the matching dropdown and disappear when
+        // the composition type changes to something that doesn't need them.
+        const SLOT_ROLE_LABELS = {
+            'road-trip': {
+                bg1: 'Road tiles',
+                bg2: '',
+                bg3: '',
+                bg4: '',
+                fg1: 'Left Land',
+                fg2: 'Right Land',
+                fg3: 'Sky',
+                fg4: 'Sky',
+            },
+            'eye-wake': {
+                // Each blink reveals one image. If BOTH bg and fg are
+                // set, the picker alternates between them per blink so
+                // two image worlds flicker through one after the other.
+                bg1: 'Eye images (set A)',
+                fg1: 'Eye images (set B — alternates with A)',
+            },
+        };
+        const updateSlotRoleLabels = () => {
+            const t = (document.querySelector('select[name="type"]') || {}).value || '';
+            const roles = SLOT_ROLE_LABELS[t] || {};
+            document.querySelectorAll('.slot-role-label').forEach((el) => {
+                const slot = el.getAttribute('data-slot-role');
+                const text = roles[slot] || '';
+                el.textContent = text;
+                el.classList.toggle('d-none', !text);
+            });
+        };
+        document.querySelector('select[name="type"]')
+            && document.querySelector('select[name="type"]').addEventListener('change', updateSlotRoleLabels);
+        // Run once on load so the labels reflect the current composition type.
+        updateSlotRoleLabels();
+
         const publishOutput = document.getElementById("publishOutput");
         const publishDefaultBucket = "{{ r2_default_bucket|escapejs }}";
         const publishDefaultPrefix = "sources";
@@ -7053,6 +7314,80 @@ document.addEventListener('DOMContentLoaded', () => {
         const regenBtn = e.target.closest('.nft-media-regen-btn');
         if (regenBtn) { nftPost(regenBtn.dataset.url, { force: '1', kind: regenBtn.dataset.kind }, { slow: true, btn: regenBtn }); }
     });
+
+    // ── Edit-page auto-poll: when any media asset is in "rendering" state
+    //    (because the user just clicked a regen button, or because a save
+    //    auto-triggered a poster build), poll the server every 4 s and
+    //    reload the page once the subprocess finishes. Without this, the
+    //    user clicks ↺, the page reloads showing the empty/rendering tile,
+    //    and they have no way to know the capture finished except by
+    //    refreshing manually — which feels like the button didn't work.
+    (function () {
+        const compMatch = location.pathname.match(/composition-edit\/(\d+)/);
+        if (!compMatch) return;
+        const compId = compMatch[1];
+
+        function anyRenderingOnPage() {
+            for (const b of document.querySelectorAll('.badge')) {
+                if ((b.textContent || '').trim() === 'rendering') return true;
+            }
+            return false;
+        }
+
+        if (!anyRenderingOnPage()) return;
+
+        let attempts = 0;
+        const MAX_ATTEMPTS = 60;   // 60 × 4 s = 4-minute hard cap
+        const POLL_MS = 4000;
+
+        // Light status indicator near the top of the page so the user has a
+        // visible signal that the polling loop is actively waiting.
+        const pill = document.createElement('div');
+        pill.style.cssText = (
+            'position:fixed;top:10px;right:10px;z-index:9999;' +
+            'background:rgba(255,193,7,0.95);color:#000;padding:6px 12px;' +
+            'border-radius:6px;font-size:0.85rem;font-weight:600;' +
+            'box-shadow:0 2px 8px rgba(0,0,0,0.2);font-family:system-ui;'
+        );
+        pill.innerHTML = '⏳ Generating media… <span id="genPillTime" style="opacity:0.7;">0s</span>';
+        document.body.appendChild(pill);
+        const t0 = Date.now();
+        const timeSpan = pill.querySelector('#genPillTime');
+        const tick = setInterval(() => {
+            timeSpan.textContent = Math.round((Date.now() - t0) / 1000) + 's';
+        }, 1000);
+
+        const stop = (msg) => {
+            clearInterval(tick);
+            clearInterval(poll);
+            if (msg) {
+                pill.innerHTML = msg;
+                setTimeout(() => pill.remove(), 4000);
+            } else {
+                pill.remove();
+            }
+        };
+
+        const poll = setInterval(async () => {
+            attempts += 1;
+            if (attempts > MAX_ATTEMPTS) {
+                stop('⏱ Timed out waiting (4 min). Refresh manually.');
+                return;
+            }
+            try {
+                const res = await fetch(`/composition/${compId}/media-status/`, { credentials: 'same-origin' });
+                if (!res.ok) return;
+                const data = await res.json();
+                const stillRendering = Object.values(data.assets || {}).some(a => a.status === 'rendering');
+                if (!stillRendering) {
+                    stop('✓ Done — reloading…');
+                    // Brief pause so user sees the "Done" pill before the
+                    // page swaps out from under them.
+                    setTimeout(() => location.reload(), 700);
+                }
+            } catch (_) { /* network blip; try again next tick */ }
+        }, POLL_MS);
+    })();
 
     // ---- Lazy-mint voucher signing ----
     const voucherSignBtn = document.getElementById('voucherSignBtn');

@@ -1,0 +1,70 @@
+{% extends "layouts/admin.html" %}
+{% block content %}
+<div class="content-wrapper">
+  <section class="content pt-3">
+    <div class="container-fluid" style="max-width:760px">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="mb-0">New character</h2>
+        <a href="{% url 'character_hub' %}" class="text-muted" style="font-size:12px">← all characters</a>
+      </div>
+
+      {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+      <form method="post" class="card" style="background:#15171c;border:1px solid #23262e;color:#e7e7e2">
+        {% csrf_token %}
+        <div class="card-body">
+          <div class="form-group">
+            <label>Title</label>
+            <input name="title" value="{{ form.title|default:'' }}" class="form-control" required>
+            <small class="text-muted">Human-readable name for this character.</small>
+          </div>
+          <div class="form-row">
+            <div class="form-group col-md-6">
+              <label>Slug</label>
+              <input name="slug" value="{{ form.slug|default:'' }}" class="form-control" placeholder="auto from title if blank">
+            </div>
+            <div class="form-group col-md-6">
+              <label>Display name</label>
+              <input name="character_name" value="{{ form.character_name|default:'' }}" class="form-control">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Archetype</label>
+            <input name="archetype" value="{{ form.archetype|default:'' }}" class="form-control" placeholder="e.g. anonymous imageboard inner monologue">
+          </div>
+
+          <hr style="border-color:#23262e">
+          <div style="font-size:11px;color:#8a8e98;margin-bottom:8px;text-transform:uppercase;letter-spacing:.1em">Model + corpus</div>
+
+          <div class="form-group">
+            <label>Base model</label>
+            <input name="base_model" value="{{ form.base_model|default:'mlx-community/Qwen2.5-7B-Instruct-4bit' }}" class="form-control">
+            <small class="text-muted">HuggingFace ID for the MLX base. Default Qwen2.5-7B-Instruct-4bit.</small>
+          </div>
+          <div class="form-row">
+            <div class="form-group col-md-6">
+              <label>Corpus key</label>
+              <input name="corpus_key" value="{{ form.corpus_key|default:'' }}" class="form-control" placeholder="e.g. fourchan_fit">
+            </div>
+            <div class="form-group col-md-6">
+              <label>Adapter dir <span class="text-muted">(optional)</span></label>
+              <input name="adapter_dir" value="{{ form.adapter_dir|default:'' }}" class="form-control" placeholder="path to LoRA adapter">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Image dir</label>
+            <input name="image_dir" value="{{ form.image_dir|default:'' }}" class="form-control" placeholder="filesystem path to this character's image pool">
+          </div>
+          <div class="form-group">
+            <label>Persona prompt</label>
+            <textarea name="persona_prompt" rows="4" class="form-control" placeholder="System prompt sculpting this character's voice.">{{ form.persona_prompt|default:'' }}</textarea>
+          </div>
+
+          <button type="submit" class="btn btn-primary">Create character</button>
+          <a href="{% url 'character_hub' %}" class="btn btn-link">cancel</a>
+        </div>
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}

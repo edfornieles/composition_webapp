@@ -1,19 +1,19 @@
 {
-  "generated_at": "2026-05-10T19:39:30",
+  "generated_at": "2026-05-10T20:21:15",
   "source_key": "fourchan_fit",
   "target_strategy_primary": "real_post_targets",
-  "rows_total": 1269,
+  "rows_total": 1501,
   "rows_by_mode": {
-    "quote_back_reply": 464,
-    "body_judgement": 214,
-    "inner_monologue": 254,
-    "confession": 113,
+    "quote_back_reply": 454,
+    "body_judgement": 274,
+    "inner_monologue": 214,
+    "confession": 203,
     "image_caption": 10,
-    "next_anon_reply": 214
+    "next_anon_reply": 346
   },
   "rows_by_strategy": {
     "real_post_targets": 769,
-    "curated_targets": 500
+    "curated_targets": 732
   },
   "rows_by_thread_top20": [
     [
@@ -105,7 +105,7 @@
     "low_info": 0
   },
   "policy_tiers": {
-    "accepted_raw": 1236,
+    "accepted_raw": 1468,
     "accepted_with_redaction": 33,
     "rejected_total": 9,
     "rejected_by_reason": {
@@ -246,173 +246,173 @@
   "template_pct": 0.0,
   "top_targets": [
     [
-      ">be me >3am again >mirror still asking the same question >still no answer",
-      5
+      ">drop carbs entirely dropped your brain too",
+      6
     ],
     [
-      ">be me >flexed in the bathroom mirror >looked ok for 8 seconds >then i moved",
-      5
+      "post body",
+      4
     ],
     [
-      ">be me >front camera at 6am >mirror at 11pm >two different men neither winning",
-      5
+      "shoulders gone neck gone only the protein tub remains",
+      3
     ],
     [
-      ">be me >caught my reflection in the bus window >thought it was someone else for a second >recognised the shoulders it was me",
-      5
+      "flexed today nothing flexed back",
+      3
     ],
     [
-      ">be me >mirror does attendance every morning >jaw absent >neck absent >body present",
-      5
+      "obvious dyel obvious cope",
+      3
     ],
     [
-      ">be me >turned the bathroom light off >still saw the gut >brain doesn t need light",
-      5
+      "softer than the gym mat",
+      3
     ],
     [
-      ">be me >angle 1 chad >angle 2 dyel >can t decide which one is real >both probably",
-      5
+      "my calves are smaller than my forearms",
+      3
     ],
     [
-      ">be me >full length mirror in the changing room >stood there 30 seconds longer than i should have >nothing improved",
-      5
+      "front camera says one thing mirror says another both bad",
+      3
     ],
     [
-      ">be me >scale up 0 4kg >not water >i know it s not water",
-      5
+      "stomach is a real estate agent sells anything",
+      3
     ],
     [
-      ">be me >weighed in three times >same number >weighed in a fourth time anyway",
-      5
+      "tape measure said 41cm chest tape measure was being kind",
+      3
     ],
     [
-      ">be me >74 2 monday >74 6 thursday >74 4 sunday >spreadsheet judges i nod",
-      5
+      "wore a tight shirt to work got 0 looks",
+      3
     ],
     [
-      ">be me >scale under the sink >still louder than me",
-      5
+      "been bigger been smaller never been right",
+      3
     ],
     [
-      ">be me >logged my food today >numbers fine >body acts like the numbers lied",
-      5
+      "obvious tren jaw obvious tren rage",
+      3
     ],
     [
-      ">be me >lost 6kg this year >look exactly the same",
-      5
+      "shoulders look like he sleeps in a hoodie",
+      3
     ],
     [
-      ">be me >3 plate squat 2022 >2 plate squat today >weight didn t move i did",
-      5
+      "tiny legs in shorts cope confirmed",
+      3
     ],
     [
-      ">be me >missed a rep i used to get for warmup >racked it like nothing happened >walked to the water fountain drank slowly",
-      5
+      "her form is fine her bench is not",
+      3
     ],
     [
-      ">be me >gym at 6am >only one other guy >he s bigger than me of course",
-      5
+      "lifts in jeans wonder why he s not progressing",
+      3
     ],
     [
-      ">be me >filmed my form >watched it back >now i know why i m not progressing",
-      5
+      "fridge legs and a phone for a personality",
+      3
     ],
     [
-      ">be me >between sets >checking the phone >nothing there set didn t get any easier",
-      5
+      "lower back wider than the squat rack",
+      3
     ],
     [
-      ">be me >rack at 6am >chalk in the bowl >nobody else here >still feels like everyone is watching",
-      5
+      "abs visible soul invisible",
+      3
     ]
   ],
   "top_openings": [
     [
-      ">be me >3am again >mirror still asking the same question >still no answer",
-      5
+      ">drop carbs entirely dropped your brain too",
+      6
     ],
     [
-      ">be me >flexed in the bathroom mirror >looked ok for 8 seconds >then i moved",
-      5
+      "post body",
+      4
     ],
     [
-      ">be me >front camera at 6am >mirror at 11pm >two different men neither winning",
-      5
+      "shoulders gone neck gone only the protein tub remains",
+      3
     ],
     [
-      ">be me >caught my reflection in the bus window >thought it was someone else for a second >recognised the shoulders it was me",
-      5
+      "flexed today nothing flexed back",
+      3
     ],
     [
-      ">be me >mirror does attendance every morning >jaw absent >neck absent >body present",
-      5
+      "obvious dyel obvious cope",
+      3
     ],
     [
-      ">be me >turned the bathroom light off >still saw the gut >brain doesn t need light",
-      5
+      "softer than the gym mat",
+      3
     ],
     [
-      ">be me >angle 1 chad >angle 2 dyel >can t decide which one is real >both probably",
-      5
+      "my calves are smaller than my forearms",
+      3
     ],
     [
-      ">be me >full length mirror in the changing room >stood there 30 seconds longer than i should have >nothing improved",
-      5
+      "front camera says one thing mirror says another both bad",
+      3
     ],
     [
-      ">be me >scale up 0 4kg >not water >i know it s not water",
-      5
+      "stomach is a real estate agent sells anything",
+      3
     ],
     [
-      ">be me >weighed in three times >same number >weighed in a fourth time anyway",
-      5
+      "tape measure said 41cm chest tape measure was being kind",
+      3
     ],
     [
-      ">be me >74 2 monday >74 6 thursday >74 4 sunday >spreadsheet judges i nod",
-      5
+      "wore a tight shirt to work got 0 looks",
+      3
     ],
     [
-      ">be me >scale under the sink >still louder than me",
-      5
+      "been bigger been smaller never been right",
+      3
     ],
     [
-      ">be me >logged my food today >numbers fine >body acts like the numbers lied",
-      5
+      "obvious tren jaw obvious tren rage",
+      3
     ],
     [
-      ">be me >lost 6kg this year >look exactly the same",
-      5
+      "shoulders look like he sleeps in a hoodie",
+      3
     ],
     [
-      ">be me >3 plate squat 2022 >2 plate squat today >weight didn t move i did",
-      5
+      "tiny legs in shorts cope confirmed",
+      3
     ],
     [
-      ">be me >missed a rep i used to get for warmup >racked it like nothing happened >walked to the water fountain drank slowly",
-      5
+      "her form is fine her bench is not",
+      3
     ],
     [
-      ">be me >gym at 6am >only one other guy >he s bigger than me of course",
-      5
+      "lifts in jeans wonder why he s not progressing",
+      3
     ],
     [
-      ">be me >filmed my form >watched it back >now i know why i m not progressing",
-      5
+      "fridge legs and a phone for a personality",
+      3
     ],
     [
-      ">be me >between sets >checking the phone >nothing there set didn t get any easier",
-      5
+      "lower back wider than the squat rack",
+      3
     ],
     [
-      ">be me >rack at 6am >chalk in the bowl >nobody else here >still feels like everyone is watching",
-      5
+      "abs visible soul invisible",
+      3
     ]
   ],
-  "near_duplicate_target_count": 100,
+  "near_duplicate_target_count": 243,
   "split": {
-    "train": 1142,
-    "valid": 63,
-    "test": 64
+    "train": 1350,
+    "valid": 75,
+    "test": 76
   },
   "warnings": []
 }

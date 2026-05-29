@@ -37,10 +37,39 @@ def pick_fallback_segment(persona: "MonologuePersona", recent_texts: list[str]) 
     return random.choice(pool)
 
 
+def _maybe_fit_grounded(persona: "MonologuePersona") -> tuple[str, str | None] | None:
+    """If this persona is wired to the corpus-grounded /fit/ pipeline, route through it.
+
+    Returns (text, error) tuple or None if the persona is not a /fit/ persona.
+    Never falls back to a generic AI roleplay tone — when grounding fails, the
+    caller must skip this tick (the wall runtime treats empty text as no-op).
+    """
+    slug = (getattr(persona, "slug", "") or "").strip().lower()
+    fit_slugs = set(getattr(settings, "FIT_PERSONA_SLUGS", ("fit", "fourchan_fit_body_discipline")))
+    if slug not in fit_slugs:
+        return None
+    require_grounding = bool(getattr(settings, "FIT_THOUGHTS_REQUIRE_GROUNDING", True))
+    try:
+        from .imageboard_ingestion import thought_grounding
+    except Exception as e:
+        return ("", f"fit_grounding_import_error:{e}") if require_grounding else None
+    source_key = getattr(settings, "FIT_CORPUS_SOURCE_KEY", "4chan__fit__body_discipline")
+    text, debug = thought_grounding.generate_fit_grounded_thought(source_key=source_key)
+    if text:
+        return text, None
+    if require_grounding:
+        return "", f"fit_grounding_failed:{debug.get('error', 'unknown')}"
+    return None
+
+
 def generate_stream_segment(persona: "MonologuePersona", recent_texts: list[str]) -> tuple[str, str | None]:
     """
     Returns (line, error). line may be empty on failure.
     """
+    fit_result = _maybe_fit_grounded(persona)
+    if fit_result is not None:
+        return fit_result
+
     if not getattr(settings, "OPENAI_API_KEY", ""):
         return "", "no_api_key"
 

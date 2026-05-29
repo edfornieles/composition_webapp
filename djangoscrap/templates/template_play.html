@@ -1,0 +1,279 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>template playground</title>
+<style>
+  html,body { margin:0; padding:0; height:100%; background:#0e0f12; color:#e7e7e2;
+              font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif; overflow:hidden; }
+  #stage { position:fixed; inset:0; }
+  #hud { position:fixed; top:14px; left:16px; font-size:11px; color:#8a8e98;
+         background:rgba(20,22,27,0.7); padding:10px 14px; border-radius:4px;
+         border:1px solid #23262e; line-height:1.6; }
+  #hud b { color:#9ec25c; font-family:monospace; }
+  #hud .row { display:flex; gap:10px; }
+  #hud .row span { min-width:90px; color:#5a5e68; }
+  #hud .note { margin-top:6px; padding-top:6px; border-top:1px solid #23262e; color:#5a5e68; font-size:10px; max-width:240px; }
+  #stats { position:fixed; top:14px; right:16px; font-size:11px; color:#5a5e68;
+           font-variant-numeric:tabular-nums; text-align:right;
+           background:rgba(20,22,27,0.7); padding:8px 12px; border-radius:4px;
+           border:1px solid #23262e; }
+  #stats b { color:#e7e7e2; }
+  #status { position:fixed; bottom:14px; left:16px; font-size:11px; color:#8a8e98; }
+  #status.err { color:#d49b58; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<div id="hud">
+  <div class="row"><span>move</span><b>W A S D</b></div>
+  <div class="row"><span>run</span><b>SHIFT</b></div>
+  <div class="row"><span>jump</span><b>SPACE</b></div>
+  <div class="row"><span>camera</span><b>mouse drag · scroll</b></div>
+  <div class="note">pre-rigged template: Three.js Soldier.glb · Idle/Walk/Run baked in</div>
+</div>
+
+<div id="stats">
+  <div><b id="state">—</b></div>
+  <div id="fps">—</div>
+</div>
+
+<div id="status">loading…</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+const GLB_URL = "https://threejs.org/examples/models/gltf/Soldier.glb";
+
+const stage = document.getElementById("stage");
+const statusEl = document.getElementById("status");
+const stateEl  = document.getElementById("state");
+const fpsEl    = document.getElementById("fps");
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x191b21);
+scene.fog = new THREE.Fog(0x191b21, 60, 220);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
+camera.position.set(0, 5, 10);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+stage.appendChild(renderer.domElement);
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+}
+window.addEventListener("resize", resize);
+resize();
+
+scene.add(new THREE.HemisphereLight(0xbfd0e5, 0x1a1c22, 0.55));
+const sun = new THREE.DirectionalLight(0xffe8c8, 1.6);
+sun.position.set(40, 60, 30);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -40; sun.shadow.camera.right = 40;
+sun.shadow.camera.top = 40; sun.shadow.camera.bottom = -40;
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+
+const groundMat = new THREE.MeshStandardMaterial({ color:0x2a2d34, roughness:0.95 });
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), groundMat);
+ground.rotation.x = -Math.PI/2;
+ground.receiveShadow = true;
+scene.add(ground);
+const grid = new THREE.GridHelper(400, 80, 0x3a3d44, 0x23262e);
+grid.position.y = 0.01;
+scene.add(grid);
+
+function addBlock(x, z, w, h, d, color) {
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshStandardMaterial({ color, roughness:0.85 })
+  );
+  m.position.set(x, h/2, z);
+  m.castShadow = true; m.receiveShadow = true;
+  scene.add(m);
+}
+addBlock( 14, -10, 4, 3, 4, 0x4a3a2a);
+addBlock(-18,   6, 6, 1.5, 6, 0x3a4a3a);
+addBlock(  0,  22, 12, 5, 4, 0x4a4a3a);
+addBlock( 22,  18, 3, 8, 3, 0x3a3a4a);
+addBlock(-28, -14, 8, 2, 8, 0x2a3a4a);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.1;
+controls.minDistance = 4;
+controls.maxDistance = 30;
+controls.maxPolarAngle = Math.PI/2 - 0.05;
+
+// --- player ---
+const player = new THREE.Group();
+scene.add(player);
+
+let model = null;
+let mixer = null;
+const actions = {};
+let currentAction = null;
+
+async function loadCharacter() {
+  statusEl.textContent = "loading soldier.glb…";
+  const gltf = await new Promise((res, rej) =>
+    new GLTFLoader().load(GLB_URL, res, undefined, rej));
+  model = gltf.scene;
+  model.traverse(c => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+
+  // scale to ~1.8m tall
+  const box = new THREE.Box3().setFromObject(model);
+  const size = new THREE.Vector3(); box.getSize(size);
+  const scale = 1.8 / size.y;
+  model.scale.setScalar(scale);
+  box.setFromObject(model);
+  const center = new THREE.Vector3(); box.getCenter(center);
+  model.position.set(-center.x, -box.min.y, -center.z);
+
+  player.add(model);
+
+  mixer = new THREE.AnimationMixer(model);
+  // Soldier.glb ships with: TPose, Idle, Walking, Running, Death
+  for (const clip of gltf.animations) {
+    actions[clip.name] = mixer.clipAction(clip);
+  }
+  console.log("clips:", Object.keys(actions));
+
+  if (actions.Idle) {
+    actions.Idle.play();
+    currentAction = actions.Idle;
+    stateEl.textContent = "Idle";
+  }
+
+  statusEl.textContent = `ready · ${gltf.animations.length} clips`;
+  setTimeout(() => statusEl.textContent = "", 2000);
+}
+
+function fadeTo(name, dur=0.2) {
+  const next = actions[name];
+  if (!next || currentAction === next) return;
+  next.reset().fadeIn(dur).play();
+  if (currentAction) currentAction.fadeOut(dur);
+  currentAction = next;
+  stateEl.textContent = name;
+}
+
+// --- input ---
+const keys = { w:0, a:0, s:0, d:0, shift:0, space:0 };
+window.addEventListener("keydown", e => {
+  const k = e.key.toLowerCase();
+  if (k==="w"||k==="arrowup")    keys.w = 1;
+  if (k==="s"||k==="arrowdown")  keys.s = 1;
+  if (k==="a"||k==="arrowleft")  keys.a = 1;
+  if (k==="d"||k==="arrowright") keys.d = 1;
+  if (k==="shift") keys.shift = 1;
+  if (k===" ") { keys.space = 1; e.preventDefault(); }
+});
+window.addEventListener("keyup", e => {
+  const k = e.key.toLowerCase();
+  if (k==="w"||k==="arrowup")    keys.w = 0;
+  if (k==="s"||k==="arrowdown")  keys.s = 0;
+  if (k==="a"||k==="arrowleft")  keys.a = 0;
+  if (k==="d"||k==="arrowright") keys.d = 0;
+  if (k==="shift") keys.shift = 0;
+  if (k===" ")     keys.space = 0;
+});
+
+// --- controller ---
+let yVel = 0; let onGround = true; let facing = 0;
+const gravity = -22, jumpV = 8;
+const speedWalk = 2.4, speedRun = 5.5;
+
+function camForward() { const v=new THREE.Vector3(); camera.getWorldDirection(v); v.y=0; v.normalize(); return v; }
+function camRight()   { const f=camForward(); return new THREE.Vector3(-f.z, 0, f.x); }
+
+function update(dt) {
+  if (!model) return;
+  const f = camForward(), r = camRight();
+  const dir = new THREE.Vector3();
+  if (keys.w) dir.add(f);
+  if (keys.s) dir.sub(f);
+  if (keys.d) dir.add(r);
+  if (keys.a) dir.sub(r);
+  const moving = dir.lengthSq() > 0.001;
+  if (moving) dir.normalize();
+  const running = !!keys.shift && moving;
+  const speed = running ? speedRun : speedWalk;
+
+  if (moving) {
+    player.position.x += dir.x * speed * dt;
+    player.position.z += dir.z * speed * dt;
+    facing = Math.atan2(dir.x, dir.z);
+  }
+  // smooth turn
+  let cur = model.rotation.y, tgt = facing, d2 = tgt - cur;
+  while (d2 > Math.PI) d2 -= Math.PI*2;
+  while (d2 < -Math.PI) d2 += Math.PI*2;
+  model.rotation.y = cur + d2 * Math.min(1, dt*12);
+
+  // jump
+  if (onGround && keys.space) { onGround = false; yVel = jumpV; }
+  if (!onGround) {
+    yVel += gravity * dt;
+    player.position.y += yVel * dt;
+    if (player.position.y <= 0) { player.position.y = 0; yVel = 0; onGround = true; }
+  }
+
+  // animation state
+  if (running)      fadeTo("Run");
+  else if (moving)  fadeTo("Walk");
+  else              fadeTo("Idle");
+
+  // camera follows
+  controls.target.lerp(new THREE.Vector3(player.position.x, player.position.y + 1.2, player.position.z), Math.min(1, dt*6));
+}
+
+const clock = new THREE.Clock();
+let frames = 0, lastFps = performance.now();
+function tick() {
+  const dt = Math.min(0.05, clock.getDelta());
+  update(dt);
+  if (mixer) mixer.update(dt);
+  controls.update();
+  renderer.render(scene, camera);
+  frames++;
+  const now = performance.now();
+  if (now - lastFps > 500) {
+    fpsEl.textContent = `${Math.round(frames * 1000 / (now - lastFps))} fps`;
+    frames = 0; lastFps = now;
+  }
+  requestAnimationFrame(tick);
+}
+
+loadCharacter().catch(e => {
+  console.error(e);
+  statusEl.classList.add("err");
+  statusEl.textContent = "load failed: " + (e.message || e);
+});
+tick();
+</script>
+</body>
+</html>

@@ -144,9 +144,8 @@
       <div class="live-grid">
         {% for cell_at in cells_by_slot %}
           {% if cell_at %}
-            <div class="cell">
+            <div class="cell" data-iframe-src="{% url 'composition_live_by_id' cell_at.id %}?muted=1&lite=1">
               <span class="label">{{ forloop.counter }} · {{ cell_at.name|truncatechars:24 }}</span>
-              <iframe src="{% url 'composition_live_by_id' cell_at.id %}" loading="lazy" allow="autoplay; fullscreen"></iframe>
               {% if cell_at.list_thumbnail_src %}<img class="cell-poster" src="{{ cell_at.list_thumbnail_src }}" alt="" loading="eager">{% endif %}
             </div>
           {% else %}
@@ -163,16 +162,30 @@
 <script>
 const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
 
-// ── Poster fade ──────────────────────────────────────────────────────────────
-window.IframeVideoKicker && window.IframeVideoKicker.attachAll(".live-grid iframe");
-document.querySelectorAll('.live-grid .cell').forEach(function(cell) {
-  var iframe = cell.querySelector('iframe');
-  var poster = cell.querySelector('.cell-poster');
-  if (!iframe || !poster) return;
-  iframe.addEventListener('load', function() {
-    setTimeout(function() { poster.classList.add('faded'); }, 4000);
+// ── Click-to-play live preview: posters are the default thumbnail
+// (same approach as /composition-view/, which "works great"). The full
+// live render is one click away — clicking a cell opens its standalone
+// page. We avoid loading 9 simultaneous iframes that each spawn their
+// own continuous animation loop on the single dev-server worker;
+// instead the grid shows pre-rendered NFT posters (or the fallback
+// thumbnail endpoint) immediately and reliably. ─────────────────────
+(function () {
+  var cells = Array.from(document.querySelectorAll('.live-grid .cell[data-iframe-src]'));
+  cells.forEach(function (cell) {
+    // Make the entire cell a click target that opens the composition's
+    // standalone live page (so you can still see the animated render
+    // by just clicking the thumbnail).
+    var src = cell.getAttribute('data-iframe-src');
+    if (!src) return;
+    // The standalone page is the iframe src with ?lite=1 stripped.
+    var standalone = src.replace(/[?&]lite=1\b/, '');
+    if (!standalone.includes('?')) standalone = standalone.replace(/\?$/, '');
+    cell.style.cursor = 'pointer';
+    cell.addEventListener('click', function () {
+      window.open(standalone, '_blank');
+    });
   });
-});
+})();
 
 // ── Ready toggle (AJAX) ──────────────────────────────────────────────────────
 document.querySelectorAll('.ready-toggle').forEach(function(cb) {

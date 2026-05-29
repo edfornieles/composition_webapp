@@ -1,29 +1,29 @@
-# Dataset report — 2026-05-10T19:39:30
+# Dataset report — 2026-05-10T20:21:15
 
 - **source_key**: `fourchan_fit`
 - **primary target_strategy**: `real_post_targets`
-- **rows_total**: 1269
+- **rows_total**: 1501
 - **template_pct**: 0.0%
 
 ## Splits
-- train: 1142
-- valid: 63
-- test:  64
+- train: 1350
+- valid: 75
+- test:  76
 
 ## Rows by mode
-- quote_back_reply: 464
-- inner_monologue: 254
-- body_judgement: 214
-- next_anon_reply: 214
-- confession: 113
+- quote_back_reply: 454
+- next_anon_reply: 346
+- body_judgement: 274
+- inner_monologue: 214
+- confession: 203
 - image_caption: 10
 
 ## Rows by target strategy
 - real_post_targets: 769
-- curated_targets: 500
+- curated_targets: 732
 
 ## Target suitability tiers (Pass 2D)
-- accepted raw (target_ok_realistic): 1236
+- accepted raw (target_ok_realistic): 1468
 - accepted with redaction (target_ok_with_redaction): 33
 - rejected: 9
 
@@ -80,30 +80,30 @@
 - unsafe (policy_reject): 9
 
 ## Top assistant targets (top 10)
-- 5× `>be me >3am again >mirror still asking the same question >still no answer`
-- 5× `>be me >flexed in the bathroom mirror >looked ok for 8 seconds >then i moved`
-- 5× `>be me >front camera at 6am >mirror at 11pm >two different men neither winning`
-- 5× `>be me >caught my reflection in the bus window >thought it was someone else for a second >recognised the shoulders it wa`
-- 5× `>be me >mirror does attendance every morning >jaw absent >neck absent >body present`
-- 5× `>be me >turned the bathroom light off >still saw the gut >brain doesn t need light`
-- 5× `>be me >angle 1 chad >angle 2 dyel >can t decide which one is real >both probably`
-- 5× `>be me >full length mirror in the changing room >stood there 30 seconds longer than i should have >nothing improved`
-- 5× `>be me >scale up 0 4kg >not water >i know it s not water`
-- 5× `>be me >weighed in three times >same number >weighed in a fourth time anyway`
+- 6× `>drop carbs entirely dropped your brain too`
+- 4× `post body`
+- 3× `shoulders gone neck gone only the protein tub remains`
+- 3× `flexed today nothing flexed back`
+- 3× `obvious dyel obvious cope`
+- 3× `softer than the gym mat`
+- 3× `my calves are smaller than my forearms`
+- 3× `front camera says one thing mirror says another both bad`
+- 3× `stomach is a real estate agent sells anything`
+- 3× `tape measure said 41cm chest tape measure was being kind`
 
 ## Top openings (top 10)
-- 5× `>be me >3am again >mirror still asking the same question >still no answer`
-- 5× `>be me >flexed in the bathroom mirror >looked ok for 8 seconds >then i moved`
-- 5× `>be me >front camera at 6am >mirror at 11pm >two different men neither winning`
-- 5× `>be me >caught my reflection in the bus window >thought it was someone else for a second >recognised the shoulders it wa`
-- 5× `>be me >mirror does attendance every morning >jaw absent >neck absent >body present`
-- 5× `>be me >turned the bathroom light off >still saw the gut >brain doesn t need light`
-- 5× `>be me >angle 1 chad >angle 2 dyel >can t decide which one is real >both probably`
-- 5× `>be me >full length mirror in the changing room >stood there 30 seconds longer than i should have >nothing improved`
-- 5× `>be me >scale up 0 4kg >not water >i know it s not water`
-- 5× `>be me >weighed in three times >same number >weighed in a fourth time anyway`
+- 6× `>drop carbs entirely dropped your brain too`
+- 4× `post body`
+- 3× `shoulders gone neck gone only the protein tub remains`
+- 3× `flexed today nothing flexed back`
+- 3× `obvious dyel obvious cope`
+- 3× `softer than the gym mat`
+- 3× `my calves are smaller than my forearms`
+- 3× `front camera says one thing mirror says another both bad`
+- 3× `stomach is a real estate agent sells anything`
+- 3× `tape measure said 41cm chest tape measure was being kind`
 
-## Near-duplicate target count: 100
+## Near-duplicate target count: 243
 
 ## Warnings
 - (none)

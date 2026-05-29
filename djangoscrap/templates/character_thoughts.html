@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ persona.character_name|default:persona.title }} — thinking</title>
+    <style>
+        :root {
+            --bg: #0e0f12;
+            --panel: #15171c;
+            --panel-2: #1b1e25;
+            --ink: #e7e7e2;
+            --ink-dim: #8a8e98;
+            --ink-faint: #5a5e68;
+            --accent: #d49b58;
+            --green: #9ec25c;
+            --rule: #23262e;
+        }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
+        body {
+            font: 15px/1.55 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            min-height: 100vh;
+        }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        .page {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 28px 20px 96px;
+        }
+
+        header.id {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 16px;
+            border-bottom: 1px solid var(--rule);
+            padding-bottom: 14px;
+            margin-bottom: 24px;
+        }
+        .id .who { display: flex; flex-direction: column; gap: 2px; }
+        .id .who .back { font-size: 11px; color: var(--ink-faint); margin-bottom: 2px; }
+        .id .who .name { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+        .id .who .meta { font-size: 12px; color: var(--ink-dim); }
+        .id .pill {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            border: 1px solid var(--rule);
+            color: var(--ink-dim);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        .id .pill .dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--green); box-shadow: 0 0 8px var(--green);
+        }
+        .id .pill.paused .dot { background: var(--ink-faint); box-shadow: none; }
+
+        .now {
+            background: var(--panel);
+            border: 1px solid var(--rule);
+            border-radius: 8px;
+            padding: 22px 22px 18px;
+            margin-bottom: 22px;
+            min-height: 140px;
+        }
+        .now .label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--ink-faint);
+            margin-bottom: 12px;
+        }
+        .now .body {
+            font-size: 17px;
+            line-height: 1.55;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            min-height: 48px;
+        }
+        .now.empty .body { color: var(--ink-dim); font-style: italic; }
+        .now .body .greentext { color: var(--green); }
+        .caret {
+            display: inline-block;
+            width: 7px;
+            height: 1.05em;
+            margin-left: 1px;
+            background: var(--ink);
+            vertical-align: -2px;
+            animation: blink 1.05s step-end infinite;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        .priors-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--ink-faint);
+            margin: 0 0 10px;
+        }
+        .prior {
+            border-top: 1px solid var(--rule);
+            padding: 12px 2px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: var(--ink);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .prior .greentext { color: var(--green); }
+        .prior .ts { font-size: 10px; color: var(--ink-faint); display: block; margin-bottom: 4px; }
+
+        .controls {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            background: rgba(14,15,18,0.92);
+            backdrop-filter: blur(8px);
+            border-top: 1px solid var(--rule);
+            padding: 10px 16px;
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            font-size: 13px;
+            z-index: 10;
+        }
+        .controls .group { display: flex; gap: 4px; }
+        .controls button, .controls a.btn {
+            background: transparent;
+            border: 1px solid var(--rule);
+            color: var(--ink);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font: inherit;
+        }
+        .controls button:hover, .controls a.btn:hover {
+            background: var(--panel-2);
+            border-color: var(--ink-faint);
+        }
+        .controls .sep {
+            width: 1px; background: var(--rule); margin: 4px 4px;
+        }
+
+        .hint {
+            background: rgba(212,155,88,0.08);
+            border: 1px solid rgba(212,155,88,0.25);
+            color: var(--accent);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            margin-bottom: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <header class="id">
+            <div class="who">
+                <a class="back" href="{{ detail_url }}">← character page</a>
+                <div class="name">{{ persona.character_name|default:persona.title }}</div>
+                <div class="meta">live thoughts{% if persona.archetype %} · {{ persona.archetype }}{% endif %} · <code>{{ persona.slug }}</code></div>
+            </div>
+            <div class="pill" id="pill"><span class="dot"></span><span id="pillText">live</span></div>
+        </header>
+
+        {% if not has_openai %}
+        <div class="hint">No <code>OPENAI_API_KEY</code> set — thoughts come from this character's local corpus + adapter.</div>
+        {% endif %}
+
+        <div class="now empty" id="now">
+            <div class="label">now thinking</div>
+            <div class="body" id="nowBody">connecting…</div>
+        </div>
+
+        <div class="priors-label">earlier</div>
+        <div id="priors"></div>
+    </div>
+
+    <div class="controls" role="toolbar" aria-label="thought controls">
+        <div class="group">
+            <button id="btnPause" title="pause/resume (space)">pause</button>
+            <button id="btnSkip" title="skip typing animation (s)">skip</button>
+            <button id="btnNext" title="generate next now (n)">next</button>
+        </div>
+        <div class="sep"></div>
+        <div class="group">
+            {% if has_chat %}<a class="btn" href="{{ chat_url }}">chat</a>{% endif %}
+            {% if has_sources %}<a class="btn" href="{{ sources_url }}">sources</a>{% endif %}
+            <a class="btn" href="{{ detail_url }}">back</a>
+        </div>
+    </div>
+
+<script>
+(function () {
+    var STREAM = "{{ stream_endpoint|escapejs }}";
+    var nowEl = document.getElementById("now");
+    var nowBody = document.getElementById("nowBody");
+    var priorsEl = document.getElementById("priors");
+    var pillEl = document.getElementById("pill");
+    var pillText = document.getElementById("pillText");
+    var btnPause = document.getElementById("btnPause");
+    var btnSkip = document.getElementById("btnSkip");
+    var btnNext = document.getElementById("btnNext");
+
+    var minMs = Math.max(8, {{ typing_min_ms }} / 3);
+    var maxMs = Math.max(minMs + 4, {{ typing_max_ms }} / 3);
+    var pauseMs = Math.max(1500, {{ pause_between_segments_ms }});
+    var maxPriors = 30;
+
+    var state = {
+        paused: false,
+        skipRequested: false,
+        nextRequested: false,
+        recent: [],
+        last: "",
+        firstFetch: true,
+    };
+
+    function setPill(label, paused) {
+        pillText.textContent = label;
+        pillEl.classList.toggle("paused", !!paused);
+    }
+    function sleep(ms) {
+        return new Promise(function (r) { setTimeout(r, ms); });
+    }
+    // Interruptible sleep: resolves early on skip/next/unpause.
+    function waitOrSignal(ms) {
+        return new Promise(function (resolve) {
+            var done = false;
+            var t = setTimeout(function () { if (!done) { done = true; resolve(); } }, ms);
+            var iv = setInterval(function () {
+                if (done) { clearInterval(iv); return; }
+                if (state.nextRequested) {
+                    done = true; clearTimeout(t); clearInterval(iv); resolve();
+                }
+            }, 80);
+        });
+    }
+
+    function renderInto(node, text) {
+        node.innerHTML = "";
+        var lines = (text || "").split("\n");
+        lines.forEach(function (line, idx) {
+            var span = document.createElement("span");
+            if (/^\s*>/.test(line) && !/^\s*>>/.test(line)) span.className = "greentext";
+            span.textContent = line;
+            node.appendChild(span);
+            if (idx < lines.length - 1) node.appendChild(document.createTextNode("\n"));
+        });
+    }
+
+    function fetchNext() {
+        return fetch(STREAM, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ recent: state.recent }),
+        }).then(function (r) { return r.json(); });
+    }
+
+    function rand(min, max) {
+        return min + Math.random() * (max - min);
+    }
+
+    function typeInto(node, text) {
+        return new Promise(function (resolve) {
+            var i = 0;
+            var s = text || "";
+            state.skipRequested = false;
+            function tick() {
+                if (state.skipRequested) {
+                    renderInto(node, s);
+                    resolve();
+                    return;
+                }
+                renderInto(node, s.slice(0, i));
+                var caret = document.createElement("span");
+                caret.className = "caret";
+                node.appendChild(caret);
+                if (i >= s.length) { resolve(); return; }
+                i += 1;
+                setTimeout(tick, rand(minMs, maxMs));
+            }
+            tick();
+        });
+    }
+
+    function pushPrior(text) {
+        var d = document.createElement("div");
+        d.className = "prior";
+        var ts = document.createElement("span");
+        ts.className = "ts";
+        var now = new Date();
+        ts.textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        d.appendChild(ts);
+        var body = document.createElement("div");
+        renderInto(body, text);
+        d.appendChild(body);
+        priorsEl.insertBefore(d, priorsEl.firstChild);
+        while (priorsEl.children.length > maxPriors) {
+            priorsEl.removeChild(priorsEl.lastChild);
+        }
+    }
+
+    function pushRecent(seg) {
+        state.recent.push(seg);
+        while (state.recent.length > 18) state.recent.shift();
+    }
+
+    async function loop() {
+        while (true) {
+            if (state.paused) {
+                setPill("paused", true);
+                while (state.paused && !state.nextRequested) await sleep(150);
+                state.nextRequested = false;
+                if (state.paused) continue;
+            }
+
+            // Demote prior "now" into the priors stack
+            if (state.last) {
+                pushPrior(state.last);
+                state.last = "";
+            }
+            nowEl.classList.add("empty");
+            renderInto(nowBody, state.firstFetch ? "loading model… first thought may take ~30s" : "thinking…");
+            setPill(state.firstFetch ? "loading" : "thinking");
+
+            var sentence = "";
+            var tries = 0;
+            while (tries < 3 && !sentence) {
+                try {
+                    var data = await fetchNext();
+                    var seg = (data && data.segment || "").trim();
+                    if (seg && seg !== state.last) sentence = seg;
+                } catch (e) { /* retry */ }
+                tries += 1;
+                if (!sentence) await sleep(700);
+            }
+            state.firstFetch = false;
+            if (!sentence) {
+                renderInto(nowBody, "(no thought returned — retrying)");
+                await sleep(1500);
+                continue;
+            }
+
+            nowEl.classList.remove("empty");
+            setPill("live");
+            await typeInto(nowBody, sentence);
+            // remove caret after typing
+            var c = nowBody.querySelector(".caret");
+            if (c) c.remove();
+
+            pushRecent(sentence);
+            state.last = sentence;
+
+            await waitOrSignal(pauseMs);
+            state.nextRequested = false;
+        }
+    }
+
+    btnPause.addEventListener("click", function () {
+        state.paused = !state.paused;
+        btnPause.textContent = state.paused ? "resume" : "pause";
+        if (!state.paused) state.nextRequested = true; // wake up
+    });
+    btnSkip.addEventListener("click", function () { state.skipRequested = true; });
+    btnNext.addEventListener("click", function () {
+        state.skipRequested = true;
+        state.nextRequested = true;
+    });
+
+    document.addEventListener("keydown", function (e) {
+        if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+        if (e.key === " ") { e.preventDefault(); btnPause.click(); }
+        else if (e.key === "s") { btnSkip.click(); }
+        else if (e.key === "n") { btnNext.click(); }
+    });
+
+    // Click on "now" card to skip typing.
+    nowEl.addEventListener("click", function () { state.skipRequested = true; });
+
+    // Auto-pause when tab hidden, resume on visible.
+    document.addEventListener("visibilitychange", function () {
+        if (document.hidden && !state.paused) {
+            state.paused = true; btnPause.textContent = "resume"; setPill("paused", true);
+        } else if (!document.hidden && state.paused) {
+            state.paused = false; btnPause.textContent = "pause"; state.nextRequested = true;
+        }
+    });
+
+    loop();
+})();
+</script>
+</body>
+</html>

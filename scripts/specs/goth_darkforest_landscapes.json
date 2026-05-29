@@ -1,0 +1,90 @@
+{
+  "name": "goth_darkforest_landscapes",
+  "category": "goth",
+  "subcategory": "darkforest_landscapes",
+  "target_count": 2000,
+  "ruscha_rule": "Wide-shot photographs of dense coniferous or mixed forests in low light, fog, or pre-storm conditions. No people. No buildings. No vehicles. Mood: oppressive, watchful, mute.",
+  "include_terms": [
+    "dark forest",
+    "black forest",
+    "misty pine forest",
+    "foggy woods at night",
+    "dense woodland low light",
+    "twilight conifers",
+    "spruce forest fog",
+    "dark deciduous forest dusk",
+    "haunted woods",
+    "pre-storm forest"
+  ],
+  "exclude_terms": [
+    "wedding",
+    "engagement",
+    "sunny",
+    "bright meadow",
+    "people standing in forest",
+    "model in dress",
+    "engagement photoshoot",
+    "selfie",
+    "wreath",
+    "fashion editorial"
+  ],
+  "seed_image_paths": [],
+  "sources": [
+    {
+      "type": "reddit",
+      "params": {
+        "subreddits": [
+          "EarthPorn",
+          "ForestPorn",
+          "Liminalspace",
+          "MostBeautiful",
+          "Naturewasmetal",
+          "EyeCatchingPics",
+          "ImaginaryDarklands",
+          "creepy",
+          "rainy",
+          "fog"
+        ],
+        "min_score": 100,
+        "limit_per_sub": 600,
+        "since": "2018-01-01"
+      }
+    },
+    {
+      "type": "wikimedia",
+      "params": {
+        "categories": [
+          "Forests at night",
+          "Foggy forests",
+          "Dark forests",
+          "Spruce forests",
+          "Coniferous forests",
+          "Mist in forests",
+          "Forests of Europe"
+        ],
+        "limit": 1000,
+        "recurse_depth": 1
+      }
+    },
+    {
+      "type": "gallery_dl",
+      "params": {
+        "urls": [
+          "https://www.are.na/search/blocks?q=dark%20forest",
+          "https://www.are.na/search/channels?q=fog%20forest",
+          "https://www.flickr.com/groups/dark_forest/",
+          "https://www.flickr.com/groups/fogandmist/"
+        ],
+        "limit_per_url": 400
+      }
+    }
+  ],
+  "min_resolution": 1024,
+  "max_aspect_ratio": 2.5,
+  "allow_video": false,
+  "aesthetic_threshold": 0.22,
+  "notes": "Anchor of the goth identity bucket family. Pair with goth_candlelit_interiors and goth_fog_cemetery for compositions. Aesthetic gate uses CLIP text-centroid built from include_terms; raise to 0.26 if too many bright/wedding-aesthetic forests slip through.",
+  "created_at": 0,
+  "last_run_at": 0,
+  "schema_version": 1
+}

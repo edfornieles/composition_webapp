@@ -1,0 +1,205 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>anon — avatar</title>
+<style>
+  html,body { margin:0; padding:0; height:100%; background:#0e0f12; color:#e7e7e2;
+              font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif; overflow:hidden; }
+  #stage { position:fixed; inset:0; }
+  #hud { position:fixed; top:14px; left:16px; font-size:12px; color:#8a8e98;
+         letter-spacing:.04em; pointer-events:none; }
+  #hud b { color:#e7e7e2; font-weight:600; }
+  #hud .meta { font-size:10px; color:#5a5e68; margin-top:4px; }
+  #status { position:fixed; bottom:14px; left:16px; font-size:11px; color:#5a5e68;
+            font-variant-numeric: tabular-nums; }
+  #status.err { color:#d49b58; }
+  #ctrls { position:fixed; bottom:14px; right:16px; display:flex; gap:8px;
+           font-size:11px; color:#8a8e98; }
+  #ctrls button { background:#15171c; border:1px solid #23262e; color:#8a8e98;
+                  padding:5px 10px; border-radius:3px; cursor:pointer;
+                  text-transform:uppercase; letter-spacing:.08em; font-size:10px; }
+  #ctrls button:hover { color:#e7e7e2; border-color:#3a3d44; }
+  #ctrls button.on { color:#9ec25c; border-color:#3a3d44; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div><b>anon</b> · 3d avatar</div>
+  <div class="meta">drag to orbit · scroll to zoom · right-click to pan</div>
+</div>
+<div id="stage"></div>
+<div id="status">loading…</div>
+<div id="ctrls">
+  <button id="btnSpin" class="on">spin</button>
+  <button id="btnWire">wire</button>
+  <button id="btnLight">light</button>
+  <button id="btnReset">reset</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+
+const stage = document.getElementById("stage");
+const status = document.getElementById("status");
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0e0f12);
+scene.fog = new THREE.Fog(0x0e0f12, 400, 1200);
+
+const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 5000);
+camera.position.set(0, 160, 420);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+stage.appendChild(renderer.domElement);
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0x222230, 0.45);
+scene.add(hemi);
+
+const key = new THREE.DirectionalLight(0xfff2dd, 1.6);
+key.position.set(200, 320, 240);
+scene.add(key);
+
+const fill = new THREE.DirectionalLight(0x88aacc, 0.5);
+fill.position.set(-260, 180, -120);
+scene.add(fill);
+
+const rim = new THREE.DirectionalLight(0xffe3b8, 0.8);
+rim.position.set(0, 220, -340);
+scene.add(rim);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 80;
+controls.maxDistance = 1200;
+
+const matSolid = new THREE.MeshStandardMaterial({
+  color: 0xf2eadf, roughness: 0.62, metalness: 0.02,
+});
+const matWire = new THREE.MeshBasicMaterial({
+  color: 0x9ec25c, wireframe: true, transparent: true, opacity: 0.55,
+});
+
+let mesh = null;
+let pivot = new THREE.Group();
+scene.add(pivot);
+
+const loader = new OBJLoader();
+const t0 = performance.now();
+loader.load(
+  "{% static 'models/wojak/wojak.obj' %}",
+  (obj) => {
+    obj.traverse((c) => {
+      if (c.isMesh) {
+        c.material = matSolid;
+        c.geometry.computeVertexNormals();
+      }
+    });
+
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+    obj.position.sub(center);
+    pivot.add(obj);
+    mesh = obj;
+
+    const target = 220;
+    const scale = target / Math.max(size.x, size.y, size.z);
+    pivot.scale.setScalar(scale);
+
+    controls.target.set(0, 0, 0);
+    camera.position.set(0, target * 0.25, target * 1.9);
+    controls.update();
+
+    const dt = ((performance.now() - t0) / 1000).toFixed(2);
+    let verts = 0, tris = 0;
+    obj.traverse((c) => {
+      if (c.isMesh && c.geometry) {
+        verts += c.geometry.attributes.position.count;
+        const idx = c.geometry.index;
+        tris += (idx ? idx.count : c.geometry.attributes.position.count) / 3;
+      }
+    });
+    status.textContent = `loaded · ${verts.toLocaleString()} verts · ${Math.round(tris).toLocaleString()} tris · ${dt}s`;
+  },
+  (e) => {
+    if (e.lengthComputable) {
+      const pct = (e.loaded / e.total * 100).toFixed(0);
+      status.textContent = `loading… ${pct}%  (${(e.loaded / 1e6).toFixed(1)} MB)`;
+    } else {
+      status.textContent = `loading… ${(e.loaded / 1e6).toFixed(1)} MB`;
+    }
+  },
+  (err) => {
+    status.classList.add("err");
+    status.textContent = `failed to load: ${err.message || err}`;
+    console.error(err);
+  }
+);
+
+let spin = true;
+let wire = false;
+let lightMode = false;
+const btnSpin = document.getElementById("btnSpin");
+const btnWire = document.getElementById("btnWire");
+const btnLight = document.getElementById("btnLight");
+const btnReset = document.getElementById("btnReset");
+
+btnSpin.onclick = () => { spin = !spin; btnSpin.classList.toggle("on", spin); };
+btnWire.onclick = () => {
+  wire = !wire;
+  btnWire.classList.toggle("on", wire);
+  if (mesh) mesh.traverse((c) => { if (c.isMesh) c.material = wire ? matWire : matSolid; });
+};
+btnLight.onclick = () => {
+  lightMode = !lightMode;
+  btnLight.classList.toggle("on", lightMode);
+  scene.background = new THREE.Color(lightMode ? 0xe7e7e2 : 0x0e0f12);
+  scene.fog.color.set(lightMode ? 0xe7e7e2 : 0x0e0f12);
+  matSolid.color.set(lightMode ? 0xc8c0b3 : 0xf2eadf);
+  matSolid.needsUpdate = true;
+};
+btnReset.onclick = () => {
+  controls.target.set(0, 0, 0);
+  camera.position.set(0, 60, 420);
+  pivot.rotation.set(0, 0, 0);
+  controls.update();
+};
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+const clock = new THREE.Clock();
+function tick() {
+  const dt = clock.getDelta();
+  if (spin) pivot.rotation.y += dt * 0.35;
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+tick();
+</script>
+</body>
+</html>

@@ -1,0 +1,764 @@
+{% extends "layouts/admin.html" %}
+{% block content %}
+<style>
+  :root {
+    --c-bg: #0e0f12;
+    --c-panel: #15171c;
+    --c-panel2: #1b1e25;
+    --c-ink: #e7e7e2;
+    --c-dim: #8a8e98;
+    --c-faint: #5a5e68;
+    --c-accent: #d49b58;
+    --c-green: #9ec25c;
+    --c-rule: #23262e;
+  }
+  .char-page { background: var(--c-bg); color: var(--c-ink); min-height: calc(100vh - 56px); }
+  .char-page a { color: var(--c-accent); }
+  .char-page code { color: var(--c-accent); background: rgba(212,155,88,0.08); padding: 1px 4px; border-radius: 3px; }
+
+  .char-head {
+    border-bottom: 1px solid var(--c-rule);
+    padding: 18px 24px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .char-head .name { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .char-head .meta { font-size: 12px; color: var(--c-dim); margin-top: 2px; }
+  .char-head .pill {
+    display: inline-flex; gap: 6px; align-items: center;
+    border: 1px solid var(--c-rule); padding: 3px 8px; border-radius: 999px;
+    font-size: 11px; color: var(--c-dim);
+  }
+  .char-head .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--c-faint); }
+  .char-head .pill.live .dot { background: var(--c-green); box-shadow: 0 0 6px var(--c-green); }
+  .char-head .pill.live { color: var(--c-green); }
+  .char-head .stats { display: flex; gap: 18px; font-size: 12px; color: var(--c-dim); flex-wrap: wrap; }
+  .char-head .stats b { color: var(--c-ink); font-weight: 600; }
+
+  .tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--c-rule);
+    background: var(--c-bg);
+    padding: 0 24px;
+    overflow-x: auto;
+  }
+  .tabs button {
+    background: transparent;
+    border: none;
+    color: var(--c-dim);
+    padding: 12px 18px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    white-space: nowrap;
+  }
+  .tabs button:hover { color: var(--c-ink); }
+  .tabs button.active { color: var(--c-ink); border-bottom-color: var(--c-accent); }
+
+  .pane { display: none; padding: 22px 24px 60px; }
+  .pane.active { display: block; }
+
+  /* Chat */
+  .chat { display: grid; grid-template-columns: 220px 1fr; gap: 16px; min-height: 60vh; }
+  .chat .sessions {
+    background: var(--c-panel); border: 1px solid var(--c-rule); border-radius: 6px;
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  .chat .sessions-list { flex: 1; overflow-y: auto; max-height: 60vh; }
+  .chat .session-item {
+    padding: 10px 12px; border-bottom: 1px solid var(--c-rule);
+    cursor: pointer; font-size: 13px; display: flex; justify-content: space-between; align-items: center;
+  }
+  .chat .session-item:hover { background: var(--c-panel2); }
+  .chat .session-item.active { background: var(--c-panel2); border-left: 2px solid var(--c-accent); }
+  .chat .session-item .x { color: var(--c-faint); font-size: 14px; padding: 0 4px; }
+  .chat .session-item .x:hover { color: #cc4444; }
+  .chat .new-session {
+    padding: 10px; border-top: 1px solid var(--c-rule); background: var(--c-panel2);
+  }
+  .chat .new-session button {
+    width: 100%; background: transparent; border: 1px dashed var(--c-rule); color: var(--c-dim);
+    padding: 8px; border-radius: 4px; cursor: pointer; font: inherit;
+  }
+  .chat .new-session button:hover { color: var(--c-ink); border-color: var(--c-dim); }
+
+  .chat .convo {
+    background: var(--c-panel); border: 1px solid var(--c-rule); border-radius: 6px;
+    display: flex; flex-direction: column; min-height: 60vh;
+  }
+  .chat .messages {
+    flex: 1; padding: 18px; overflow-y: auto; max-height: 60vh;
+  }
+  .msg { margin-bottom: 14px; }
+  .msg .role { font-size: 11px; color: var(--c-faint); margin-bottom: 2px; text-transform: uppercase; letter-spacing: .1em; }
+  .msg .text { white-space: pre-wrap; font-size: 14px; line-height: 1.5; }
+  .msg.anon .text { color: var(--c-ink); }
+  .msg.user .text { color: var(--c-accent); }
+  .msg .greentext { color: var(--c-green); }
+  .msg .row-actions { margin-top: 4px; font-size: 11px; }
+  .msg .row-actions button { background: none; border: none; color: var(--c-faint); font-size: 11px; cursor: pointer; padding: 0 4px; }
+  .msg .row-actions button:hover { color: var(--c-accent); }
+
+  .chat .compose {
+    border-top: 1px solid var(--c-rule); padding: 12px;
+    display: flex; gap: 8px; align-items: flex-end;
+  }
+  .chat .compose textarea {
+    flex: 1; background: var(--c-bg); color: var(--c-ink); border: 1px solid var(--c-rule);
+    border-radius: 4px; padding: 8px; resize: vertical; min-height: 44px; max-height: 180px;
+    font: inherit; font-size: 14px;
+  }
+  .chat .compose button {
+    background: var(--c-accent); color: var(--c-bg); border: none; padding: 10px 16px;
+    border-radius: 4px; font-weight: 600; cursor: pointer;
+  }
+  .chat .compose button:disabled { opacity: 0.5; cursor: wait; }
+
+  /* Thoughts */
+  .thoughts { display: grid; grid-template-columns: 1fr 280px; gap: 16px; }
+  .thoughts .now {
+    background: var(--c-panel); border: 1px solid var(--c-rule); border-radius: 6px; padding: 18px;
+    min-height: 140px;
+  }
+  .thoughts .now .label { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--c-faint); margin-bottom: 10px; }
+  .thoughts .now .body { font-size: 16px; line-height: 1.55; white-space: pre-wrap; min-height: 60px; }
+  .thoughts .now .body .greentext { color: var(--c-green); }
+  .thoughts .now .body .caret { display:inline-block; width:7px; height:1em; background:var(--c-ink); margin-left:1px; vertical-align:-2px; animation: blink 1.05s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .thoughts .now .actions { margin-top: 12px; display: flex; gap: 8px; }
+  .thoughts .now .actions button { background: transparent; border: 1px solid var(--c-rule); color: var(--c-ink); padding: 4px 10px; border-radius: 4px; cursor: pointer; font: inherit; font-size: 12px; }
+  .thoughts .now .actions button:hover { background: var(--c-panel2); }
+  .thoughts .priors { margin-top: 14px; }
+  .thoughts .prior { border-top: 1px solid var(--c-rule); padding: 10px 0; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+  .thoughts .prior .greentext { color: var(--c-green); }
+  .thoughts .prior .ts { font-size: 10px; color: var(--c-faint); display: block; margin-bottom: 3px; }
+  .thoughts .prior .save { font-size: 10px; color: var(--c-faint); float: right; background: none; border: none; cursor: pointer; }
+  .thoughts .prior .save:hover { color: var(--c-accent); }
+
+  .favorites {
+    background: var(--c-panel); border: 1px solid var(--c-rule); border-radius: 6px; padding: 12px;
+    align-self: start;
+  }
+  .favorites h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--c-faint); margin: 0 0 10px; }
+  .fav-item { padding: 8px 0; border-bottom: 1px solid var(--c-rule); font-size: 12px; line-height: 1.4; white-space: pre-wrap; }
+  .fav-item:last-child { border-bottom: none; }
+  .fav-item .greentext { color: var(--c-green); }
+  .fav-item .x { float: right; color: var(--c-faint); cursor: pointer; font-size: 12px; }
+  .fav-item .x:hover { color: #cc4444; }
+
+  /* Images */
+  .imgs .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  .imgs .toolbar select, .imgs .toolbar input {
+    background: var(--c-bg); color: var(--c-ink); border: 1px solid var(--c-rule);
+    border-radius: 4px; padding: 6px 10px; font: inherit; font-size: 13px;
+  }
+  .imgs .toolbar .upload { margin-left: auto; }
+  .imgs .toolbar label.btn-upload {
+    background: var(--c-accent); color: var(--c-bg); border: none; padding: 6px 12px; border-radius: 4px;
+    cursor: pointer; font-weight: 600; font-size: 12px;
+  }
+  .imgs .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 4px; }
+  .imgs .grid img { width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--c-bg); border: 1px solid var(--c-rule); }
+  .imgs .pager { margin-top: 14px; display: flex; gap: 8px; align-items: center; color: var(--c-dim); font-size: 12px; }
+  .imgs .pager button {
+    background: transparent; border: 1px solid var(--c-rule); color: var(--c-ink); padding: 4px 10px; border-radius: 4px; cursor: pointer; font: inherit; font-size: 12px;
+  }
+  .imgs .pager button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Training */
+  .train .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .train .sample {
+    background: var(--c-panel); border: 1px solid var(--c-rule); border-radius: 6px; padding: 12px; margin-bottom: 8px;
+  }
+  .train .sample .row { display: grid; grid-template-columns: 80px 1fr; gap: 12px; padding: 6px 0; border-top: 1px dashed var(--c-rule); }
+  .train .sample .row:first-child { border-top: none; }
+  .train .sample .row .lab { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--c-faint); }
+  .train .sample .row .val { white-space: pre-wrap; font-size: 13px; line-height: 1.5; }
+  .train .sample .row .val.system { color: var(--c-dim); font-size: 12px; }
+
+  /* Settings */
+  .settings { max-width: 760px; }
+  .settings .form-group label { color: var(--c-dim); font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
+  .settings input, .settings textarea, .settings select {
+    background: var(--c-bg); color: var(--c-ink); border: 1px solid var(--c-rule); border-radius: 4px;
+    padding: 8px 10px; width: 100%; font: inherit; font-size: 13px;
+  }
+  .settings textarea { min-height: 100px; }
+  .settings .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .settings .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .settings .actions { display: flex; gap: 8px; margin-top: 16px; }
+  .settings button {
+    background: var(--c-accent); color: var(--c-bg); border: none; padding: 8px 16px; border-radius: 4px; font-weight: 600; cursor: pointer;
+  }
+  .settings button.danger { background: #732222; color: var(--c-ink); }
+  .settings .saved { color: var(--c-green); font-size: 12px; margin-left: 12px; opacity: 0; transition: opacity .3s; }
+  .settings .saved.show { opacity: 1; }
+
+  .hint { color: var(--c-faint); font-size: 11px; margin-top: 4px; }
+</style>
+
+<div class="char-page" data-slug="{{ persona.slug }}">
+  <div class="char-head">
+    <div>
+      <div style="font-size:11px;color:var(--c-faint);margin-bottom:2px;">
+        <a href="{% url 'character_hub' %}" style="color:inherit">← all characters</a>
+      </div>
+      <div class="name">{{ persona.character_name|default:persona.title }}</div>
+      <div class="meta">
+        <code>{{ persona.slug }}</code>
+        {% if persona.archetype %} · {{ persona.archetype }}{% endif %}
+        {% if persona.base_model %} · <code>{{ persona.base_model }}</code>{% endif %}
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px">
+      <div class="pill {% if persona.has_trained_model %}live{% endif %}">
+        <span class="dot"></span>
+        <span>{% if persona.has_trained_model %}model loaded{% else %}no adapter{% endif %}</span>
+      </div>
+      <div class="stats">
+        <span><b>{{ image_count }}</b> images</span>
+        <span><b>{{ train_count }}</b> samples</span>
+        <span><b>{{ favorites_count }}</b> favorites</span>
+        <a href="{{ public_url }}" target="_blank" style="font-size:11px">public stream ↗</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="chat">Chat</button>
+    <button class="tab" data-tab="thoughts">Thoughts</button>
+    <button class="tab" data-tab="images">Images</button>
+    <button class="tab" data-tab="train">Training data</button>
+    <button class="tab" data-tab="settings">Settings</button>
+  </div>
+
+  <!-- CHAT -->
+  <div class="pane active" data-pane="chat">
+    <div class="chat">
+      <div class="sessions">
+        <div class="sessions-list" id="sessionsList">
+          {% for s in sessions %}
+            <div class="session-item{% if forloop.first %} active{% endif %}" data-sid="{{ s.id }}">
+              <span>{{ s.name }}</span>
+              <span class="x" data-del="{{ s.id }}" title="delete">×</span>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="new-session"><button id="btnNewSession">+ new chat</button></div>
+      </div>
+      <div class="convo">
+        <div class="messages" id="messages"></div>
+        <div class="compose">
+          <textarea id="composeText" placeholder="say something… (ctrl+enter to send)"></textarea>
+          <button id="btnSend">send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- THOUGHTS -->
+  <div class="pane" data-pane="thoughts">
+    <div class="thoughts">
+      <div>
+        <div class="now" id="thNow">
+          <div class="label">now thinking</div>
+          <div class="body" id="thBody">click "next" to start streaming</div>
+          <div class="actions">
+            <button id="thBtnNext">next</button>
+            <button id="thBtnPause">pause</button>
+            <button id="thBtnSave" disabled>★ save as favorite</button>
+            <a href="{{ public_url }}" target="_blank" style="margin-left:auto;font-size:12px;align-self:center">open public ↗</a>
+          </div>
+        </div>
+        <div class="priors" id="thPriors"></div>
+      </div>
+      <div class="favorites">
+        <h4>Favorites <span style="color:var(--c-faint);font-size:10px">(fallback pool)</span></h4>
+        <div id="favList"><div style="color:var(--c-faint);font-size:11px">none yet</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- IMAGES -->
+  <div class="pane" data-pane="images">
+    <div class="imgs">
+      <div class="toolbar">
+        <select id="imgFolder">
+          <option value="">all (recursive)</option>
+          {% for f in folders %}<option value="{{ f }}">{{ f }}/</option>{% endfor %}
+        </select>
+        <span style="color:var(--c-dim);font-size:12px" id="imgCount"></span>
+        <span class="upload">
+          <input type="text" id="uploadFolder" placeholder="folder (default: uploads)" style="width:170px">
+          <label class="btn-upload">upload
+            <input type="file" id="imgUpload" multiple accept="image/*" style="display:none">
+          </label>
+          <span id="uploadStatus" style="color:var(--c-green);font-size:11px;margin-left:8px"></span>
+        </span>
+      </div>
+      <div class="grid" id="imgGrid"></div>
+      <div class="pager">
+        <button id="imgPrev">« prev</button>
+        <span id="imgPagerLabel">page 1 / 1</span>
+        <button id="imgNext">next »</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRAINING -->
+  <div class="pane" data-pane="train">
+    <div class="train">
+      <div class="toolbar">
+        <select id="trainSplit">
+          <option value="train">train ({{ train_count }})</option>
+          <option value="valid">valid ({{ valid_count }})</option>
+        </select>
+        <button id="trainPrev" style="background:transparent;border:1px solid var(--c-rule);color:var(--c-ink);padding:6px 12px;border-radius:4px;cursor:pointer;font:inherit;font-size:12px">« prev</button>
+        <span id="trainPagerLabel" style="color:var(--c-dim);font-size:12px">page 1</span>
+        <button id="trainNext" style="background:transparent;border:1px solid var(--c-rule);color:var(--c-ink);padding:6px 12px;border-radius:4px;cursor:pointer;font:inherit;font-size:12px">next »</button>
+        <span style="color:var(--c-faint);font-size:11px;margin-left:auto">read-only viewer (MVP) · curation queue coming next</span>
+      </div>
+      <div id="trainList"></div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="pane" data-pane="settings">
+    <div class="settings">
+      <form id="settingsForm" onsubmit="event.preventDefault(); saveSettings();">
+        <div class="form-group">
+          <label>Title</label>
+          <input name="title" value="{{ persona.title }}">
+        </div>
+        <div class="grid2">
+          <div class="form-group">
+            <label>Display name</label>
+            <input name="character_name" value="{{ persona.character_name }}">
+          </div>
+          <div class="form-group">
+            <label>Archetype</label>
+            <input name="archetype" value="{{ persona.archetype }}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Base model</label>
+          <input name="base_model" value="{{ persona.base_model }}">
+        </div>
+        <div class="grid2">
+          <div class="form-group">
+            <label>Corpus key</label>
+            <input name="corpus_key" value="{{ persona.corpus_key }}">
+          </div>
+          <div class="form-group">
+            <label>Adapter dir</label>
+            <input name="adapter_dir" value="{{ persona.adapter_dir }}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Image dir</label>
+          <input name="image_dir" value="{{ persona.image_dir }}">
+        </div>
+        <div class="form-group">
+          <label>Persona prompt (system)</label>
+          <textarea name="persona_prompt">{{ persona.persona_prompt }}</textarea>
+        </div>
+        <div class="grid3">
+          <div class="form-group">
+            <label>Temperature</label>
+            <input name="gen_temperature" type="number" step="0.05" min="0" max="2" value="{{ persona.gen_temperature }}">
+          </div>
+          <div class="form-group">
+            <label>top_p</label>
+            <input name="gen_top_p" type="number" step="0.05" min="0" max="1" value="{{ persona.gen_top_p }}">
+          </div>
+          <div class="form-group">
+            <label>Max tokens</label>
+            <input name="gen_max_tokens" type="number" step="1" min="1" max="2048" value="{{ persona.gen_max_tokens }}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label><input type="checkbox" name="is_published" {% if persona.is_published %}checked{% endif %}> published (publicly visible)</label>
+        </div>
+        <div class="actions">
+          <button type="submit">save settings</button>
+          <span class="saved" id="settingsSaved">saved ✓</span>
+          <span style="flex:1"></span>
+          <button type="button" class="danger" onclick="deleteCharacter()">delete character</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const SLUG = "{{ persona.slug|escapejs }}";
+  const CSRF = (document.querySelector("[name=csrfmiddlewaretoken]") || {}).value || "";
+  const STREAM = "{{ stream_endpoint|escapejs }}";
+
+  function getCookie(name) {
+    const v = document.cookie.split("; ").find(c => c.startsWith(name + "="));
+    return v ? decodeURIComponent(v.split("=")[1]) : "";
+  }
+  const csrftoken = CSRF || getCookie("csrftoken");
+
+  // --- Tabs ---------------------------------------------------------------
+  const tabs = document.querySelectorAll(".tabs .tab");
+  const panes = document.querySelectorAll(".pane");
+  function activate(name) {
+    tabs.forEach(t => t.classList.toggle("active", t.dataset.tab === name));
+    panes.forEach(p => p.classList.toggle("active", p.dataset.pane === name));
+    if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
+    if (name === "images") loadImages();
+    if (name === "train") loadTraining();
+    if (name === "thoughts") loadFavorites();
+  }
+  tabs.forEach(t => t.addEventListener("click", () => activate(t.dataset.tab)));
+  if (location.hash) {
+    const h = location.hash.slice(1);
+    if (document.querySelector(`[data-pane="${h}"]`)) activate(h);
+  }
+
+  function applyGreentext(node, text) {
+    node.innerHTML = "";
+    (text || "").split("\n").forEach((line, idx, arr) => {
+      const span = document.createElement("span");
+      if (/^\s*>/.test(line) && !/^\s*>>/.test(line)) span.className = "greentext";
+      span.textContent = line;
+      node.appendChild(span);
+      if (idx < arr.length - 1) node.appendChild(document.createTextNode("\n"));
+    });
+  }
+
+  // --- Chat ---------------------------------------------------------------
+  let activeSessionId = (document.querySelector(".session-item.active") || {}).dataset?.sid || null;
+  const messagesEl = document.getElementById("messages");
+  const composeText = document.getElementById("composeText");
+  const btnSend = document.getElementById("btnSend");
+  const btnNewSession = document.getElementById("btnNewSession");
+
+  function renderMessage(m) {
+    const d = document.createElement("div");
+    d.className = "msg " + (m.role === "user" ? "user" : "anon");
+    const role = document.createElement("div");
+    role.className = "role";
+    role.textContent = m.role === "user" ? "you" : "anon";
+    const text = document.createElement("div");
+    text.className = "text";
+    applyGreentext(text, m.text);
+    d.appendChild(role); d.appendChild(text);
+    if (m.role === "anon") {
+      const acts = document.createElement("div");
+      acts.className = "row-actions";
+      const star = document.createElement("button");
+      star.textContent = "★ save as favorite";
+      star.addEventListener("click", () => addFavorite(m.text));
+      const sample = document.createElement("button");
+      sample.textContent = "→ training (todo)";
+      sample.disabled = true;
+      sample.style.opacity = "0.4";
+      acts.appendChild(star); acts.appendChild(sample);
+      d.appendChild(acts);
+    }
+    messagesEl.appendChild(d);
+  }
+
+  async function loadMessages(sid) {
+    activeSessionId = sid;
+    document.querySelectorAll(".session-item").forEach(el => {
+      el.classList.toggle("active", el.dataset.sid === String(sid));
+    });
+    messagesEl.innerHTML = "";
+    if (!sid) return;
+    const r = await fetch(`/api/characters/${SLUG}/chat/sessions/${sid}/`);
+    const data = await r.json();
+    (data.messages || []).forEach(renderMessage);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  async function send() {
+    const text = composeText.value.trim();
+    if (!text || !activeSessionId) return;
+    btnSend.disabled = true;
+    composeText.value = "";
+    renderMessage({ role: "user", text });
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    try {
+      const r = await fetch(`/api/characters/${SLUG}/chat/sessions/${activeSessionId}/send/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrftoken },
+        body: JSON.stringify({ message: text }),
+      });
+      const data = await r.json();
+      if (data.anon) {
+        renderMessage(data.anon);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      } else if (data.error) {
+        renderMessage({ role: "anon", text: "(error: " + data.error + ")" });
+      }
+    } catch (e) {
+      renderMessage({ role: "anon", text: "(network error)" });
+    }
+    btnSend.disabled = false;
+    composeText.focus();
+  }
+
+  btnSend.addEventListener("click", send);
+  composeText.addEventListener("keydown", e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); send(); }
+  });
+  btnNewSession.addEventListener("click", async () => {
+    const r = await fetch(`/api/characters/${SLUG}/chat/sessions/create/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": csrftoken },
+      body: JSON.stringify({ name: "chat " + new Date().toLocaleTimeString() }),
+    });
+    const data = await r.json();
+    const list = document.getElementById("sessionsList");
+    const item = document.createElement("div");
+    item.className = "session-item";
+    item.dataset.sid = data.session.id;
+    item.innerHTML = `<span>${data.session.name}</span><span class="x" data-del="${data.session.id}">×</span>`;
+    list.insertBefore(item, list.firstChild);
+    bindSessionItem(item);
+    item.click();
+  });
+
+  function bindSessionItem(el) {
+    el.addEventListener("click", e => {
+      if (e.target.classList.contains("x")) return;
+      loadMessages(el.dataset.sid);
+    });
+    const x = el.querySelector(".x");
+    if (x) x.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!confirm("delete this chat session?")) return;
+      await fetch(`/api/characters/${SLUG}/chat/sessions/${x.dataset.del}/delete/`, {
+        method: "POST", headers: { "X-CSRFToken": csrftoken },
+      });
+      el.remove();
+      const next = document.querySelector(".session-item");
+      if (next) loadMessages(next.dataset.sid);
+      else { activeSessionId = null; messagesEl.innerHTML = ""; }
+    });
+  }
+  document.querySelectorAll(".session-item").forEach(bindSessionItem);
+  if (activeSessionId) loadMessages(activeSessionId);
+
+  // --- Thoughts ----------------------------------------------------------
+  const thNow = document.getElementById("thNow");
+  const thBody = document.getElementById("thBody");
+  const thBtnNext = document.getElementById("thBtnNext");
+  const thBtnPause = document.getElementById("thBtnPause");
+  const thBtnSave = document.getElementById("thBtnSave");
+  const thPriors = document.getElementById("thPriors");
+  let thState = { recent: [], last: "", paused: false, generating: false, current: "" };
+
+  async function nextThought() {
+    if (thState.generating) return;
+    thState.generating = true;
+    if (thState.last) {
+      const p = document.createElement("div");
+      p.className = "prior";
+      const ts = document.createElement("span");
+      ts.className = "ts";
+      ts.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const sav = document.createElement("button");
+      sav.className = "save";
+      sav.textContent = "★ save";
+      const text = thState.last;
+      sav.addEventListener("click", () => addFavorite(text));
+      p.appendChild(ts); p.appendChild(sav);
+      const body = document.createElement("div");
+      applyGreentext(body, thState.last);
+      p.appendChild(body);
+      thPriors.insertBefore(p, thPriors.firstChild);
+      while (thPriors.children.length > 30) thPriors.removeChild(thPriors.lastChild);
+    }
+    thBody.textContent = "thinking…";
+    thBtnSave.disabled = true;
+    try {
+      const r = await fetch(STREAM, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrftoken },
+        body: JSON.stringify({ recent: thState.recent }),
+      });
+      const data = await r.json();
+      const seg = (data.segment || "").trim();
+      if (seg) {
+        thState.last = seg;
+        thState.current = seg;
+        thState.recent.push(seg);
+        if (thState.recent.length > 18) thState.recent.shift();
+        applyGreentext(thBody, seg);
+        thBtnSave.disabled = false;
+      } else {
+        thBody.textContent = "(no thought)";
+      }
+    } catch (e) {
+      thBody.textContent = "(error: " + e + ")";
+    }
+    thState.generating = false;
+  }
+  thBtnNext.addEventListener("click", nextThought);
+  thBtnPause.addEventListener("click", () => {
+    thState.paused = !thState.paused;
+    thBtnPause.textContent = thState.paused ? "resume" : "pause";
+  });
+  thBtnSave.addEventListener("click", () => {
+    if (thState.current) addFavorite(thState.current);
+  });
+
+  // --- Favorites ---------------------------------------------------------
+  const favListEl = document.getElementById("favList");
+  async function loadFavorites() {
+    const r = await fetch(`/api/characters/${SLUG}/favorites/`);
+    const data = await r.json();
+    favListEl.innerHTML = "";
+    if (!(data.favorites || []).length) {
+      favListEl.innerHTML = '<div style="color:var(--c-faint);font-size:11px">none yet</div>';
+      return;
+    }
+    data.favorites.forEach(f => {
+      const d = document.createElement("div");
+      d.className = "fav-item";
+      const x = document.createElement("span");
+      x.className = "x";
+      x.textContent = "×";
+      x.addEventListener("click", async () => {
+        await fetch(`/api/characters/${SLUG}/favorites/${f.id}/delete/`, {
+          method: "POST", headers: { "X-CSRFToken": csrftoken },
+        });
+        loadFavorites();
+      });
+      d.appendChild(x);
+      const body = document.createElement("div");
+      applyGreentext(body, f.text);
+      d.appendChild(body);
+      favListEl.appendChild(d);
+    });
+  }
+  async function addFavorite(text) {
+    if (!text) return;
+    await fetch(`/api/characters/${SLUG}/favorites/add/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": csrftoken },
+      body: JSON.stringify({ text }),
+    });
+    loadFavorites();
+  }
+
+  // --- Images ------------------------------------------------------------
+  const imgFolder = document.getElementById("imgFolder");
+  const imgGrid = document.getElementById("imgGrid");
+  const imgCount = document.getElementById("imgCount");
+  const imgPrev = document.getElementById("imgPrev");
+  const imgNext = document.getElementById("imgNext");
+  const imgPagerLabel = document.getElementById("imgPagerLabel");
+  const imgUpload = document.getElementById("imgUpload");
+  const uploadFolder = document.getElementById("uploadFolder");
+  const uploadStatus = document.getElementById("uploadStatus");
+  let imgPage = 1;
+  async function loadImages() {
+    const folder = imgFolder.value || "";
+    const r = await fetch(`/api/characters/${SLUG}/images/?folder=${encodeURIComponent(folder)}&page=${imgPage}`);
+    const data = await r.json();
+    imgGrid.innerHTML = "";
+    (data.files || []).forEach(rel => {
+      const img = document.createElement("img");
+      img.src = `/characters/${SLUG}/image/${rel}`;
+      img.loading = "lazy";
+      img.title = rel;
+      imgGrid.appendChild(img);
+    });
+    imgCount.textContent = `${data.total} images${folder ? ` in ${folder}/` : ""}`;
+    imgPagerLabel.textContent = `page ${data.page} / ${data.pages_total}`;
+    imgPrev.disabled = data.page <= 1;
+    imgNext.disabled = data.page >= data.pages_total;
+  }
+  imgFolder.addEventListener("change", () => { imgPage = 1; loadImages(); });
+  imgPrev.addEventListener("click", () => { if (imgPage > 1) { imgPage--; loadImages(); } });
+  imgNext.addEventListener("click", () => { imgPage++; loadImages(); });
+  imgUpload.addEventListener("change", async () => {
+    if (!imgUpload.files.length) return;
+    const fd = new FormData();
+    for (const f of imgUpload.files) fd.append("files", f);
+    fd.append("folder", uploadFolder.value || "uploads");
+    uploadStatus.textContent = "uploading…";
+    const r = await fetch(`/api/characters/${SLUG}/images/upload/`, {
+      method: "POST", headers: { "X-CSRFToken": csrftoken }, body: fd,
+    });
+    const data = await r.json();
+    uploadStatus.textContent = `uploaded ${data.count || 0}`;
+    setTimeout(() => uploadStatus.textContent = "", 3000);
+    imgUpload.value = "";
+    loadImages();
+  });
+
+  // --- Training ----------------------------------------------------------
+  const trainSplit = document.getElementById("trainSplit");
+  const trainPrev = document.getElementById("trainPrev");
+  const trainNext = document.getElementById("trainNext");
+  const trainList = document.getElementById("trainList");
+  const trainPagerLabel = document.getElementById("trainPagerLabel");
+  let trainPage = 1;
+  async function loadTraining() {
+    const r = await fetch(`/api/characters/${SLUG}/training/?split=${trainSplit.value}&page=${trainPage}`);
+    const data = await r.json();
+    trainList.innerHTML = "";
+    if (!data.exists) {
+      trainList.innerHTML = '<div style="color:var(--c-faint);padding:12px">no training file at <code>' + (data.path || "?") + '</code></div>';
+      return;
+    }
+    (data.samples || []).forEach(s => {
+      const d = document.createElement("div");
+      d.className = "sample";
+      d.innerHTML = `
+        <div class="row"><div class="lab">system</div><div class="val system">${escape(s.system) || "—"}</div></div>
+        <div class="row"><div class="lab">user</div><div class="val">${escape(s.user)}</div></div>
+        <div class="row"><div class="lab">assistant</div><div class="val">${escape(s.assistant)}</div></div>
+      `;
+      trainList.appendChild(d);
+    });
+    trainPagerLabel.textContent = `page ${data.page} / ${data.pages_total} (${data.total} total)`;
+    trainPrev.disabled = data.page <= 1;
+    trainNext.disabled = data.page >= data.pages_total;
+  }
+  function escape(s) { return (s || "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+  trainSplit.addEventListener("change", () => { trainPage = 1; loadTraining(); });
+  trainPrev.addEventListener("click", () => { if (trainPage > 1) { trainPage--; loadTraining(); } });
+  trainNext.addEventListener("click", () => { trainPage++; loadTraining(); });
+
+  // --- Settings ----------------------------------------------------------
+  window.saveSettings = async function() {
+    const form = document.getElementById("settingsForm");
+    const fd = new FormData(form);
+    const r = await fetch(`/characters/${SLUG}/settings/`, {
+      method: "POST", headers: { "X-CSRFToken": csrftoken }, body: fd,
+    });
+    if (r.ok) {
+      const s = document.getElementById("settingsSaved");
+      s.classList.add("show");
+      setTimeout(() => s.classList.remove("show"), 1500);
+    }
+  };
+  window.deleteCharacter = async function() {
+    if (!confirm("Delete this character? This cannot be undone (chat history + favorites will also be deleted).")) return;
+    const fd = new FormData();
+    const r = await fetch(`/characters/${SLUG}/delete/`, {
+      method: "POST", headers: { "X-CSRFToken": csrftoken }, body: fd,
+    });
+    if (r.redirected) window.location = r.url;
+  };
+})();
+</script>
+
+<!-- hidden CSRF for fetch fallbacks -->
+<form style="display:none">{% csrf_token %}</form>
+{% endblock %}

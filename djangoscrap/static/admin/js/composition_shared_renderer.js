@@ -144,6 +144,50 @@
       });
     }
 
+    // Strobe a single <img> by rapidly swapping its src from a pool. Used as
+    // the bg layer for circle-foreground modes — the rapid flicker pops the
+    // circle subject in the foreground. Resolves video assets to their poster
+    // thumbnails since a single <img> can't display video, and rapid video
+    // mounting would burn GPU decoders anyway.
+    function startBgStrobe(el, pool) {
+      el.innerHTML = "";
+      const speedScale = Math.max(0.25, Number(speed) || 1);
+      const strobeMs = Math.max(60, Math.floor(110 / speedScale));
+      const resolveStill = function (asset) {
+        if (!asset) return "";
+        if (asset.kind === "image") return asset.url || "";
+        return asset.preview_url || "";
+      };
+      // Pre-warm a representative sample of stills so the first swaps come
+      // straight from cache; otherwise each new src=URL triggers a fetch and
+      // the strobe stutters until the network catches up.
+      const seedCount = Math.min(pool.length, 16);
+      for (let i = 0; i < seedCount; i++) {
+        const u = resolveStill(pool[i]);
+        if (u) { const im = new Image(); im.decoding = "async"; im.src = u; }
+      }
+      const img = document.createElement("img");
+      img.alt = "";
+      img.decoding = "async";
+      img.style.width = "100%";
+      img.style.height = "100%";
+      img.style.objectFit = "cover";
+      img.style.display = "block";
+      el.appendChild(img);
+      let lastIdx = -1;
+      const tick = function () {
+        if (!img.isConnected) return;
+        const picked = pickFromPool(pool, "bg", lastIdx);
+        if (!picked.asset) return;
+        lastIdx = picked.idx;
+        const url = resolveStill(picked.asset);
+        if (url && url !== img.src) img.src = url;
+      };
+      tick();
+      const id = setInterval(tick, strobeMs);
+      timers.add(id);
+    }
+
     function bindPaneFlow(el, pool, key, seedMs) {
       if (!el || !Array.isArray(pool) || !pool.length) {
         if (el) el.innerHTML = "";
@@ -156,7 +200,9 @@
         lastIdx = picked.idx;
         const layerTransition = key === "fg" ? transitionByLayer.fg : (key === "bg" ? transitionByLayer.bg : transitionByLayer.any);
         mountPaneAsset(el, picked.asset, null, function () {
-          later(tick, cycleDelay(1700, 1500));
+          // Single self-animating image (GIF) loops natively — don't cycle
+          const shouldCycle = pool.length > 1 || (picked.asset && picked.asset.kind === "video");
+          if (shouldCycle) later(tick, cycleDelay(1700, 1500));
         }, layerTransition);
       };
       later(tick, seedMs || 0);
@@ -321,7 +367,14 @@
         }, { once: true });
       };
       spawnLayer();
-      const id = setInterval(spawnLayer, spawnMs);
+      // Lite mode (folder-grid iframes pass ?lite=1): 9 simultaneous cells each
+      // spawning a cross-layer every ~150ms = ~60 fresh image requests/sec, which
+      // the single-threaded dev server can't sustain — produces broken images and
+      // half-rendered cells within 30s. Slow to one spawn every ~2.5s so the cross
+      // animation still cycles but request rate drops to ~4 req/s across the grid.
+      const isLite = typeof window !== "undefined" && window.location && window.location.search && window.location.search.indexOf("lite=1") >= 0;
+      const effectiveSpawnMs = isLite ? Math.max(2500, spawnMs * 12) : spawnMs;
+      const id = setInterval(spawnLayer, effectiveSpawnMs);
       timers.add(id);
     }
 
@@ -481,7 +534,15 @@
       if (els.foreground) els.foreground.style.transform = "";
       if (config.setVibrateMode) config.setVibrateMode(false);
       const fgPool = Array.isArray(pools.fg) && pools.fg.length ? pools.fg : pools.bg;
-      bindPaneFlow(els.background, pools.bg, "bg", 120);
+      // Circle compositions: strobe the background behind the circle for a
+      // pulsing/flickering effect that contrasts with the rotating circle in
+      // the foreground. Rapid src-swap on a single persistent <img> avoids
+      // GPU decoder churn from mounting new elements every tick.
+      if (shape === "circle" && els.background && Array.isArray(pools.bg) && pools.bg.length) {
+        startBgStrobe(els.background, pools.bg);
+      } else {
+        bindPaneFlow(els.background, pools.bg, "bg", 120);
+      }
       if (!els.foreground || !Array.isArray(fgPool) || !fgPool.length) return;
       const layeredBatMode = shape === "bat" && rotate && !mirror;
       if (layeredBatMode && root && root.classList) root.classList.add("center-mask-layered-mode");
@@ -584,7 +645,11 @@
         spawnLayer(offsetMs);
       }
       spawnLayer(0);
-      const id = setInterval(spawnLayer, spawnMs);
+      // Lite mode: throttle to 1 spawn every ~2.5s to keep server load sustainable
+      // across the folder grid's 9 iframes without losing the tunnel animation.
+      const isLiteTunnel = typeof window !== "undefined" && window.location && window.location.search && window.location.search.indexOf("lite=1") >= 0;
+      const effectiveSpawnMsTunnel = isLiteTunnel ? Math.max(2500, spawnMs * 12) : spawnMs;
+      const id = setInterval(spawnLayer, effectiveSpawnMsTunnel);
       timers.add(id);
     }
 
@@ -602,7 +667,15 @@
       const spawnMs = social
         ? Math.max(70, Math.floor(durationSec * 1000 * 0.14))
         : Math.max(62, Math.floor(durationSec * 1000 * 0.12));
+      // Lite mode (folder grid iframes pass ?lite=1): one of N simultaneous
+      // iframes — Chrome throttles iframe timers under load, so we use
+      // requestAnimationFrame scheduling (which throttles gracefully instead
+      // of stopping) and cap concurrent cards to prevent pile-up if animationend
+      // gets dropped under throttling.
+      const isLiteScroll = typeof window !== "undefined" && window.location && window.location.search && window.location.search.indexOf("lite=1") >= 0;
+      const activeCap = isLiteScroll ? 6 : 16;
       const spawnCard = function () {
+        if (els.scrollStage.querySelectorAll(".scroll-card").length >= activeCap) return;
         const picked = pickFromPool(pools.bg, "bg", lastIdx);
         if (!picked.asset) return;
         lastIdx = picked.idx;
@@ -639,10 +712,30 @@
         }
         card.style.animationDuration = durationSec.toFixed(2) + "s";
         els.scrollStage.appendChild(card);
-        mountAsset(card, picked.asset);
-        requestAnimationFrame(function () {
-          card.style.animationPlayState = "running";
-        });
+        // Scroll mode is image-centric: many cards scroll across the viewport
+        // simultaneously. Mounting full <video> elements for video assets blows
+        // out Chrome's ~10-20 concurrent decoder slots and leaves most cards
+        // showing black. Always prefer the still preview_url when the asset is
+        // a video — that's exactly the thumbnail this layout is designed for.
+        const rawAsset = picked.asset;
+        const cardAsset = (rawAsset && rawAsset.kind === "video" && rawAsset.preview_url)
+          ? { kind: "image", url: rawAsset.preview_url, preview_url: rawAsset.preview_url, name: rawAsset.name || "" }
+          : rawAsset;
+        // Defer animation start until the image inside the card has actually
+        // mounted — otherwise the card scrolls a black rectangle across the
+        // viewport while the image is still being decoded, which the viewer
+        // experiences as "no bg images". A safety timeout ensures the card
+        // still animates if mountAsset's onReady callback never fires.
+        let started = false;
+        const startAnim = function () {
+          if (started) return;
+          started = true;
+          requestAnimationFrame(function () {
+            card.style.animationPlayState = "running";
+          });
+        };
+        mountAsset(card, cardAsset, startAnim);
+        setTimeout(startAnim, 1500);
         if (!social) {
           const swapCount = Math.max(2, Math.min(6, Math.round(durationSec * 1.9)));
           const swapTimers = [];
@@ -663,9 +756,17 @@
             swapTimers.forEach(function (t) { clearTimeout(t); });
           }, { once: true });
         }
-        card.addEventListener("animationend", function () {
+        let removed = false;
+        const removeCard = function () {
+          if (removed) return;
+          removed = true;
           card.remove();
-        }, { once: true });
+        };
+        card.addEventListener("animationend", removeCard, { once: true });
+        // Safety net: animationend can be dropped under iframe throttling,
+        // leaving cards stranded in the DOM and blocking the cap. Force-remove
+        // 800ms past the expected lifetime.
+        setTimeout(removeCard, Math.ceil(durationSec * 1000 + 800));
       };
       spawnCard();
       spawnCard();
@@ -675,7 +776,24 @@
         spawnCard();
         spawnCard();
       }
-      const id = setInterval(spawnCard, spawnMs);
+      // Cards now use thumbnails (cheap), so ~1/sec per iframe is sustainable.
+      const effectiveSpawnMsScroll = isLiteScroll ? Math.max(900, spawnMs * 10) : spawnMs;
+      // Self-rescheduling setTimeout instead of setInterval — Chrome throttles
+      // setInterval to ~1Hz minimum in heavily-loaded iframes, which is too slow
+      // for this animation. Recursive setTimeout still throttles but maintains
+      // closer to target cadence, and resumes cleanly when the iframe unthrottles.
+      let cancelled = false;
+      const scheduleNext = function () {
+        if (cancelled) return;
+        const t = setTimeout(function () {
+          spawnCard();
+          scheduleNext();
+        }, effectiveSpawnMsScroll);
+        timers.add(t);
+      };
+      scheduleNext();
+      // Also keep one setInterval as a backstop in case the chain breaks.
+      const id = setInterval(spawnCard, effectiveSpawnMsScroll * 2);
       timers.add(id);
     }
 

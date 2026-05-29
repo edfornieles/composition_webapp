@@ -1,0 +1,590 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>greenscreen</title>
+<style>
+  html,body { margin:0; padding:0; height:100%; background:#0e0f12; color:#e7e7e2;
+              font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif; overflow:hidden; }
+  #stage { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  #grid { display:grid; gap: 4px; width:100%; height:100%; padding: 28px; box-sizing:border-box; }
+  #grid.single { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+  #grid.grid3 { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); }
+  body.overlay-mode .cell canvas { display:none; }
+  body.overlay-mode #overlay { display:block; }
+  #overlay { position:fixed; inset:28px; pointer-events:none; display:none; z-index:5; }
+  #overlay canvas { width:100%; height:100%; display:block; }
+  #overlay video { display:none; }
+  .cell { position:relative; overflow:hidden; background:#000; }
+  .cell .cellbg { position:absolute; inset:0; background-size:cover; background-position:center;
+                  background-repeat:no-repeat; transition: opacity 0.6s ease, background-image 0s; opacity:0; }
+  .cell .cellbg.on { opacity:1; }
+  .cell .cellbg video { width:100%; height:100%; object-fit:cover; display:block; }
+  .cell .cellbg iframe { width:100%; height:100%; border:0; display:block; pointer-events:none; }
+  .cell canvas { position:relative; width:100%; height:100%; display:block; object-fit:cover; z-index:1; }
+  .cell > video.fg-source { display:none; }
+
+  #panel { position:fixed; top:14px; left:16px; background:rgba(15,17,22,0.85);
+           border:1px solid #23262e; border-radius:6px; padding:12px 14px; min-width:240px;
+           backdrop-filter: blur(6px); }
+  #panel h3 { margin:0 0 10px; font-size:11px; color:#8a8e98; text-transform:uppercase;
+              letter-spacing:.12em; font-weight:500; }
+  #panel label { display:block; font-size:10px; color:#8a8e98; text-transform:uppercase;
+                 letter-spacing:.08em; margin-top:8px; }
+  #panel input[type=range] { width:100%; }
+  #panel .row { display:flex; gap:6px; align-items:center; margin-top:8px; }
+  #panel input[type=color] { width:36px; height:24px; padding:0; border:1px solid #23262e;
+                             background:transparent; cursor:pointer; }
+  #panel button { background:#15171c; border:1px solid #23262e; color:#8a8e98;
+                  padding:5px 10px; border-radius:3px; cursor:pointer; font-size:10px;
+                  text-transform:uppercase; letter-spacing:.08em; }
+  #panel button:hover { color:#e7e7e2; border-color:#3a3d44; }
+  #panel button.on { color:#9ec25c; border-color:#3a3d44; }
+  #panel .vals { font-size:10px; color:#5a5e68; font-variant-numeric: tabular-nums; }
+  #panel select { background:#15171c; border:1px solid #23262e; color:#e7e7e2;
+                  padding:4px 6px; border-radius:3px; font-size:11px; width:100%; }
+
+  #bg { position:fixed; inset:0; z-index:-1; pointer-events:none; }
+  body.bg-checker #bg { background:
+      linear-gradient(45deg, #1a1c22 25%, transparent 25%) 0 0/24px 24px,
+      linear-gradient(-45deg, #1a1c22 25%, transparent 25%) 0 12px/24px 24px,
+      linear-gradient(45deg, transparent 75%, #1a1c22 75%) 12px -12px/24px 24px,
+      linear-gradient(-45deg, transparent 75%, #1a1c22 75%) -12px 0/24px 24px,
+      #0e0f12; }
+  body.bg-white #stage, body.bg-white #bg { background:#e7e7e2; }
+  body.bg-white { background:#e7e7e2; color:#0e0f12; }
+</style>
+</head>
+<body>
+<div id="bg"></div>
+<div id="stage">
+  <div id="grid" class="grid3"></div>
+</div>
+<div id="overlay"></div>
+
+<div id="panel">
+  <h3>chroma key</h3>
+
+  <label>layout</label>
+  <div class="row">
+    <button id="btnSingle">single</button>
+    <button id="btnGrid" class="on">3×3</button>
+  </div>
+
+  <label>fg mode</label>
+  <div class="row">
+    <button id="btnFgTile" class="on">tile</button>
+    <button id="btnFgOverlay">overlay</button>
+  </div>
+
+  <label>clip</label>
+  <select id="selClip">
+    <option value="mix">mix both</option>
+    <option value="a">7082 only</option>
+    <option value="b">7083 only</option>
+  </select>
+
+  <label>key colour</label>
+  <div class="row">
+    <input type="color" id="keyColor" value="#3eb851">
+    <button id="btnPick">pick</button>
+  </div>
+
+  <label>threshold <span id="vT" class="vals">0.40</span></label>
+  <input type="range" id="rT" min="0" max="1" step="0.01" value="0.40">
+
+  <label>smoothness <span id="vS" class="vals">0.10</span></label>
+  <input type="range" id="rS" min="0" max="0.5" step="0.005" value="0.10">
+
+  <label>spill suppress <span id="vP" class="vals">0.40</span></label>
+  <input type="range" id="rP" min="0" max="1" step="0.01" value="0.40">
+
+  <label>background</label>
+  <div class="row">
+    <button data-bg="dark" class="on bg-btn">dark</button>
+    <button data-bg="checker" class="bg-btn">checker</button>
+    <button data-bg="white" class="bg-btn">white</button>
+  </div>
+
+  <label>background pool (per cell)</label>
+  <select id="selPool">
+    <option value="">off</option>
+    {% for p in pools %}<option value="{{ p }}"{% if p == "compositions" %} selected{% endif %}>{{ p }}</option>{% endfor %}
+  </select>
+
+  <label>folder grid_id (compositions only)</label>
+  <div class="row">
+    <input type="text" id="txtFolder" value="4a14468c94" placeholder="e.g. 4a14468c94"
+           style="flex:1;background:#15171c;border:1px solid #23262e;color:#e7e7e2;padding:4px 6px;border-radius:3px;font-size:11px;font-family:monospace">
+    <button id="btnFolderApply">apply</button>
+  </div>
+
+  <label>rotate every <span id="vRot" class="vals">3.0s</span></label>
+  <input type="range" id="rRot" min="0.5" max="15" step="0.5" value="3">
+
+  <div class="row">
+    <button id="btnReshuffle">reshuffle</button>
+  </div>
+
+  <label>per-clip settings</label>
+  <div class="row">
+    <button id="btnSaveA">save → 7082</button>
+    <button id="btnSaveB">save → 7083</button>
+  </div>
+  <div class="row">
+    <button id="btnLoadA">load 7082</button>
+    <button id="btnLoadB">load 7083</button>
+  </div>
+  <div id="saveStatus" class="vals" style="margin-top:6px">—</div>
+</div>
+
+<script>
+const CLIPS = {
+  a: "{% static 'video/greenscreen/7Y8A7082.mp4' %}",
+  a_hd: "{% static 'video/greenscreen/7Y8A7082_hd.mp4' %}",
+  b: "{% static 'video/greenscreen/7Y8A7083.mp4' %}",
+  b_hd: "{% static 'video/greenscreen/7Y8A7083_hd.mp4' %}",
+};
+
+const VS = `
+attribute vec2 a;
+varying vec2 vUv;
+void main(){ vUv = (a + 1.0) * 0.5; vUv.y = 1.0 - vUv.y; gl_Position = vec4(a, 0.0, 1.0); }
+`;
+
+const FS = `
+precision highp float;
+uniform sampler2D u_tex;
+uniform vec3 u_key;
+uniform float u_thresh;
+uniform float u_smooth;
+uniform float u_spill;
+varying vec2 vUv;
+
+vec2 rgb2cc(vec3 c){
+  float y = 0.2989*c.r + 0.5866*c.g + 0.1145*c.b;
+  return vec2(c.b - y, c.r - y);
+}
+
+void main(){
+  vec4 src = texture2D(u_tex, vUv);
+  vec2 cc = rgb2cc(src.rgb);
+  vec2 kc = rgb2cc(u_key);
+  float d = distance(cc, kc);
+  float a = smoothstep(u_thresh, u_thresh + u_smooth, d);
+
+  // spill suppression: clamp green channel toward avg(r,b) when spill is high
+  float rb = (src.r + src.b) * 0.5;
+  float spillAmt = clamp((src.g - rb) / max(0.0001, src.g), 0.0, 1.0);
+  src.g = mix(src.g, rb, spillAmt * u_spill);
+
+  if (a < 0.001) discard;
+  gl_FragColor = vec4(src.rgb, a);
+}
+`;
+
+function makeCell(clipKey, hd) {
+  const cell = document.createElement("div");
+  cell.className = "cell";
+  const cellbg = document.createElement("div");
+  cellbg.className = "cellbg";
+  cell.appendChild(cellbg);
+  const video = document.createElement("video");
+  video.className = "fg-source";
+  video.crossOrigin = "anonymous";
+  video.src = hd ? CLIPS[clipKey + "_hd"] : CLIPS[clipKey];
+  video.loop = true; video.muted = true; video.playsInline = true; video.autoplay = true;
+  const canvas = document.createElement("canvas");
+  cell.appendChild(video); cell.appendChild(canvas);
+
+  const gl = canvas.getContext("webgl", { premultipliedAlpha: false, alpha: true });
+  const prog = gl.createProgram();
+  const vs = gl.createShader(gl.VERTEX_SHADER); gl.shaderSource(vs, VS); gl.compileShader(vs); gl.attachShader(prog, vs);
+  const fs = gl.createShader(gl.FRAGMENT_SHADER); gl.shaderSource(fs, FS); gl.compileShader(fs); gl.attachShader(prog, fs);
+  gl.linkProgram(prog); gl.useProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) console.error(gl.getShaderInfoLog(fs));
+
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+  const aLoc = gl.getAttribLocation(prog, "a");
+  gl.enableVertexAttribArray(aLoc);
+  gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 0, 0);
+
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+  const uKey = gl.getUniformLocation(prog, "u_key");
+  const uT = gl.getUniformLocation(prog, "u_thresh");
+  const uS = gl.getUniformLocation(prog, "u_smooth");
+  const uP = gl.getUniformLocation(prog, "u_spill");
+
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  video.addEventListener("loadedmetadata", () => {
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 360;
+    video.play().catch(() => {});
+  });
+  // desync cells after first play — only seek once the browser reports seekable ranges
+  // (avoids stalling on servers that don't support Range requests)
+  video.addEventListener("playing", () => {
+    if (video._desynced) return;
+    video._desynced = true;
+    if (video.duration && video.seekable.length > 0) {
+      try { video.currentTime = Math.random() * video.duration; } catch(e) {}
+    }
+  }, { once: true });
+
+  return { cell, cellbg, video, gl, tex, prog, uKey, uT, uS, uP, canvas };
+}
+
+const grid = document.getElementById("grid");
+let cells = [];
+let layout = "grid3";
+let clipMode = "mix";
+
+const params = {
+  key: [0x3e/255, 0xb8/255, 0x51/255],
+  t: 0.40, s: 0.10, p: 0.40,
+};
+
+function rebuild() {
+  cells.forEach(c => c.video.pause());
+  grid.innerHTML = "";
+  cells = [];
+  const n = layout === "single" ? 1 : 9;
+  for (let i = 0; i < n; i++) {
+    let key;
+    if (clipMode === "mix") key = (i % 2 === 0) ? "a" : "b";
+    else key = clipMode;
+    const hd = (n === 1);
+    const c = makeCell(key, hd);
+    cells.push(c);
+    grid.appendChild(c.cell);
+  }
+  if (typeof rotateAll === "function") rotateAll();
+}
+
+function renderOne(c) {
+  if (!c || c.video.readyState < 2) return;
+  const { gl, tex, uKey, uT, uS, uP } = c;
+  gl.viewport(0, 0, c.canvas.width, c.canvas.height);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c.video);
+  gl.uniform3fv(uKey, params.key);
+  gl.uniform1f(uT, params.t);
+  gl.uniform1f(uS, params.s);
+  gl.uniform1f(uP, params.p);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+}
+
+function render() {
+  if (fgMode === "overlay") {
+    renderOne(overlayCell);
+  } else {
+    for (const c of cells) renderOne(c);
+  }
+  requestAnimationFrame(render);
+}
+
+const $ = (id) => document.getElementById(id);
+function hexToRgb(h) {
+  const m = h.replace('#','');
+  return [parseInt(m.slice(0,2),16)/255, parseInt(m.slice(2,4),16)/255, parseInt(m.slice(4,6),16)/255];
+}
+
+$("rT").oninput = e => { params.t = +e.target.value; $("vT").textContent = params.t.toFixed(2); };
+$("rS").oninput = e => { params.s = +e.target.value; $("vS").textContent = params.s.toFixed(3); };
+$("rP").oninput = e => { params.p = +e.target.value; $("vP").textContent = params.p.toFixed(2); };
+$("keyColor").oninput = e => { params.key = hexToRgb(e.target.value); };
+
+$("btnSingle").onclick = () => { layout = "single"; grid.className = "single"; $("btnSingle").classList.add("on"); $("btnGrid").classList.remove("on"); rebuild(); };
+$("btnGrid").onclick = () => { layout = "grid3"; grid.className = "grid3"; $("btnGrid").classList.add("on"); $("btnSingle").classList.remove("on"); rebuild(); };
+$("selClip").onchange = e => { clipMode = e.target.value; rebuild(); };
+
+// fg-mode: tile (per cell) vs overlay (single stretched canvas over the whole grid)
+let fgMode = "tile";
+let overlayCell = null;
+const overlayEl = document.getElementById("overlay");
+
+function setFgMode(mode) {
+  fgMode = mode;
+  $("btnFgTile").classList.toggle("on", mode === "tile");
+  $("btnFgOverlay").classList.toggle("on", mode === "overlay");
+  document.body.classList.toggle("overlay-mode", mode === "overlay");
+
+  if (mode === "overlay") {
+    if (overlayCell) overlayCell.video.pause();
+    overlayEl.innerHTML = "";
+    const key = clipMode === "b" ? "b" : "a";  // single source — pick "a" for mix
+    overlayCell = makeCell(key, true);
+    overlayEl.appendChild(overlayCell.video);
+    overlayEl.appendChild(overlayCell.canvas);
+    // overlay canvas should fill its container
+    overlayCell.canvas.style.width = "100%";
+    overlayCell.canvas.style.height = "100%";
+  } else {
+    if (overlayCell) { overlayCell.video.pause(); overlayCell = null; }
+    overlayEl.innerHTML = "";
+  }
+}
+
+$("btnFgTile").onclick = () => setFgMode("tile");
+$("btnFgOverlay").onclick = () => setFgMode("overlay");
+
+document.querySelectorAll(".bg-btn").forEach(b => {
+  b.onclick = () => {
+    document.body.classList.remove("bg-checker", "bg-white");
+    if (b.dataset.bg !== "dark") document.body.classList.add("bg-" + b.dataset.bg);
+    document.querySelectorAll(".bg-btn").forEach(x => x.classList.toggle("on", x === b));
+  };
+});
+
+// click-to-pick: sample a pixel from the first cell's video frame
+$("btnPick").onclick = () => {
+  if (!cells.length) return;
+  const c = cells[0];
+  $("btnPick").textContent = "click frame…";
+  c.canvas.style.cursor = "crosshair";
+  const handler = (ev) => {
+    const r = c.canvas.getBoundingClientRect();
+    const x = Math.floor((ev.clientX - r.left) / r.width * c.canvas.width);
+    const y = Math.floor((ev.clientY - r.top) / r.height * c.canvas.height);
+    const tmp = document.createElement("canvas");
+    tmp.width = c.video.videoWidth; tmp.height = c.video.videoHeight;
+    tmp.getContext("2d").drawImage(c.video, 0, 0);
+    const px = tmp.getContext("2d").getImageData(x, y, 1, 1).data;
+    params.key = [px[0]/255, px[1]/255, px[2]/255];
+    const hex = "#" + [px[0],px[1],px[2]].map(v => v.toString(16).padStart(2,'0')).join('');
+    $("keyColor").value = hex;
+    c.canvas.style.cursor = "";
+    $("btnPick").textContent = "pick";
+    c.canvas.removeEventListener("click", handler);
+  };
+  c.canvas.addEventListener("click", handler);
+};
+
+// ---- background image pool (per cell) ----
+let poolKey = "";
+let poolUrls = [];
+let rotateMs = 3000;
+let rotateTimers = [];
+
+async function fetchPool() {
+  if (!poolKey) { poolUrls = []; return; }
+  try {
+    const folder = ($("txtFolder").value || "").trim();
+    let url = `/api/greenscreen/bg-pool/${poolKey}/?count=64`;
+    if (poolKey === "compositions" && folder) url += `&folder=${encodeURIComponent(folder)}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    poolUrls = d.urls || [];
+  } catch (e) { poolUrls = []; }
+}
+
+function pickUrl() {
+  if (!poolUrls.length) return null;
+  return poolUrls[Math.floor(Math.random() * poolUrls.length)];
+}
+
+function isVideoUrl(u) {
+  return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(u);
+}
+function isIframeUrl(u) {
+  return /\/composition-live\//.test(u);
+}
+
+function applyCellBg(c) {
+  if (!poolKey || !poolUrls.length) {
+    c.cellbg.classList.remove("on");
+    c.cellbg.style.backgroundImage = "";
+    c.cellbg.innerHTML = "";
+    return;
+  }
+  applyCellBgUrl(c, pickUrl());
+}
+
+function applyCellBgUrl(c, url) {
+  if (!url) return;
+  if (isIframeUrl(url)) {
+    c.cellbg.style.backgroundImage = "";
+    c.cellbg.innerHTML = "";
+    const f = document.createElement("iframe");
+    f.src = url;
+    f.loading = "eager";
+    f.setAttribute("allow", "autoplay; fullscreen");
+    f.addEventListener("load", () => c.cellbg.classList.add("on"), { once: true });
+    c.cellbg.appendChild(f);
+  } else if (isVideoUrl(url)) {
+    c.cellbg.style.backgroundImage = "";
+    const v = document.createElement("video");
+    v.src = url;
+    v.muted = true; v.loop = true; v.playsInline = true; v.autoplay = true;
+    v.preload = "auto";
+    v.addEventListener("loadeddata", () => {
+      if (v.duration) v.currentTime = Math.random() * v.duration;
+      v.play().catch(() => {});
+      c.cellbg.classList.add("on");
+    }, { once: true });
+    c.cellbg.innerHTML = "";
+    c.cellbg.appendChild(v);
+  } else {
+    c.cellbg.innerHTML = "";
+    const img = new Image();
+    img.onload = () => {
+      c.cellbg.style.backgroundImage = `url("${url}")`;
+      c.cellbg.classList.add("on");
+    };
+    img.src = url;
+  }
+}
+
+function rotateAll() {
+  rotateTimers.forEach(clearTimeout);
+  rotateTimers = [];
+  if (!poolKey) {
+    cells.forEach(c => c.cellbg.classList.remove("on"));
+    return;
+  }
+  // if pool is mostly iframe URLs, distribute one-per-cell and don't rotate
+  // (re-loading iframes every few seconds defeats the purpose).
+  const iframeCount = poolUrls.filter(isIframeUrl).length;
+  const iframeMode = poolUrls.length > 0 && iframeCount / poolUrls.length > 0.5;
+  if (iframeMode) {
+    const shuffled = poolUrls.slice().sort(() => Math.random() - 0.5);
+    cells.forEach((c, i) => {
+      const url = shuffled[i % shuffled.length];
+      setTimeout(() => applyCellBgUrl(c, url), i * 120);
+    });
+    return;
+  }
+  cells.forEach((c, i) => {
+    setTimeout(() => applyCellBg(c), i * 120);
+    const tick = () => {
+      applyCellBg(c);
+      const jitter = rotateMs * (0.7 + Math.random() * 0.6);
+      const t = setTimeout(tick, jitter);
+      rotateTimers[i] = t;
+    };
+    const t = setTimeout(tick, rotateMs * (0.5 + Math.random() * 0.8) + i * 120);
+    rotateTimers.push(t);
+  });
+}
+
+$("selPool").onchange = async (e) => {
+  poolKey = e.target.value;
+  await fetchPool();
+  rotateAll();
+};
+$("rRot").oninput = (e) => {
+  rotateMs = +e.target.value * 1000;
+  $("vRot").textContent = (+e.target.value).toFixed(1) + "s";
+};
+$("btnReshuffle").onclick = async () => {
+  await fetchPool();
+  rotateAll();
+};
+$("btnFolderApply").onclick = async () => {
+  await fetchPool();
+  rotateAll();
+  setStatus(`folder: ${$("txtFolder").value || "(none)"}`);
+};
+
+// ---- per-clip persisted settings ----
+const saveStatus = $("saveStatus");
+function setStatus(msg) {
+  saveStatus.textContent = msg;
+  saveStatus.style.color = "#9ec25c";
+  setTimeout(() => { saveStatus.textContent = "—"; saveStatus.style.color = ""; }, 4000);
+}
+function rgbToHex(rgb) {
+  return "#" + rgb.map(v => Math.round(v*255).toString(16).padStart(2,'0')).join('');
+}
+
+async function saveSettings(clipKey) {
+  const body = {
+    key_hex: rgbToHex(params.key),
+    threshold: params.t,
+    smoothness: params.s,
+    spill: params.p,
+    pool: poolKey || null,
+    folder: ($("txtFolder").value || "").trim() || null,
+    rotate_seconds: rotateMs / 1000,
+  };
+  try {
+    const r = await fetch(`/api/greenscreen/settings/${clipKey}/save/`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d.ok) setStatus(`saved → ${clipKey === 'a' ? '7082' : '7083'}`);
+    else setStatus("save failed");
+  } catch (e) { setStatus("save error: " + e); }
+}
+
+async function loadSettings(clipKey, silent) {
+  try {
+    const r = await fetch(`/api/greenscreen/settings/${clipKey}/`);
+    const d = await r.json();
+    const s = d.settings;
+    if (!s) { if (!silent) setStatus(`no saved settings for ${clipKey === 'a' ? '7082' : '7083'}`); return false; }
+
+    params.t = s.threshold; $("rT").value = s.threshold; $("vT").textContent = s.threshold.toFixed(2);
+    params.s = s.smoothness; $("rS").value = s.smoothness; $("vS").textContent = s.smoothness.toFixed(3);
+    params.p = s.spill; $("rP").value = s.spill; $("vP").textContent = s.spill.toFixed(2);
+    params.key = hexToRgb(s.key_hex);
+    $("keyColor").value = s.key_hex.length === 7 ? s.key_hex : "#3eb851";
+
+    rotateMs = (s.rotate_seconds || 3) * 1000;
+    $("rRot").value = s.rotate_seconds || 3;
+    $("vRot").textContent = (s.rotate_seconds || 3).toFixed(1) + "s";
+
+    const newPool = s.pool || "";
+    const newFolder = s.folder || "";
+    const folderEl = $("txtFolder");
+    const folderChanged = newFolder !== (folderEl.value || "").trim();
+    if (folderChanged) folderEl.value = newFolder;
+    if (newPool !== poolKey || folderChanged) {
+      poolKey = newPool;
+      $("selPool").value = poolKey;
+      await fetchPool();
+      rotateAll();
+    }
+    if (!silent) setStatus(`loaded ${clipKey === 'a' ? '7082' : '7083'}`);
+    return true;
+  } catch (e) { if (!silent) setStatus("load error: " + e); return false; }
+}
+
+$("btnSaveA").onclick = () => saveSettings("a");
+$("btnSaveB").onclick = () => saveSettings("b");
+$("btnLoadA").onclick = () => loadSettings("a", false);
+$("btnLoadB").onclick = () => loadSettings("b", false);
+
+// auto-load when clip selector switches to a single clip
+$("selClip").addEventListener("change", e => {
+  if (e.target.value === "a" || e.target.value === "b") loadSettings(e.target.value, true);
+});
+
+// initial: load saved settings if any, otherwise sync from default-selected pool
+(async () => {
+  const had = await loadSettings("a", true);
+  if (!had) {
+    poolKey = $("selPool").value;  // honour template default (compositions)
+    if (poolKey) { await fetchPool(); rotateAll(); }
+  }
+})();
+
+rebuild();
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+model: mlx-community/Qwen2.5-3B-Instruct-4bit
+train: true
+data: /Volumes/Oom/aggregation/composition_webapp-main/training/fit_lora/data
+iters: 3000
+batch_size: 1
+learning_rate: 2.0e-5
+num_layers: 16
+steps_per_report: 20
+steps_per_eval: 200
+val_batches: 25
+save_every: 500
+max_seq_length: 2048
+grad_checkpoint: true
+resume_adapter_file: /Volumes/Oom/aggregation/composition_webapp-main/training/fit_lora/adapters/fit_anon_v1/adapters.safetensors
+adapter_path: /Volumes/Oom/aggregation/composition_webapp-main/training/fit_lora/adapters/fit_anon_v1
+
+lora_parameters:
+  rank: 16
+  dropout: 0.05
+  scale: 20.0

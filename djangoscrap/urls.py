@@ -13,7 +13,7 @@ from django.views.generic import RedirectView
 
 urlpatterns = [
     path("django-admin/", admin.site.urls),
-    path('', views.fit_chat_page, name='home'),
+    path('', RedirectView.as_view(pattern_name='dashboard', permanent=False), name='home'),
     # Explicit aliases that cannot collide with browser autocomplete of the
     # admin's /s3/<bucket>/ source library. Bookmark these.
     path('chat/', views.fit_chat_page, name='fit_chat'),
@@ -82,6 +82,20 @@ urlpatterns = [
     path('audio-sources/noise-studio/delete-track/', views.delete_noise_studio_track, name='delete_noise_studio_track'),
     path('audio-sources/create/', views.create_audio_source, name='create_audio_source'),
     path('audio-sources/noise-studio/save/', views.noise_studio_save, name='noise_studio_save'),
+    path('audio-sources/noise-studio/audio-to-midi/', views.noise_studio_audio_to_midi, name='noise_studio_audio_to_midi'),
+    path('audio-sources/noise-studio/render-soundfont/', views.noise_studio_render_soundfont, name='noise_studio_render_soundfont'),
+    path('audio-sources/voiceover-composer/', views.voiceover_composer, name='voiceover-composer'),
+    path('audio-sources/voiceover-composer/save/', views.voiceover_composer_save, name='voiceover_composer_save'),
+    # Composition project save/load/list/delete + asset serving.
+    # NOTE: These must appear before the catch-all 'audio-sources/<source_name>/'
+    # route below, otherwise "composition-projects" would be interpreted as a
+    # source name.
+    path('audio-sources/composition-projects/save/', views.composition_project_save, name='composition_project_save'),
+    path('audio-sources/composition-projects/list/', views.composition_project_list, name='composition_project_list'),
+    path('audio-sources/composition-projects/delete/', views.composition_project_delete, name='composition_project_delete'),
+    path('audio-sources/composition-projects/<str:slug>/load/', views.composition_project_load, name='composition_project_load'),
+    path('audio-sources/composition-projects/<str:slug>/assets/<str:sub>', views.composition_project_asset, name='composition_project_asset_sub'),
+    path('audio-sources/composition-projects/<str:slug>/<str:filename>', views.composition_project_asset, name='composition_project_asset'),
     path('audio-sources/noise-studio/', views.noise_studio, name='noise-studio'),
     path('audio-sources/<str:source_name>/', views.audio_source_contents, name='audio_source_contents'),
     path('audio-sources/<str:source_name>/rename/', views.rename_audio_source, name='rename_audio_source'),
@@ -125,6 +139,14 @@ urlpatterns = [
     path('composition/<int:composition_id>/files/action/', views.composition_file_action, name='composition_file_action'),
     path('source-library/delete/', views.delete_buckets, name='delete_buckets'),
     path('source-library/<str:bucket_name>/trim-borders/', views.trim_source_borders, name='trim_source_borders'),
+    path('source-library/<str:bucket_name>/webp-to-png/', views.convert_webp_to_png, name='convert_webp_to_png'),
+    path('source-library/<str:bucket_name>/jpeg-to-png/', views.convert_jpeg_to_png, name='convert_jpeg_to_png'),
+    # Unified WebP + JPEG → PNG (one button in the UI). Older per-format
+    # routes above are kept so any saved URL keeps working.
+    path('source-library/<str:bucket_name>/to-png/', views.convert_to_png, name='convert_to_png'),
+    path('source-library/<str:bucket_name>/remove-white-bg/', views.remove_white_background, name='remove_white_background'),
+    path('source-library/<str:bucket_name>/remove-black-bg/', views.remove_black_background, name='remove_black_background'),
+    path('source-library/<str:bucket_name>/smart-cut/', views.smart_cut_background, name='smart_cut_background'),
     path('source-library/download/', views.download_buckets, name='download_buckets'),
     path('delete-bucket/', views.delete_bucket, name='delete_bucket'),
     path('delete-bucket-files/<str:bucket_name>/<path:file_name>/', views.delete_file_from_bucket, name='delete_file_from_bucket'),
