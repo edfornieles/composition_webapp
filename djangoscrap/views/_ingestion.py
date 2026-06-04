@@ -4464,13 +4464,16 @@ def _convert_images_to_png(request, bucket_name, from_key):
                     im.seek(0)
                 except (EOFError, AttributeError):
                     pass
-                # Mode coercion: preserve alpha when present, promote
-                # palette/L-mode to RGB(A) so the PNG output is well-formed.
-                # JPEG has no alpha, so it lands as RGB; webp keeps alpha
-                # if it had it.
-                if im.mode in ("P", "L"):
-                    im = im.convert("RGBA" if "transparency" in im.info else "RGB")
-                elif im.mode not in ("RGB", "RGBA"):
+                # Mode coercion: ALWAYS land on RGBA before saving the PNG.
+                # Photoshop locks the layer of any PNG that has no alpha
+                # channel (it reads "opaque = Background = locked"), which
+                # means every JPEG-sourced PNG opened in Photoshop arrives
+                # with a lock that the user has to clear by hand. Padding
+                # with a fully-opaque alpha channel adds ~one byte per
+                # pixel of raw data (~10-30 KB after PNG compression of a
+                # constant 255 channel — negligible), is visually identical,
+                # and gets Photoshop to treat the file as a normal Layer 0.
+                if im.mode != "RGBA":
                     im = im.convert("RGBA")
                 im.save(target, "PNG", optimize=True)
             try:
@@ -4618,19 +4621,29 @@ def _flip_image_still(p: Path, axis: str) -> tuple[bool, str]:
             try: im.seek(0)
             except (EOFError, AttributeError): pass
             mode = im.mode
-            # Preserve alpha for PNG/WebP; promote palette/L modes to RGB(A)
-            # so the flipped output is well-formed.
+            # Promote palette/L modes to RGB(A); anything else gets converted
+            # to RGBA. For PNG outputs we deliberately ALWAYS land on RGBA
+            # so Photoshop doesn't treat the file as a locked Background
+            # layer (it locks any PNG with no alpha channel). For JPEGs
+            # we drop back to RGB before saving (JPEG can't store alpha).
+            png_target = p.suffix.lower() == ".png"
             if mode in ("P", "L"):
-                im = im.convert("RGBA" if "transparency" in im.info else "RGB")
-            elif mode not in ("RGB", "RGBA"):
-                im = im.convert("RGBA")
+                im = im.convert("RGBA" if ("transparency" in im.info or png_target) else "RGB")
+            elif mode != "RGBA":
+                if png_target:
+                    im = im.convert("RGBA")
+                elif mode != "RGB":
+                    im = im.convert("RGB")
             flipped = _flip_frame(im, axis)
     except (UnidentifiedImageError, OSError, ValueError) as e:
         return False, type(e).__name__
 
     try:
         # Save back to original path with original format. Pillow infers
-        # the format from the file extension on save.
+        # the format from the file extension on save. JPEGs can't hold
+        # RGBA, so drop alpha before writing one out.
+        if p.suffix.lower() in (".jpg", ".jpeg") and flipped.mode == "RGBA":
+            flipped = flipped.convert("RGB")
         flipped.save(p, optimize=True)
     except (OSError, ValueError) as e:
         return False, f"save_failed: {type(e).__name__}"
