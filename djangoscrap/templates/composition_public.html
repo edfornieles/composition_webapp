@@ -2740,6 +2740,30 @@
             }
         }
 
+        // Re-assign `.src` on an existing <img> or <video> only when the
+        // target URL actually changed. Why this helper exists instead of an
+        // inline `if (url !== el.src)` check: reading back `el.src` returns
+        // the browser-EXPANDED absolute URL ("http://host/foo.gif") even
+        // when the original assignment was a relative path ("/foo.gif").
+        // A naïve string compare against the relative URL is always true,
+        // so every assignment re-loads the asset — for animated GIFs that
+        // restarts the animation from frame 0 every time. This bit the
+        // strobe overlay (only frame 0 of the GIF was ever visible). Use
+        // this helper for any code path that mutates `.src` on a reused
+        // element instead of creating a fresh one via mountAsset().
+        //
+        // Stashes the last-assigned raw URL via a WeakMap keyed by the
+        // element, so multiple call sites on the same element interleave
+        // safely without any explicit shared variable.
+        const _lastAssignedSrc = new WeakMap();
+        function setReusedMediaSrc(el, url) {
+            if (!el || !url) return false;
+            if (_lastAssignedSrc.get(el) === url) return false;
+            el.src = url;
+            _lastAssignedSrc.set(el, url);
+            return true;
+        }
+
         function mountAsset(container, asset, applyFilters = true, assetOptions = {}) {
             // Explicitly release any outgoing <video> so Chrome can free its decoder buffer
             // immediately instead of holding GPU memory until the next GC. Without this, a
@@ -9577,10 +9601,15 @@
                 img.style.display = "block";
                 shell.inner.appendChild(img);
                 applyMountedMediaFit(shell.inner);
+                // Use the setReusedMediaSrc helper (defined near mountAsset).
+                // It internally tracks the last-assigned URL via a WeakMap
+                // so the comparison is apples-to-apples, avoiding the
+                // relative-vs-absolute `el.src` readback trap that caused
+                // animated GIFs in this branch to restart at frame 0 on
+                // every strobe tick. See the helper's docstring for context.
                 const tick = () => {
                     if (!img.isConnected) return;
-                    const stillUrl = resolveStill(pickRandomOverlayAsset());
-                    if (stillUrl && stillUrl !== img.src) img.src = stillUrl;
+                    setReusedMediaSrc(img, resolveStill(pickRandomOverlayAsset()));
                 };
                 tick();
                 trackOverlayInterval(setInterval(tick, strobeMs));
