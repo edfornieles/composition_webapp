@@ -46,6 +46,68 @@ redis-server   # or your OS service
 celery -A celery_app worker --loglevel=info
 ```
 
+## Compositions quickstart (what the Quick start above misses)
+
+The Quick start gets you a running Django admin and login. To actually **render and view compositions** you need a few more pieces that the Quick start glosses over. Doing these once at install time avoids every gotcha we've hit ourselves.
+
+### 1. Point at your source folders
+
+Compositions reference media via **named folders** — `wojak_punch_solo`, `clean_white_snow_texture_search`, etc. The app reads them from a single root directory.
+
+```bash
+# Default (relative to project root, no env var needed):
+mkdir -p composition_sources_unprocessed
+# Drop folders here, one per source: composition_sources_unprocessed/<name>/
+
+# Or override via env (put in .env):
+echo 'LOCAL_SOURCES_ROOT=/absolute/path/to/your/sources' >> .env
+echo 'COMPOSITION_AUDIO_SOURCES_ROOT=/absolute/path/to/your/audio' >> .env
+```
+
+Without one of those, the composition view will show every folder as empty/missing and nothing will render.
+
+### 2. Install the Playwright browser binary
+
+`pip install` brings the Playwright Python package but **not** the Chromium binary it drives. Without this, NFT poster + 10s / 45s video generation fail silently in the background (or in `media_gen.log`):
+
+```bash
+playwright install chromium
+```
+
+On Linux you may also need: `playwright install-deps chromium`.
+
+### 3. System dependencies
+
+The README's Requirements section mentions FFmpeg but several Python deps also need system libs:
+
+- **macOS** — `brew install ffmpeg redis pkg-config`
+- **Debian/Ubuntu** — `apt install ffmpeg redis-server build-essential libgl1 libglib2.0-0`
+- **Smart Cut (rembg)** — first use downloads a ~80 MB segmentation model from the rembg release URL. Pre-download by running `python -c "from rembg import new_session; new_session('isnet-general-use')"` if the machine will be offline later.
+
+### 4. Production-style serving (recommended over `runserver`)
+
+`python manage.py runserver` is single-threaded — one slow video stream blocks every other request. For real use, launch the supervised gunicorn stack that comes with the repo:
+
+```bash
+./start_gunicorn_detached.sh        # nohup + reparents to init
+tail -f gunicorn.log watchdog.log   # watch
+pkill -SIGINT -f run_gunicorn.sh    # stop cleanly
+```
+
+This gives you:
+- **2 workers × 96 threads**, recycled every ~250 requests to bound memory
+- **Supervisor loop** auto-respawns gunicorn if it crashes
+- **Watchdog** pings `/api/health/` every 60 s, SIGTERM → SIGKILL escalation if a worker deadlocks
+- **Reparenting to init** so closing your terminal doesn't take the server down
+
+Endpoint: `http://127.0.0.1:8765/` (note: 8765, not 8000 like `runserver`).
+
+### 5. Smoke test
+
+After login, visit `/composition-add/`. You should see the composition type dropdown populated and your source folders listed in the Background / Foreground / Overlay selectors. If those selectors are empty, step 1 is wrong.
+
+To verify the render pipeline: create any composition with a single background source → save → on the edit page click the ⚙ cog → **Poster**. Watch `tail -f media_gen.log` — within ~10 s you should see `DONE comp=<id> kinds=poster ... -> ['poster']` and the poster thumbnail will appear. If you see `FAIL ... PlaywrightTimeoutError` you missed step 2.
+
 ## Configuration
 
 Environment variables are loaded from `.env` (see `.env.example`). Important settings in `djangoscrap/settings.py`:
