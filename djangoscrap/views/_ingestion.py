@@ -4529,6 +4529,201 @@ def convert_to_png(request, bucket_name):
 _IMAGE_EXTS_FOR_BG = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif"}
 
 
+# Flip operations share the same extension whitelist (every still format
+# + GIFs which get per-frame flipped and rewritten as animated WebP).
+_IMAGE_EXTS_FOR_FLIP = _IMAGE_EXTS_FOR_BG
+
+
+def _flip_frame(frame, axis: str):
+    """Flip a PIL Image by the named axis. Returns a new image."""
+    if axis == "horizontal":
+        return frame.transpose(Image.FLIP_LEFT_RIGHT)
+    if axis == "vertical":
+        return frame.transpose(Image.FLIP_TOP_BOTTOM)
+    raise ValueError(f"unknown flip axis {axis!r}")
+
+
+def _flip_image_animated_gif(p: Path, axis: str) -> tuple[bool, str]:
+    """Per-frame flip of an animated GIF, written back as animated WebP.
+
+    Same dispatch pattern as the BG-removal and smart-cut GIF paths: GIF's
+    1-bit transparency would destroy alpha edges, so the output format is
+    WebP. Frame durations are preserved; loop count is reset to infinite.
+    """
+    try:
+        import io
+    except ImportError as e:
+        return False, f"missing dep: {e}"
+    try:
+        src = Image.open(p)
+        n_frames = getattr(src, "n_frames", 1) or 1
+    except Exception as e:
+        return False, f"open_failed: {type(e).__name__}"
+
+    if n_frames <= 1:
+        return _flip_image_still(p, axis)
+
+    out_frames: list = []
+    durations: list = []
+    try:
+        for i in range(n_frames):
+            src.seek(i)
+            try:
+                dur = int(src.info.get("duration", 80) or 80)
+            except Exception:
+                dur = 80
+            durations.append(max(20, dur))
+            out_frames.append(_flip_frame(src.convert("RGBA"), axis))
+    except Exception as e:
+        return False, f"frame_iter_failed: {type(e).__name__}: {e}"
+
+    if not out_frames:
+        return False, "no_frames"
+
+    target_path = p.with_suffix(".webp")
+    if target_path.exists() and target_path != p:
+        stem = p.stem
+        n_dup = 2
+        while True:
+            candidate = p.with_name(f"{stem}_{n_dup}.webp")
+            if not candidate.exists():
+                target_path = candidate
+                break
+            n_dup += 1
+    try:
+        out_frames[0].save(
+            target_path,
+            format="WEBP",
+            save_all=True,
+            append_images=out_frames[1:],
+            duration=durations,
+            loop=0,
+            disposal=2,
+            lossless=False,
+            quality=92,
+            method=4,
+        )
+    except OSError as e:
+        return False, f"save_failed: {type(e).__name__}"
+    if target_path != p:
+        try: p.unlink()
+        except OSError: pass
+    return True, "ok"
+
+
+def _flip_image_still(p: Path, axis: str) -> tuple[bool, str]:
+    """Single-frame flip — open, flip, save back to the same format/path."""
+    try:
+        with Image.open(p) as im:
+            try: im.seek(0)
+            except (EOFError, AttributeError): pass
+            mode = im.mode
+            # Preserve alpha for PNG/WebP; promote palette/L modes to RGB(A)
+            # so the flipped output is well-formed.
+            if mode in ("P", "L"):
+                im = im.convert("RGBA" if "transparency" in im.info else "RGB")
+            elif mode not in ("RGB", "RGBA"):
+                im = im.convert("RGBA")
+            flipped = _flip_frame(im, axis)
+    except (UnidentifiedImageError, OSError, ValueError) as e:
+        return False, type(e).__name__
+
+    try:
+        # Save back to original path with original format. Pillow infers
+        # the format from the file extension on save.
+        flipped.save(p, optimize=True)
+    except (OSError, ValueError) as e:
+        return False, f"save_failed: {type(e).__name__}"
+    return True, "ok"
+
+
+def _flip_image_in_place(p: Path, axis: str) -> tuple[bool, str]:
+    """Dispatcher: animated GIFs → animated WebP via per-frame flip;
+    everything else → single-frame in-place flip."""
+    if p.suffix.lower() == ".gif":
+        return _flip_image_animated_gif(p, axis)
+    return _flip_image_still(p, axis)
+
+
+def _flip_action(request, bucket_name, axis: str):
+    """Shared body for flip-horizontal + flip-vertical endpoints.
+
+    Selection-aware (same convention as trim / convert handlers): if any
+    files are ticked, only they are flipped. If nothing is selected, the
+    whole source is flipped.
+    """
+    if axis not in {"horizontal", "vertical"}:
+        messages.error(request, f"Unknown flip axis: {axis}")
+        return redirect("bucket_contents", bucket_name=bucket_name)
+
+    source_dir = (LOCAL_SOURCES_ROOT / bucket_name).resolve()
+    root_dir = LOCAL_SOURCES_ROOT.resolve()
+    if root_dir not in source_dir.parents or not source_dir.exists() or not source_dir.is_dir():
+        messages.error(request, "Source not found.")
+        return redirect("list_buckets")
+
+    # Selection convention matches the other tool handlers — POST checkboxes
+    # are named `selected_files` (from the bucket_contents.html template).
+    selected = set()
+    if request.method == "POST":
+        for raw in request.POST.getlist("selected_files"):
+            s = (raw or "").strip().lstrip("/")
+            if s:
+                selected.add(s)
+        # Tolerate the older "selected" name too — some legacy forms used it.
+        for raw in request.POST.getlist("selected"):
+            s = (raw or "").strip().lstrip("/")
+            if s:
+                selected.add(s)
+
+    flipped = 0
+    failed = 0
+    skipped_unselected = 0
+    failures = []
+
+    for p in sorted(
+        _local_source_dir_media_files(source_dir),
+        key=lambda x: str(x.relative_to(source_dir)).lower(),
+    ):
+        if p.suffix.lower() not in _IMAGE_EXTS_FOR_FLIP:
+            continue
+        rel = str(p.relative_to(source_dir))
+        if selected and rel not in selected:
+            skipped_unselected += 1
+            continue
+        ok, reason = _flip_image_in_place(p, axis)
+        if ok:
+            flipped += 1
+        else:
+            failed += 1
+            failures.append((rel, reason))
+
+    label = "horizontally" if axis == "horizontal" else "vertically"
+    if flipped:
+        msg = f"Flipped {flipped} image{'s' if flipped != 1 else ''} {label}"
+        if skipped_unselected:
+            msg += f" ({skipped_unselected} skipped as unselected)"
+        if failed:
+            msg += f", {failed} failed"
+        messages.success(request, msg + ".")
+    elif failed:
+        head = "; ".join(f"{rel} ({why})" for rel, why in failures[:3])
+        messages.warning(request, f"No flips succeeded. {failed} failed: {head}")
+    elif selected:
+        messages.info(request, "No image files in the current selection.")
+    else:
+        messages.info(request, "No image files in this source.")
+    return redirect("bucket_contents", bucket_name=bucket_name)
+
+
+def flip_source_images_horizontal(request, bucket_name):
+    return _flip_action(request, bucket_name, "horizontal")
+
+
+def flip_source_images_vertical(request, bucket_name):
+    return _flip_action(request, bucket_name, "vertical")
+
+
 def _remove_bg_compute(arr, target: str, tolerance: int):
     """Pure numpy implementation of background removal on one RGBA frame.
 

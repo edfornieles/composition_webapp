@@ -145,6 +145,10 @@ urlpatterns = [
     # Unified WebP + JPEG → PNG (one button in the UI). Older per-format
     # routes above are kept so any saved URL keeps working.
     path('source-library/<str:bucket_name>/to-png/', views.convert_to_png, name='convert_to_png'),
+    # Flip every image in this source (or just the selection) on the named axis.
+    # Animated GIFs get per-frame flipped and rewritten as animated WebP.
+    path('source-library/<str:bucket_name>/flip-horizontal/', views.flip_source_images_horizontal, name='flip_source_images_horizontal'),
+    path('source-library/<str:bucket_name>/flip-vertical/',   views.flip_source_images_vertical,   name='flip_source_images_vertical'),
     path('source-library/<str:bucket_name>/remove-white-bg/', views.remove_white_background, name='remove_white_background'),
     path('source-library/<str:bucket_name>/remove-black-bg/', views.remove_black_background, name='remove_black_background'),
     path('source-library/<str:bucket_name>/smart-cut/', views.smart_cut_background, name='smart_cut_background'),
