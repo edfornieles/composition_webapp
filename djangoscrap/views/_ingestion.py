@@ -4083,46 +4083,89 @@ def new_source(request):
 
 
 
-def source_library(request):
-    source_dirs = get_local_sources()
-    sources = []
-    image_exts = LOCAL_SOURCE_IMAGE_EXTS
+def _source_folder_card(source_dir):
+    """Build one folder tile (count + cover thumbnail), cached per folder.
+
+    The expensive part is os.scandir over every folder on every page load —
+    with hundreds of folders and 200k+ files that was several seconds of pure
+    filesystem walking. We cache each folder's tile keyed by its mtime: a
+    folder's mtime bumps whenever a file is added/removed in it, so the cache
+    auto-invalidates exactly when the count or cover could have changed, while
+    unchanged folders skip the scandir entirely.
+    """
     count_cap = 2000
-    for source_dir in source_dirs:
+    try:
+        dir_mtime = source_dir.stat().st_mtime
+    except OSError:
+        dir_mtime = 0
+    cache_key = f"src_card:{source_dir.name}:{dir_mtime}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    media_count = 0
+    rep_file = None
+    count_capped = False
+    try:
+        with os.scandir(source_dir) as entries:
+            for entry in entries:
+                if entry.name.startswith("."):
+                    continue
+                if not entry.is_file() or not _local_source_filename_allowed(entry.name):
+                    continue
+                media_count += 1
+                if rep_file is None:
+                    rep_file = source_dir / entry.name
+                if media_count >= count_cap:
+                    count_capped = True
+                    break
+    except OSError:
         media_count = 0
         rep_file = None
         count_capped = False
-        try:
-            with os.scandir(source_dir) as entries:
-                for entry in entries:
-                    if entry.name.startswith("."):
-                        continue
-                    if not entry.is_file() or not _local_source_filename_allowed(entry.name):
-                        continue
-                    media_count += 1
-                    if rep_file is None:
-                        rep_file = source_dir / entry.name
-                    if media_count >= count_cap:
-                        count_capped = True
-                        break
-        except OSError:
-            media_count = 0
-            rep_file = None
-            count_capped = False
-        thumbnail_url = None
-        if rep_file:
-            if rep_file.suffix.lower() in image_exts:
-                thumbnail_url = f"/source-media/{quote(source_dir.name, safe='')}/{quote(rep_file.name, safe='')}"
-            else:
-                thumbnail_url = f"/source-thumbnail/{quote(source_dir.name, safe='')}/{quote(rep_file.name, safe='')}"
-        sources.append({
-            "name": source_dir.name,
-            "thumbnail_url": thumbnail_url,
-            "file_count": media_count,
-            "file_count_label": f"{media_count}+" if count_capped else str(media_count),
-            "updated_at": datetime.fromtimestamp(source_dir.stat().st_mtime),
-        })
-    return render(request, "admin/source-library.html", {"sources": sources})
+    thumbnail_url = None
+    if rep_file:
+        # Always go through /source-thumbnail/ — it serves a small cached
+        # JPEG for both images and videos. Pointing images at /source-media/
+        # downloaded the full-resolution original for every folder tile,
+        # which was the main cause of slow folder-index loads.
+        thumbnail_url = f"/source-thumbnail/{quote(source_dir.name, safe='')}/{quote(rep_file.name, safe='')}"
+    card = {
+        "name": source_dir.name,
+        "thumbnail_url": thumbnail_url,
+        "file_count": media_count,
+        "file_count_label": f"{media_count}+" if count_capped else str(media_count),
+        "updated_at": datetime.fromtimestamp(dir_mtime) if dir_mtime else None,
+    }
+    cache.set(cache_key, card, 600)
+    return card
+
+
+def source_library(request):
+    source_dirs = get_local_sources()
+    cards = [_source_folder_card(d) for d in source_dirs]
+    # Compact, JSON-safe rows for client-side windowed rendering. Sending this
+    # instead of 868 server-rendered tiles + 868 table rows cuts the HTML from
+    # ~1.7 MB to a small JSON blob; the browser builds only the DOM that's on
+    # screen (render-on-scroll), so first paint is fast and search stays instant
+    # across every folder.
+    sources_json = [
+        {
+            "name": c["name"],
+            "name_lower": c["name"].lower(),
+            "thumb": c["thumbnail_url"] or "",
+            "count": c["file_count"],
+            "count_label": c["file_count_label"],
+            "updated": c["updated_at"].strftime("%d/%m/%Y %H:%M") if c["updated_at"] else "",
+            "href": f"/s3/{quote(c['name'], safe='')}/",
+        }
+        for c in cards
+    ]
+    return render(
+        request,
+        "admin/source-library.html",
+        {"sources": cards, "sources_json": sources_json},
+    )
 
 
 @require_POST
@@ -4247,15 +4290,13 @@ def bucket_contents(request, bucket_name):
                 if (is_image or is_video)
                 else None
             )
-            # Images serve directly; videos use the thumbnail route, which extracts a frame.
+            # Both images and videos go through /source-thumbnail/, which serves
+            # a small cached JPEG. (Images previously used the full-resolution
+            # media_url here, so a 100-tile page pulled ~100 multi-MB originals.)
             thumb_url = (
-                media_url
-                if is_image
-                else (
-                    f"/source-thumbnail/{quote(bucket_name, safe='')}/{quote(file.name, safe='')}"
-                    if is_video
-                    else None
-                )
+                f"/source-thumbnail/{quote(bucket_name, safe='')}/{quote(file.name, safe='')}"
+                if (is_image or is_video)
+                else None
             )
             objects.append({
                 "Key": file.name,
@@ -4488,43 +4529,28 @@ def convert_to_png(request, bucket_name):
 _IMAGE_EXTS_FOR_BG = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif"}
 
 
-def _remove_bg_in_place(p: Path, target: str, tolerance: int) -> tuple[bool, str]:
-    """Remove a near-white or near-black background using:
-      1) A "background-likeness" score per pixel (0..1) — high where the
-         pixel resembles the target colour. For white: min(R,G,B)/255.
-         For black: 1 - max(R,G,B)/255.
-      2) Connectivity flood-fill from the corners on a SOFT mask (score >
-         ~0.5) so the flood fully grabs the background region INCLUDING its
-         anti-aliased fringe pixels — but doesn't escape past hard edges
-         into the subject.
-      3) For edge-connected pixels: derive alpha from the score with a
-         gradient falloff, so a 90%-white fringe pixel gets alpha ≈ 25, not
-         the hard 0/255 cliff the previous version produced.
-      4) Colour decontamination: for partial-alpha pixels along the
-         soft edge, solve `observed = α·object + (1-α)·background` for the
-         object's true colour. Removes the white/black "spill" that would
-         otherwise leave a halo when composited onto a different backdrop.
+def _remove_bg_compute(arr, target: str, tolerance: int):
+    """Pure numpy implementation of background removal on one RGBA frame.
 
-    Returns (changed, reason). On success the original file is deleted and
-    a sibling .png with the same stem is created.
+    Takes an (H, W, 4) uint8 array, returns (processed_array, "ok") or
+    (None, reason). All file I/O lives in the callers — that way the same
+    algorithm runs on still images and on each frame of an animated GIF.
+
+    See the docstring on _remove_bg_in_place for the algorithm description
+    (background-likeness score → corner-flood connectivity → gradient alpha
+    falloff → colour decontamination).
     """
     try:
         import numpy as np
         from scipy import ndimage as ndi
     except ImportError as e:
-        return False, f"missing dep: {e}"
-    try:
-        with Image.open(p) as im:
-            try: im.seek(0)
-            except (EOFError, AttributeError): pass
-            im = im.convert("RGBA")
-            arr = np.array(im, dtype=np.uint8)
-    except (UnidentifiedImageError, OSError, ValueError) as e:
-        return False, type(e).__name__
+        return None, f"missing dep: {e}"
 
+    if arr is None or arr.ndim != 3 or arr.shape[2] != 4:
+        return None, "expected RGBA frame"
     h, w = arr.shape[:2]
     if h < 2 or w < 2:
-        return False, "image_too_small"
+        return None, "image_too_small"
 
     rgb_f = arr[..., :3].astype(np.float32)
     if target == "white":
@@ -4535,7 +4561,7 @@ def _remove_bg_in_place(p: Path, target: str, tolerance: int) -> tuple[bool, str
         score = 1.0 - rgb_f.max(axis=-1) / 255.0
         bg_color = np.array([0.0, 0.0, 0.0], dtype=np.float32)
     else:
-        return False, f"unknown target {target!r}"
+        return None, f"unknown target {target!r}"
 
     # 2) Connectivity mask. A pixel counts as "potentially background" if its
     #    score is above the soft threshold. We deliberately set this low
@@ -4545,11 +4571,11 @@ def _remove_bg_in_place(p: Path, target: str, tolerance: int) -> tuple[bool, str
     soft_thresh = 0.5
     soft_mask = score > soft_thresh
     if not soft_mask.any():
-        return False, "no_bg_pixels"
+        return None, "no_bg_pixels"
 
     labels, n = ndi.label(soft_mask)
     if n == 0:
-        return False, "no_bg_pixels"
+        return None, "no_bg_pixels"
 
     corner_labels = {
         labels[0, 0], labels[0, w - 1],
@@ -4557,11 +4583,11 @@ def _remove_bg_in_place(p: Path, target: str, tolerance: int) -> tuple[bool, str
     }
     corner_labels.discard(0)
     if not corner_labels:
-        return False, "bg_not_at_edges"
+        return None, "bg_not_at_edges"
 
     cut_region = np.isin(labels, list(corner_labels))
     if not cut_region.any():
-        return False, "no_bg_at_corners"
+        return None, "no_bg_at_corners"
 
     # 3) Gradient alpha for cut-region pixels.
     #
@@ -4609,8 +4635,29 @@ def _remove_bg_in_place(p: Path, target: str, tolerance: int) -> tuple[bool, str
         arr[..., :3][decon] = true_color.astype(np.uint8)
 
     arr[..., 3] = final_alpha
+    return arr, "ok"
 
-    # Save as PNG.
+
+def _remove_bg_still(p: Path, target: str, tolerance: int) -> tuple[bool, str]:
+    """Single-frame path: open file → compute → save PNG. Mirrors the
+    pattern used for smart-cut still images. Returns (changed, reason)."""
+    try:
+        import numpy as np
+    except ImportError as e:
+        return False, f"missing dep: {e}"
+    try:
+        with Image.open(p) as im:
+            try: im.seek(0)
+            except (EOFError, AttributeError): pass
+            im = im.convert("RGBA")
+            arr = np.array(im, dtype=np.uint8)
+    except (UnidentifiedImageError, OSError, ValueError) as e:
+        return False, type(e).__name__
+
+    out_arr, reason = _remove_bg_compute(arr, target, tolerance)
+    if out_arr is None:
+        return False, reason
+
     target_path = p.with_suffix(".png")
     if target_path.exists() and target_path != p:
         stem = p.stem
@@ -4622,13 +4669,115 @@ def _remove_bg_in_place(p: Path, target: str, tolerance: int) -> tuple[bool, str
                 break
             n_dup += 1
     try:
-        Image.fromarray(arr, "RGBA").save(target_path, "PNG", optimize=True)
+        Image.fromarray(out_arr, "RGBA").save(target_path, "PNG", optimize=True)
     except (OSError, ValueError) as e:
         return False, f"save_failed: {type(e).__name__}"
     if target_path != p:
         try: p.unlink()
         except OSError: pass
     return True, "ok"
+
+
+def _remove_bg_animated_gif(p: Path, target: str, tolerance: int) -> tuple[bool, str]:
+    """Animated GIF path: iterate every frame through _remove_bg_compute and
+    write the result as an *animated WebP*. WebP preserves the per-frame
+    soft alpha that GIF's 1-bit transparency would destroy as halos.
+
+    Why this exists: line-art GIFs (wojaks, hand-drawn animations) confuse
+    rembg's neural net but are exactly the case where corner-flood removal
+    shines — the body interior is enclosed by black ink, so it stays white
+    even when the speed-lines / rays extend out to the edge. Smart cut
+    incorrectly carves out the body interior for these inputs; the simple
+    flood-fill in this module gets it right per frame.
+    """
+    try:
+        import numpy as np
+        import io
+    except ImportError as e:
+        return False, f"missing dep: {e}"
+
+    try:
+        src = Image.open(p)
+        n_frames = getattr(src, "n_frames", 1) or 1
+    except Exception as e:
+        return False, f"open_failed: {type(e).__name__}"
+
+    if n_frames <= 1:
+        # Not really animated — fall back to the still path so we still
+        # write a PNG (matches what users expect for one-frame GIFs).
+        return _remove_bg_still(p, target, tolerance)
+
+    out_frames: list = []
+    durations: list = []
+    last_reason = ""
+    frames_succeeded = 0
+    try:
+        for i in range(n_frames):
+            src.seek(i)
+            try:
+                dur = int(src.info.get("duration", 80) or 80)
+            except Exception:
+                dur = 80
+            durations.append(max(20, dur))
+            frame_rgba = src.convert("RGBA")
+            arr = np.array(frame_rgba, dtype=np.uint8)
+            out_arr, reason = _remove_bg_compute(arr, target, tolerance)
+            if out_arr is None:
+                # Keep the original frame so the resulting WebP still
+                # contains every frame even if a few couldn't be processed.
+                out_frames.append(frame_rgba)
+                last_reason = reason
+                continue
+            out_frames.append(Image.fromarray(out_arr, "RGBA"))
+            frames_succeeded += 1
+    except Exception as e:
+        return False, f"frame_iter_failed: {type(e).__name__}: {e}"
+
+    if frames_succeeded == 0:
+        return False, last_reason or "no_frames_processed"
+
+    target_path = p.with_suffix(".webp")
+    if target_path.exists() and target_path != p:
+        stem = p.stem
+        n_dup = 2
+        while True:
+            candidate = p.with_name(f"{stem}_{n_dup}.webp")
+            if not candidate.exists():
+                target_path = candidate
+                break
+            n_dup += 1
+    try:
+        out_frames[0].save(
+            target_path,
+            format="WEBP",
+            save_all=True,
+            append_images=out_frames[1:],
+            duration=durations,
+            loop=0,
+            disposal=2,
+            lossless=False,
+            quality=92,
+            method=4,
+        )
+    except OSError as e:
+        return False, f"save_failed: {type(e).__name__}"
+    if target_path != p:
+        try: p.unlink()
+        except OSError: pass
+    return True, "ok"
+
+
+def _remove_bg_in_place(p: Path, target: str, tolerance: int) -> tuple[bool, str]:
+    """Dispatcher: animated GIFs → animated WebP via per-frame flood-fill;
+    everything else → single-frame PNG.
+
+    Returns (changed, reason). On success the original file is deleted and
+    the appropriate output format (PNG for stills, animated WebP for GIFs)
+    is written alongside.
+    """
+    if p.suffix.lower() == ".gif":
+        return _remove_bg_animated_gif(p, target, tolerance)
+    return _remove_bg_still(p, target, tolerance)
 
 
 def _remove_background_action(request, bucket_name, target: str):

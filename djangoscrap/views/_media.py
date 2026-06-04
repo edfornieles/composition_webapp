@@ -1,3 +1,4 @@
+import io
 import os
 import base64
 import csv
@@ -131,12 +132,63 @@ def training_set_media_file(request, file_name):
 
 
 
+def _apply_image_transforms(image_bytes: bytes, content_type: str, transforms: dict) -> tuple[bytes, str]:
+    """Apply flipH, flipV, crop to raw image bytes. Returns (bytes, content_type)."""
+    try:
+        from PIL import Image
+    except ImportError:
+        return image_bytes, content_type
+    if not transforms:
+        return image_bytes, content_type
+    flip_h = bool(transforms.get("flipH"))
+    flip_v = bool(transforms.get("flipV"))
+    crop = transforms.get("crop")  # [x1, y1, x2, y2] in pixels
+    if not flip_h and not flip_v and not crop:
+        return image_bytes, content_type
+    img = Image.open(io.BytesIO(image_bytes))
+    if crop:
+        try:
+            x1, y1, x2, y2 = int(crop[0]), int(crop[1]), int(crop[2]), int(crop[3])
+            img = img.crop((x1, y1, x2, y2))
+        except (IndexError, ValueError, TypeError):
+            pass
+    if flip_h:
+        img = img.transpose(Image.FLIP_LEFT_RIGHT)
+    if flip_v:
+        img = img.transpose(Image.FLIP_TOP_BOTTOM)
+    out = io.BytesIO()
+    fmt = img.format or "JPEG"
+    if fmt == "JPEG" and img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+    img.save(out, format=fmt)
+    out.seek(0)
+    out_ct = mimetypes.guess_type(f"x.{fmt.lower()}")[0] or content_type
+    return out.read(), out_ct
+
+
 def source_media_file(request, source_name, file_name):
     source_dir = (LOCAL_SOURCES_ROOT / source_name).resolve()
     target = _resolve_source_media_file(source_dir, file_name)
     if not target:
         raise Http404("Source file not found")
     content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+
+    # Apply per-image transforms if a composition_id is provided and the file is an image.
+    comp_id = request.GET.get("comp")
+    if comp_id and content_type.startswith("image/"):
+        try:
+            from ..models import Composition
+            comp = Composition.objects.only("source_image_transforms").get(id=int(comp_id))
+            rel_path = f"{source_name}/{file_name}"
+            transforms = (comp.source_image_transforms or {}).get(rel_path) or {}
+            if transforms:
+                raw = target.read_bytes()
+                raw, content_type = _apply_image_transforms(raw, content_type, transforms)
+                from django.http import HttpResponse
+                return HttpResponse(raw, content_type=content_type)
+        except Exception:
+            pass  # Fall through to raw serve on any error
+
     return FileResponse(open(target, "rb"), content_type=content_type)
 
 
@@ -157,12 +209,17 @@ def source_thumbnail_image(request, source_name, file_name):
         raise Http404("Source file not found")
 
     ext = target.suffix.lower()
-    if ext in LOCAL_SOURCE_IMAGE_EXTS:
-        return source_media_file(request, source_name, file_name)
-    if ext not in LOCAL_SOURCE_VIDEO_EXTS:
+    is_image = ext in LOCAL_SOURCE_IMAGE_EXTS
+    if not is_image and ext not in LOCAL_SOURCE_VIDEO_EXTS:
         raise Http404("Unsupported thumbnail type")
 
-    # Serve from disk cache if thumbnail is newer than the source video.
+    # Max edge for the cached thumbnail. Folder-listing tiles render small, so a
+    # downscaled JPEG (typically a few KB) replaces multi-MB originals — the
+    # whole point of this endpoint for images, which previously passed the
+    # full-resolution file straight through.
+    THUMB_MAX_EDGE = 480
+
+    # Serve from disk cache if the thumbnail is newer than the source file.
     cache_dir = Path(settings.MEDIA_ROOT) / "thumb_cache" / source_name
     safe_stem = hashlib.md5(file_name.encode()).hexdigest()
     cache_path = cache_dir / f"{safe_stem}.jpg"
@@ -174,12 +231,33 @@ def source_thumbnail_image(request, source_name, file_name):
         except OSError:
             pass
 
-    frame = _extract_video_frame_image(target)
-    if frame is None:
-        raise Http404("Unable to generate thumbnail")
-    jpeg_bytes = io.BytesIO()
-    frame.convert("RGB").save(jpeg_bytes, format="JPEG", quality=86)
-    jpeg_data = jpeg_bytes.getvalue()
+    if is_image:
+        try:
+            with Image.open(target) as im:
+                im = ImageOps.exif_transpose(im)
+                # Flatten alpha onto white so the thumbnail is a small JPEG.
+                if im.mode in ("RGBA", "LA", "P"):
+                    im = im.convert("RGBA")
+                    bg = Image.new("RGB", im.size, (255, 255, 255))
+                    bg.paste(im, mask=im.split()[-1])
+                    im = bg
+                else:
+                    im = im.convert("RGB")
+                im.thumbnail((THUMB_MAX_EDGE, THUMB_MAX_EDGE), RESAMPLING_METHOD)
+                buf = io.BytesIO()
+                im.save(buf, format="JPEG", quality=82, optimize=True)
+                jpeg_data = buf.getvalue()
+        except Exception:
+            # Corrupt/unsupported image: fall back to serving the original so the
+            # tile still shows something rather than a broken image.
+            return source_media_file(request, source_name, file_name)
+    else:
+        frame = _extract_video_frame_image(target)
+        if frame is None:
+            raise Http404("Unable to generate thumbnail")
+        jpeg_bytes = io.BytesIO()
+        frame.convert("RGB").save(jpeg_bytes, format="JPEG", quality=86)
+        jpeg_data = jpeg_bytes.getvalue()
 
     # Write to cache for subsequent requests.
     try:

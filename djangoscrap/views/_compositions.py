@@ -487,7 +487,7 @@ def add_composition(request, composition_id=None):
             if not background_sources:
                 messages.error(request, "Please select at least one background source.")
                 return redirect_to_form()
-        if composition_type in {"tunnel", "psychedelic-tunnel", "tunnel-burst", "zoom-forward", "zoom-slow", "swirl", "quad", "mash", "mash-fine", "mash-fine-flux", "mash-superfine", "mash-superfine-flux", "vertical-stripes", "horizontal-stripes", "vertical-stripes-thick", "horizontal-stripes-thick", "social-scroll", "dirty-scroll", "scrollhole", "strobe", "vibrate", "morph-fast", "eye-morph", "center-shift", "star-shift", "prism-burst", "prism-burst-neon", "sleep-drift", "calm-wave", "anger-surge", "anxiety-loop", "box-room", "liquid-mirror", "liquid-mirror-extreme", "wax-melt", "slot-machine", "eye-wake"} and not background_sources:
+        if composition_type in {"tunnel", "psychedelic-tunnel", "tunnel-burst", "zoom-forward", "zoom-slow", "zoom-backward", "zoom-backward-slow", "swirl", "quad", "mash", "mash-fine", "mash-fine-flux", "mash-superfine", "mash-superfine-flux", "vertical-stripes", "horizontal-stripes", "vertical-stripes-thick", "horizontal-stripes-thick", "social-scroll", "dirty-scroll", "scrollhole", "strobe", "vibrate", "morph-fast", "eye-morph", "center-shift", "star-shift", "prism-burst", "prism-burst-neon", "sleep-drift", "calm-wave", "anger-surge", "anxiety-loop", "box-room", "liquid-mirror", "liquid-mirror-extreme", "wax-melt", "slot-machine", "eye-wake"} and not background_sources:
             messages.error(request, "Please select at least one background source.")
             return redirect_to_form()
         if composition_type == "associations":
@@ -545,6 +545,12 @@ def add_composition(request, composition_id=None):
             overlay_effect = "rotate_3d_vertical"
         elif overlay_effect_alias in {"liquidmirror", "liquid", "mirror", "ripple", "liquidwarp"}:
             overlay_effect = "liquid_mirror"
+        elif overlay_effect_alias in {"liquidmirrorrotate", "liquidrotate", "ripplerotate",
+                                      "liquidspin", "spinliquid"}:
+            overlay_effect = "liquid_mirror_rotate"
+        elif overlay_effect_alias in {"liquidmirrorrotatevertical", "liquidrotatevertical",
+                                      "liquidspinvertical", "spinliquidvertical"}:
+            overlay_effect = "liquid_mirror_rotate_vertical"
         elif overlay_effect_alias in {"kaleidoquad", "kaleido4"}:
             overlay_effect = "kaleido_quad"
         elif overlay_effect_alias in {"kaleidoocta", "kaleido8"}:
@@ -1520,6 +1526,7 @@ def composition_file_inventory(request, composition_id):
                 size = int(media_path.stat().st_size)
             except OSError:
                 size = 0
+            transforms = (composition.source_image_transforms or {}).get(rel_path) or {}
             rows.append(
                 {
                     "relative_path": rel_path,
@@ -1527,6 +1534,9 @@ def composition_file_inventory(request, composition_id):
                     "name": media_path.name,
                     "size": size,
                     "included": rel_path not in excluded,
+                    "flipH": bool(transforms.get("flipH")),
+                    "flipV": bool(transforms.get("flipV")),
+                    "crop": transforms.get("crop") or None,
                 }
             )
     rows.sort(key=lambda row: row["relative_path"])
@@ -1555,6 +1565,42 @@ def composition_file_action(request, composition_id):
         composition.publish_excluded_files = sorted(excluded)
         composition.save(update_fields=["publish_excluded_files"])
         return JsonResponse({"ok": True, "included": include})
+
+    if action in ("set_flip", "set_crop", "clear_transform"):
+        transforms = dict(composition.source_image_transforms or {})
+        entry = dict(transforms.get(relative_path) or {})
+        if action == "set_flip":
+            flip_h = (request.POST.get("flipH") or "").strip().lower() in {"1", "true", "yes", "on"}
+            flip_v = (request.POST.get("flipV") or "").strip().lower() in {"1", "true", "yes", "on"}
+            entry["flipH"] = flip_h
+            entry["flipV"] = flip_v
+        elif action == "set_crop":
+            try:
+                x = int(request.POST.get("x") or 0)
+                y = int(request.POST.get("y") or 0)
+                w = int(request.POST.get("w") or 0)
+                h = int(request.POST.get("h") or 0)
+                if w <= 0 or h <= 0:
+                    return JsonResponse({"ok": False, "error": "Crop width and height must be positive."}, status=400)
+                entry["crop"] = [x, y, x + w, y + h]
+            except (ValueError, TypeError):
+                return JsonResponse({"ok": False, "error": "Invalid crop values."}, status=400)
+        elif action == "clear_transform":
+            what = (request.POST.get("what") or "all").strip().lower()
+            if what == "flip":
+                entry.pop("flipH", None)
+                entry.pop("flipV", None)
+            elif what == "crop":
+                entry.pop("crop", None)
+            else:
+                entry = {}
+        if entry:
+            transforms[relative_path] = entry
+        else:
+            transforms.pop(relative_path, None)
+        composition.source_image_transforms = transforms
+        composition.save(update_fields=["source_image_transforms"])
+        return JsonResponse({"ok": True, "transforms": entry})
 
     resolved = _resolve_composition_relative_media_path(relative_path)
     if not resolved:
@@ -1887,10 +1933,15 @@ def composition_folder_view(request, grid_id):
             cell.save(update_fields=["url"])
     for cell in cells:
         cell.list_thumbnail_src = _composition_list_thumbnail_src(cell)
-        cell.nft_online_video_ready = any(
-            asset.kind == "preview_10s" and asset.status == "ready" and bool(getattr(asset, "file", None))
-            for asset in cell.media_assets.all()
-        )
+        cell.preview_video_url = ""
+        for asset in cell.media_assets.all():
+            if asset.kind == "preview_10s" and asset.status == "ready" and getattr(asset, "file", None):
+                try:
+                    cell.preview_video_url = asset.file.url
+                except Exception:
+                    cell.preview_video_url = ""
+                break
+        cell.nft_online_video_ready = bool(cell.preview_video_url)
     cells_by_slot: list = [None] * 9
     for cell in cells:
         idx = cell.grid_cell_index
@@ -2535,6 +2586,43 @@ def render_composition_export(request, composition_id):
     return redirect("composition_detail", composition_id=composition.id)
 
 
+@login_required
+def export_composition_png(request, composition_id):
+    """Capture a composition still as a transparent-background PNG and stream it for download.
+
+    Photoshop opens the result with an unlocked, transparent layer instead of
+    a flat white background, because Playwright's omit_background=True leaves
+    the alpha channel intact.
+    """
+    from django.http import HttpResponse
+    from ..nft_media import capture_composition_still_png
+
+    composition = get_object_or_404(Composition, id=composition_id)
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "POST required."}, status=405)
+
+    try:
+        size = int(request.POST.get("size") or 1080)
+        size = max(256, min(4096, size))
+    except (TypeError, ValueError):
+        size = 1080
+
+    transparent = (request.POST.get("transparent") or "1").strip() not in {"0", "false", "no"}
+
+    try:
+        png_bytes = capture_composition_still_png(
+            composition,
+            size=size,
+            transparent=transparent,
+        )
+    except Exception as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=500)
+
+    slug = (composition.url or f"comp-{composition.id}").strip("/").replace("/", "-")
+    filename = f"{slug}_{size}px.png"
+    response = HttpResponse(png_bytes, content_type="image/png")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 def _composition_preview_cache_key(comp) -> str:
@@ -2753,6 +2841,33 @@ def _get_random_links(exclude_id: int) -> list:
     return [u for u in links if u != matched_url]
 
 
+def _attach_image_transforms(assets, composition):
+    """Append ?comp=<id> to image URLs that have a per-image flip/crop transform.
+
+    source_media_file only applies a stored flip/crop when the request carries
+    the ?comp=<id> param. Without this rewrite the transforms saved on the
+    composition would never affect the rendered page or the Playwright capture.
+    Returns shallow copies of the affected entries — never mutates the dicts
+    returned by collect_source_assets, which are shared across compositions
+    through the source-assets cache.
+    """
+    transforms = (composition.source_image_transforms or {})
+    if not transforms:
+        return assets
+    comp_id = int(composition.id)
+    out = []
+    for a in assets:
+        if a.get("kind") == "image":
+            rel = f"{a.get('source_name', '')}/{a.get('name', '')}"
+            if rel in transforms:
+                a = dict(a)
+                sep = "&" if "?" in a["url"] else "?"
+                a["url"] = f"{a['url']}{sep}comp={comp_id}"
+                a["preview_url"] = a["url"]
+        out.append(a)
+    return out
+
+
 def _render_composition_public(request, matched):
     random_links = _get_random_links(matched.id)
     layer_transitions = ((matched.filter_settings or {}).get("layer_transitions") or {})
@@ -2859,6 +2974,14 @@ def _render_composition_public(request, matched):
         if audio_name and default_storage.exists(audio_name):
             audio_url = audio_file.url
     context["composition_audio_url"] = audio_url
+
+    for _asset_key in (
+        "overlay_assets", "background_assets", "foreground_assets",
+        "road_ground_left_assets", "road_ground_right_assets", "road_sky_assets",
+    ):
+        if context.get(_asset_key):
+            context[_asset_key] = _attach_image_transforms(context[_asset_key], matched)
+
     return render(request, "composition_public.html", context)
 
 

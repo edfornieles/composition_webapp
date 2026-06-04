@@ -1014,6 +1014,53 @@
             85%  { opacity: 0.85; }
             100% { transform: scale(7); opacity: 0; filter: blur(14px); }
         }
+        /* ── REVERSE ZOOM keyframes ──────────────────────────────────────
+           True mirror of forward zoom. Forward starts as an invisible dot
+           and grows past you (opacity peaks mid-flight, fades to 0 once it
+           passes the screen). Backward starts off-screen large, fades IN
+           as it shrinks past 1.5× viewport (where the vignette mask can
+           actually crop the corners), peaks readability around 0.7×, then
+           fades out as it dwindles to a pinpoint.
+
+           Critical detail vs. the v1 (which showed hard rectangular edges):
+           the v1 keyframes had the image already at opacity 0.85 while
+           still at scale 7. At scale 7 the per-layer vignette mask is
+           scaled up too — so 28%-of-mask covers 196% of the viewport and
+           crops nothing. The image's hard edges become visible. Solution:
+           keep opacity near 0 until scale drops to ~1.5×, by which point
+           the mask actually does its job. */
+        @keyframes zoomBackwardShrink {
+            0%   { transform: scale(4.5);  opacity: 0;    filter: blur(8px); }
+            15%  { transform: scale(3.2);  opacity: 0;    filter: blur(6px); }
+            30%  { transform: scale(2.0);  opacity: 0.55; filter: blur(3px); }
+            50%  { transform: scale(1.0);  opacity: 1;    filter: blur(0); }
+            85%  { transform: scale(0.18); opacity: 0.85; filter: blur(0); }
+            100% { transform: scale(0.04); opacity: 0;    filter: blur(0); }
+        }
+        @keyframes zoomBackwardShrinkLarge {
+            0%   { transform: scale(3.6);  opacity: 0;    filter: blur(5px); }
+            15%  { transform: scale(2.6);  opacity: 0;    filter: blur(3px); }
+            30%  { transform: scale(1.7);  opacity: 0.55; filter: blur(2px); }
+            50%  { transform: scale(0.95); opacity: 1;    filter: blur(0); }
+            88%  { transform: scale(0.16); opacity: 0.88; filter: blur(0); }
+            100% { transform: scale(0.04); opacity: 0;    filter: blur(0); }
+        }
+        @keyframes zoomBackwardShrinkSlow {
+            0%   { transform: scale(3.0);  opacity: 0;    filter: blur(4px); }
+            18%  { transform: scale(2.2);  opacity: 0;    filter: blur(2px); }
+            35%  { transform: scale(1.4);  opacity: 0.6;  filter: blur(1px); }
+            55%  { transform: scale(0.85); opacity: 1;    filter: blur(0); }
+            90%  { transform: scale(0.18); opacity: 0.9;  filter: blur(0); }
+            100% { transform: scale(0.06); opacity: 0;    filter: blur(0); }
+        }
+        @keyframes zoomBackwardShrinkFullscreen {
+            0%   { transform: scale(2.6);  opacity: 0;    filter: blur(3px); }
+            18%  { transform: scale(1.9);  opacity: 0;    filter: blur(2px); }
+            35%  { transform: scale(1.3);  opacity: 0.6;  filter: blur(1px); }
+            55%  { transform: scale(0.8);  opacity: 1;    filter: blur(0); }
+            92%  { transform: scale(0.16); opacity: 0.9;  filter: blur(0); }
+            100% { transform: scale(0.06); opacity: 0;    filter: blur(0); }
+        }
         /* Large-screen variant: lower peak scale and softer blur so the image
            reads cleanly on a 55"+ display instead of smearing into noise. */
         @keyframes zoomForwardExpandLarge {
@@ -4073,6 +4120,171 @@
         // rushing forward through a stream of frames. Builds on the tunnelStage
         // + tunnel-layer infrastructure but uses its own keyframe and slightly
         // looser layer cap.
+        // Reverse zoom: same architecture as setupZoomForwardMode but uses the
+        // zoomBackwardShrink* keyframes. Visually feels like falling away from
+        // the images, or watching them recede into a vanishing point. Shares
+        // the tunnelStage infrastructure with zoom-forward, tunnel, etc.
+        //
+        // Key difference from forward zoom: forward only shows hard rectangle
+        // edges at scales where opacity is already 0 (start scale 0.04 = a
+        // pinpoint; end scale 7 = way overflowing viewport). Backward's
+        // recede phase necessarily passes through scale 1.0 (image == viewport
+        // size) and below, where the rectangle's hard edges are inside the
+        // viewport. The per-layer vignette mask doesn't help here because it
+        // scales with the layer — its fadeout zone (80-96% radius) is OUTSIDE
+        // the image rectangle, so the rectangle's edges look hard.
+        //
+        // Solution: put a static circular vignette mask on the *stage*
+        // container (which never scales) and skip the per-layer mask. The
+        // stage mask crops everything inside it to a soft circle regardless
+        // of how individual layers are sized.
+        function setupZoomBackwardMode(slowMode = false) {
+            document.getElementById("backgroundLayer").classList.add("hidden");
+            document.getElementById("foregroundLayer").classList.add("hidden");
+            document.getElementById("tunnelGrid").classList.add("hidden");
+            document.getElementById("splitScreen").classList.add("hidden");
+            document.getElementById("splitScreenHorizontal").classList.add("hidden");
+            document.getElementById("psychedelicStage").classList.add("hidden");
+            document.getElementById("kaleidoStage").classList.add("hidden");
+            document.getElementById("scrollStage").classList.add("hidden");
+            document.getElementById("strobeStage").classList.add("hidden");
+            const stage = document.getElementById("tunnelStage");
+            stage.classList.remove("hidden");
+            stage.innerHTML = "";
+            if (!bgAssets.length) {
+                showTunnelStageNoMedia();
+                return;
+            }
+            stage.style.background = "#000";
+
+            // Static circular vignette on the stage — does NOT scale with any
+            // layer, so it crops every layer's rectangle edges to a soft
+            // circle regardless of that layer's scale. This is the visual
+            // signature of the reverse-zoom mode: a porthole into the receding
+            // pool of images, instead of rectangles flying away from you.
+            const stageVignette = (
+                "radial-gradient(ellipse 60% 60% at center, " +
+                "#000 0%, " +
+                "#000 55%, " +
+                "rgba(0,0,0,0.85) 72%, " +
+                "rgba(0,0,0,0.35) 88%, " +
+                "transparent 100%)"
+            );
+            stage.style.webkitMaskImage = stageVignette;
+            stage.style.maskImage = stageVignette;
+            stage.style.webkitMaskRepeat = "no-repeat";
+            stage.style.maskRepeat = "no-repeat";
+            stage.style.webkitMaskPosition = "center";
+            stage.style.maskPosition = "center";
+
+            let cursor = 0;
+            let layerDepth = 1;
+            const nextAsset = () => {
+                if (compositionSourcePlaybackMode === "random" && zoomAssetPool.length > 1) {
+                    let nextIndex = Math.floor(Math.random() * zoomAssetPool.length);
+                    if (nextIndex === cursor) nextIndex = (nextIndex + 1) % zoomAssetPool.length;
+                    cursor = nextIndex;
+                } else {
+                    cursor = cursor % zoomAssetPool.length;
+                }
+                const asset = zoomAssetPool[cursor];
+                if (compositionSourcePlaybackMode !== "random" || zoomAssetPool.length <= 1) cursor += 1;
+                return asset;
+            };
+            const speed = Math.max(0.25, compositionSpeed);
+            const isLargeScreen = !slowMode && window.screen.width >= 1920 && window.devicePixelRatio <= 1;
+            const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
+            const animName = isFullscreen
+                ? "zoomBackwardShrinkFullscreen"
+                : slowMode
+                    ? "zoomBackwardShrinkSlow"
+                    : isLargeScreen ? "zoomBackwardShrinkLarge" : "zoomBackwardShrink";
+            const durationSec = isFullscreen
+                ? Math.max(2.4, 4.0 / speed)
+                : slowMode
+                    ? Math.max(2.0, 3.5 / speed)
+                    : isLargeScreen ? Math.max(1.2, 2.4 / speed) : Math.max(0.85, 1.7 / speed);
+            const spawnMs = Math.max(85, Math.floor((durationSec * 1000) / 12));
+            const maxActiveLayers = isFullscreen ? 9 : slowMode ? 18 : isLargeScreen ? 16 : 18;
+
+            const spawnLayer = (warmOffsetMs = 0) => {
+                if (stage.querySelectorAll(".tunnel-layer").length >= maxActiveLayers) return;
+                const layer = document.createElement("div");
+                layer.className = "tunnel-layer";
+                layer.style.animationName = animName;
+                const jitterDur = durationSec * (0.85 + Math.random() * 0.3);
+                layer.style.animationDuration = `${jitterDur.toFixed(3)}s`;
+                layer.style.animationIterationCount = "1";
+                layer.style.animationFillMode = "forwards";
+                layer.style.animationTimingFunction = "cubic-bezier(0.45, 0.05, 0.55, 0.95)";
+                if (warmOffsetMs > 0) {
+                    layer.style.animationDelay = `-${Math.floor(warmOffsetMs)}ms`;
+                }
+                const rot = (-6 + Math.random() * 12).toFixed(2);
+                layer.style.setProperty("--zoom-rot", `${rot}deg`);
+                layer.style.transformOrigin = "50% 50%";
+                layer.style.rotate = `${rot}deg`;
+                // Receding images sit at LOWER z-index over time so newer
+                // (large, in-your-face) layers appear in front. Forward zoom
+                // does the opposite — newer layers start small and get bigger
+                // so they paint on top. Both directions need newer-on-top
+                // ordering, so the depth counter pattern works identically.
+                layer.style.zIndex = String(layerDepth++);
+                // No per-layer vignette mask: the stage container holds the
+                // static circular mask. Skipping the per-layer mask means
+                // each layer paints fully — the stage mask alone crops the
+                // composite to a circle.
+                stage.appendChild(layer);
+                const rawAsset = nextAsset();
+                const zoomAsset = (rawAsset && rawAsset.kind === "video")
+                    ? (toVideoFallbackAsset(rawAsset) || rawAsset)
+                    : rawAsset;
+                mountAsset(layer, zoomAsset);
+                let removed = false;
+                const removeLayer = () => {
+                    if (removed) return;
+                    removed = true;
+                    layer.remove();
+                };
+                layer.addEventListener("animationend", removeLayer, { once: true });
+                const remainingMs = Math.max(200, jitterDur * 1000 - warmOffsetMs + 600);
+                setTimeout(removeLayer, Math.ceil(remainingMs));
+            };
+
+            const startLoop = () => {
+                if (liteMode) {
+                    const liteLayer = document.createElement("div");
+                    liteLayer.className = "tunnel-layer";
+                    liteLayer.style.animation = "none";
+                    liteLayer.style.transform = "scale(1)";
+                    liteLayer.style.opacity = "1";
+                    liteLayer.style.zIndex = "1";
+                    stage.appendChild(liteLayer);
+                    const rawAsset = nextAsset();
+                    const liteAsset = (rawAsset && rawAsset.kind === "video")
+                        ? (toVideoFallbackAsset(rawAsset) || rawAsset)
+                        : rawAsset;
+                    if (liteAsset) mountAsset(liteLayer, liteAsset);
+                    return;
+                }
+                const warmLeadMs = Math.floor(durationSec * 1000 * 0.90);
+                const warmLayers = Math.min(maxActiveLayers, Math.max(1, Math.ceil(warmLeadMs / Math.max(1, spawnMs))));
+                for (let i = warmLayers; i >= 1; i--) {
+                    const offsetMs = Math.min(i * spawnMs, Math.floor(durationSec * 1000 * 0.92));
+                    spawnLayer(offsetMs);
+                }
+                spawnLayer(0);
+                setInterval(spawnLayer, spawnMs);
+            };
+
+            const zoomAssetPool = preparePinnedAssetPool(bgAssets, {
+                cap: 32,
+                holderId: "zoomPreloadHolder",
+                fallbackMs: 1500,
+                onReady: startLoop,
+            });
+        }
+
         function setupZoomForwardMode(slowMode = false) {
             document.getElementById("backgroundLayer").classList.add("hidden");
             document.getElementById("foregroundLayer").classList.add("hidden");
@@ -9066,6 +9278,8 @@
                 if (compact === "rotate3dreverse" || compact === "spin3dreverse" || compact === "rotatereverse" || compact === "rotateopposite" || compact === "rotatebackwards" || compact === "rotateccw") return "rotate_3d_reverse";
                 if (compact === "rotate3dvertical" || compact === "spin3dvertical" || compact === "rotatevertical" || compact === "rotateflip" || compact === "rotateforward" || compact === "rotatetumble" || compact === "verticalrotate") return "rotate_3d_vertical";
                 if (compact === "liquidmirror" || compact === "liquid" || compact === "mirror" || compact === "ripple" || compact === "liquidwarp") return "liquid_mirror";
+                if (compact === "liquidmirrorrotate" || compact === "liquidrotate" || compact === "rippleratate" || compact === "ripplerotate" || compact === "liquidspin" || compact === "spinliquid") return "liquid_mirror_rotate";
+                if (compact === "liquidmirrorrotatevertical" || compact === "liquidrotatevertical" || compact === "liquidspinvertical" || compact === "spinliquidvertical") return "liquid_mirror_rotate_vertical";
                 if (compact === "circlerotate" || compact === "circle") return "circle_rotate";
                 if (compact === "circlerotatemirror" || compact === "circlemirror") return "circle_rotate_mirror";
                 if (compact === "mash" || compact === "glitchmash" || compact === "overlaymash") return "mash";
@@ -9854,8 +10068,22 @@
             }
             if (resolvedOverlayEffect === "rotate_3d"
                 || resolvedOverlayEffect === "rotate_3d_reverse"
-                || resolvedOverlayEffect === "rotate_3d_vertical") {
-                const isVertical = resolvedOverlayEffect === "rotate_3d_vertical";
+                || resolvedOverlayEffect === "rotate_3d_vertical"
+                || resolvedOverlayEffect === "liquid_mirror_rotate"
+                || resolvedOverlayEffect === "liquid_mirror_rotate_vertical") {
+                const isVertical = (
+                    resolvedOverlayEffect === "rotate_3d_vertical" ||
+                    resolvedOverlayEffect === "liquid_mirror_rotate_vertical"
+                );
+                // Liquid variants apply the same SVG turbulence + displacement
+                // filter the composition-mode liquid mirror uses, but scoped
+                // to the rotating overlay shell. The face contents ripple
+                // continuously while the rotator spins in 3D — visually a
+                // shimmering disc/scroll passing through the scene.
+                const isLiquid = (
+                    resolvedOverlayEffect === "liquid_mirror_rotate" ||
+                    resolvedOverlayEffect === "liquid_mirror_rotate_vertical"
+                );
                 const shell = buildOverlayShell();
                 overlayLayer.appendChild(shell.wrapper);
                 // Perspective on inner so 3D context is established; rotator spins inside it
@@ -9880,7 +10108,24 @@
                 rotator.appendChild(front);
                 rotator.appendChild(back);
 
-                const fullTurnMs = Math.max(4000, Math.floor(16000 / Math.max(0.25, overlaySpeed)));
+                // Apply the liquid warp filter to BOTH faces (not the
+                // rotator itself — SVG filters don't compose well with
+                // transform-style: preserve-3d, the warp would only apply
+                // to the rasterised 2D fallback). Per-face filter keeps
+                // the 3D rotation crisp while each face's contents ripple.
+                if (isLiquid) {
+                    front.style.filter = "url(#liquidMirrorWarp)";
+                    front.style.willChange = "filter";
+                    back.style.filter = "url(#liquidMirrorWarp)";
+                    back.style.willChange = "filter";
+                }
+
+                // Liquid version spins slightly slower so each ripple has
+                // time to read before the geometry rotates past it.
+                const speedDivisor = Math.max(0.25, overlaySpeed);
+                const fullTurnMs = isLiquid
+                    ? Math.max(5500, Math.floor(20000 / speedDivisor))
+                    : Math.max(4000, Math.floor(16000 / speedDivisor));
 
                 const loadFaces = (asset) => {
                     if (!asset) return;
@@ -9900,11 +10145,32 @@
                 loadFaces(pickRandomOverlayAsset());
                 // Pick the right keyframe for this variant.
                 const spinKeyframe = (
-                    resolvedOverlayEffect === "rotate_3d_reverse"  ? "overlaySpinContinuousReverse" :
-                    resolvedOverlayEffect === "rotate_3d_vertical" ? "overlaySpinContinuousVertical" :
-                                                                     "overlaySpinContinuous"
+                    resolvedOverlayEffect === "rotate_3d_reverse"            ? "overlaySpinContinuousReverse" :
+                    resolvedOverlayEffect === "rotate_3d_vertical"           ? "overlaySpinContinuousVertical" :
+                    resolvedOverlayEffect === "liquid_mirror_rotate_vertical"? "overlaySpinContinuousVertical" :
+                                                                               "overlaySpinContinuous"
                 );
                 rotator.style.animation = `${spinKeyframe} ${fullTurnMs}ms linear infinite`;
+
+                // For liquid variants, drive the shared turbulence node so
+                // the ripples drift over time. Same animation function as
+                // the composition-mode liquid mirror — both will animate
+                // in sync if both are active, which is visually fine.
+                if (isLiquid) {
+                    const turbulence = document.getElementById("liquidMirrorTurbulence");
+                    if (turbulence) {
+                        const start = Date.now();
+                        const tick = () => {
+                            if (!rotator.isConnected) return;
+                            const t = (Date.now() - start) / 1000;
+                            const fx = (0.013 + Math.sin(t * 0.12 * speedDivisor) * 0.004).toFixed(4);
+                            const fy = (0.028 + Math.cos(t * 0.16 * speedDivisor) * 0.006).toFixed(4);
+                            turbulence.setAttribute("baseFrequency", `${fx} ${fy}`);
+                            requestAnimationFrame(tick);
+                        };
+                        tick();
+                    }
+                }
 
                 if (overlayAssets.length > 1) {
                     trackOverlayInterval(setInterval(() => {
@@ -10334,6 +10600,8 @@
             "tunnel-burst": () => setupTunnelBurstMode(),
             "zoom-forward": () => setupZoomForwardMode(),
             "zoom-slow": () => setupZoomForwardMode(true),
+            "zoom-backward": () => setupZoomBackwardMode(),
+            "zoom-backward-slow": () => setupZoomBackwardMode(true),
             "liquid-mirror": () => setupLiquidMirrorMode(),
             "liquid-mirror-extreme": () => setupLiquidMirrorExtremeMode(),
             "wax-melt": () => setupWaxMeltMode(),

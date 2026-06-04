@@ -95,6 +95,8 @@ class Composition(models.Model):
     composition_themes = models.JSONField(default=list, blank=True)
     composition_characters = models.JSONField(default=list, blank=True)
     publish_excluded_files = models.JSONField(default=list, blank=True)
+    # Per-image transform overrides: {"source/file.jpg": {"flipH": true, "flipV": false, "crop": [x, y, w, h]}}
+    source_image_transforms = models.JSONField(default=dict, blank=True)
     ready_for_deployment = models.BooleanField(default=False)
     mood_rating = models.CharField(max_length=10, choices=MOOD_RATING_CHOICES, default="mid")
 

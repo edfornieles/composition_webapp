@@ -241,6 +241,8 @@
                                                 <option value="tunnel-double" {% if composition.type == 'tunnel-double' %}selected{% endif %}>Tunnel Double</option>
                                                 <option value="zoom-forward" {% if composition.type == 'zoom-forward' %}selected{% endif %}>Zoom Forward (Hyperspace)</option>
                                                 <option value="zoom-slow" {% if composition.type == 'zoom-slow' %}selected{% endif %}>Zoom Slow (Large Screen)</option>
+                                                <option value="zoom-backward" {% if composition.type == 'zoom-backward' %}selected{% endif %}>Zoom Backward (Receding)</option>
+                                                <option value="zoom-backward-slow" {% if composition.type == 'zoom-backward-slow' %}selected{% endif %}>Zoom Backward Slow (Large Screen)</option>
                                             </optgroup>
                                             <optgroup label="Liquid &amp; Wax">
                                                 <option value="liquid-mirror" {% if composition.type == 'liquid-mirror' %}selected{% endif %}>Liquid Mirror</option>
@@ -603,6 +605,8 @@
                                                     <option value="rotate_3d_reverse" {% if selected_overlay_effect == 'rotate_3d_reverse' %}selected{% endif %}>Rotate (reverse)</option>
                                                     <option value="rotate_3d_vertical" {% if selected_overlay_effect == 'rotate_3d_vertical' %}selected{% endif %}>Rotate (vertical / top-to-bottom)</option>
                                                     <option value="liquid_mirror" {% if selected_overlay_effect == 'liquid_mirror' %}selected{% endif %}>Liquid mirror</option>
+                                                    <option value="liquid_mirror_rotate" {% if selected_overlay_effect == 'liquid_mirror_rotate' %}selected{% endif %}>Liquid mirror + rotate</option>
+                                                    <option value="liquid_mirror_rotate_vertical" {% if selected_overlay_effect == 'liquid_mirror_rotate_vertical' %}selected{% endif %}>Liquid mirror + rotate (vertical)</option>
                                                     <option value="circle_rotate" {% if selected_overlay_effect == 'circle_rotate' %}selected{% endif %}>Circle rotate</option>
                                                     <option value="circle_rotate_mirror" {% if selected_overlay_effect == 'circle_rotate_mirror' %}selected{% endif %}>Circle rotate mirror</option>
                                                     <option value="mash" {% if selected_overlay_effect == 'mash' %}selected{% endif %}>Mash</option>
@@ -1327,6 +1331,26 @@
                                         <small class="text-muted d-block mt-2">
                                             Renders the saved public composition page and stores the MP4 as this composition's final video.
                                         </small>
+                                        <hr class="my-3">
+                                        <div class="row align-items-end">
+                                            <div class="col-md-4">
+                                                <label for="png_export_size" class="form-label">PNG size (px)</label>
+                                                <select id="png_export_size" class="form-control">
+                                                    <option value="1080" selected>1080 × 1080</option>
+                                                    <option value="2048">2048 × 2048</option>
+                                                    <option value="512">512 × 512 (fast preview)</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label d-block">&nbsp;</label>
+                                                <button type="button" id="exportPngBtn" class="btn btn-outline-secondary btn-sm">
+                                                    ↓ Export PNG (transparent)
+                                                </button>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <small class="text-muted">Opens in Photoshop with an unlocked transparent background layer.</small>
+                                            </div>
+                                        </div>
                                         {% if composition.final_video %}
                                         <div class="mt-3 border rounded" style="overflow:hidden;max-width:480px;">
                                             <video src="{{ composition.final_video.url }}" controls muted loop
@@ -7143,17 +7167,26 @@
                     fileManagerBody.innerHTML = '<tr><td colspan="4" class="text-muted">No files match current filter.</td></tr>';
                     return;
                 }
-                fileManagerBody.innerHTML = filtered.map((row) => `
+                fileManagerBody.innerHTML = filtered.map((row) => {
+                    const isImage = /\.(jpe?g|png|gif|webp|avif|bmp|tiff?)$/i.test(row.relative_path);
+                    const flipLabel = [row.flipH ? "↔H" : "", row.flipV ? "↕V" : ""].filter(Boolean).join(" ") || "";
+                    const cropLabel = row.crop ? `✂ ${row.crop[2]-row.crop[0]}×${row.crop[3]-row.crop[1]}` : "";
+                    const badges = [flipLabel, cropLabel].filter(Boolean).map(b => `<span class="badge bg-secondary ms-1">${b}</span>`).join("");
+                    return `
                     <tr data-rel="${row.relative_path}">
                         <td><input type="checkbox" class="file-include-toggle" data-rel="${row.relative_path}" ${row.included ? "checked" : ""}></td>
-                        <td><code>${row.relative_path}</code></td>
+                        <td><code>${row.relative_path}</code>${badges}</td>
                         <td>${fmtBytes(row.size)}</td>
-                        <td>
+                        <td style="white-space:nowrap">
                             <button type="button" class="btn btn-outline-secondary btn-xs file-rename-btn" data-rel="${row.relative_path}">Rename</button>
+                            ${isImage ? `
+                            <button type="button" class="btn btn-outline-primary btn-xs file-flip-btn" data-rel="${row.relative_path}" data-flip-h="${row.flipH ? '1' : '0'}" data-flip-v="${row.flipV ? '1' : '0'}" title="Flip image">Flip</button>
+                            <button type="button" class="btn btn-outline-primary btn-xs file-crop-btn" data-rel="${row.relative_path}" data-crop="${row.crop ? JSON.stringify(row.crop) : ''}" title="Set crop region">Crop</button>
+                            ` : ""}
                             <button type="button" class="btn btn-outline-danger btn-xs file-delete-btn" data-rel="${row.relative_path}">Delete</button>
                         </td>
                     </tr>
-                `).join("");
+                `}).join("");
             };
             const fileStatus = (txt, isError = false) => {
                 if (!fileManagerStatus) return;
@@ -7232,10 +7265,112 @@
                             fileStatus(String(err), true);
                         }
                     }
+                    if (target.classList.contains("file-flip-btn")) {
+                        const rel = target.getAttribute("data-rel");
+                        if (!rel) return;
+                        const curH = target.getAttribute("data-flip-h") === "1";
+                        const curV = target.getAttribute("data-flip-v") === "1";
+                        const choice = window.prompt(
+                            `Flip options for:\n${rel}\n\nCurrent: flipH=${curH}, flipV=${curV}\n\nEnter one of:\n  h   — toggle horizontal flip\n  v   — toggle vertical flip\n  hv  — toggle both\n  clear — remove all flips`,
+                            ""
+                        );
+                        if (!choice) return;
+                        const c = choice.trim().toLowerCase();
+                        if (c === "clear") {
+                            try {
+                                await postFileAction({ action: "clear_transform", relative_path: rel, what: "flip" });
+                                fileStatus(`Cleared flip for ${rel}`);
+                                await loadFiles();
+                            } catch (err) { fileStatus(String(err), true); }
+                            return;
+                        }
+                        const newH = c.includes("h") ? !curH : curH;
+                        const newV = c.includes("v") ? !curV : curV;
+                        try {
+                            await postFileAction({ action: "set_flip", relative_path: rel, flipH: newH ? "1" : "0", flipV: newV ? "1" : "0" });
+                            fileStatus(`Set flip: H=${newH} V=${newV} for ${rel}`);
+                            await loadFiles();
+                        } catch (err) { fileStatus(String(err), true); }
+                    }
+                    if (target.classList.contains("file-crop-btn")) {
+                        const rel = target.getAttribute("data-rel");
+                        if (!rel) return;
+                        const existing = target.getAttribute("data-crop") || "";
+                        let defVal = "";
+                        if (existing) {
+                            try {
+                                const [x1,y1,x2,y2] = JSON.parse(existing);
+                                defVal = `${x1},${y1},${x2-x1},${y2-y1}`;
+                            } catch(e) {}
+                        }
+                        const input = window.prompt(
+                            `Crop for:\n${rel}\n\nEnter: x,y,width,height  (pixels from top-left)\nLeave blank to clear crop.`,
+                            defVal
+                        );
+                        if (input === null) return;
+                        if (!input.trim()) {
+                            try {
+                                await postFileAction({ action: "clear_transform", relative_path: rel, what: "crop" });
+                                fileStatus(`Cleared crop for ${rel}`);
+                                await loadFiles();
+                            } catch (err) { fileStatus(String(err), true); }
+                            return;
+                        }
+                        const parts = input.trim().split(/[\s,]+/).map(Number);
+                        if (parts.length !== 4 || parts.some(isNaN)) {
+                            fileStatus("Invalid crop — enter x,y,width,height as numbers.", true);
+                            return;
+                        }
+                        const [x, y, w, h] = parts;
+                        try {
+                            await postFileAction({ action: "set_crop", relative_path: rel, x, y, w, h });
+                            fileStatus(`Set crop ${w}×${h} at (${x},${y}) for ${rel}`);
+                            await loadFiles();
+                        } catch (err) { fileStatus(String(err), true); }
+                    }
                 });
             }
             loadFiles().catch((err) => fileStatus(String(err), true));
         }
+
+        // PNG export with transparent background
+        const exportPngBtn = document.getElementById("exportPngBtn");
+        const pngSizeSelect = document.getElementById("png_export_size");
+        if (exportPngBtn && compositionId) {
+            const exportPngUrl = "{% url 'export_composition_png' 0 %}".replace("/0/", `/${compositionId}/`);
+            exportPngBtn.addEventListener("click", async () => {
+                const size = pngSizeSelect ? pngSizeSelect.value : "1080";
+                exportPngBtn.disabled = true;
+                exportPngBtn.textContent = "Capturing…";
+                try {
+                    const fd = new FormData();
+                    fd.append("csrfmiddlewaretoken", (csrfTokenInput && csrfTokenInput.value) || "");
+                    fd.append("size", size);
+                    fd.append("transparent", "1");
+                    const resp = await fetch(exportPngUrl, { method: "POST", body: fd });
+                    if (!resp.ok) {
+                        const err = await resp.json().catch(() => ({ error: resp.statusText }));
+                        alert("PNG export failed: " + (err.error || resp.statusText));
+                        return;
+                    }
+                    const blob = await resp.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    const cd = resp.headers.get("Content-Disposition") || "";
+                    const fnMatch = cd.match(/filename="([^"]+)"/);
+                    a.download = fnMatch ? fnMatch[1] : `composition_${compositionId}.png`;
+                    a.href = url;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                } catch (err) {
+                    alert("PNG export error: " + err);
+                } finally {
+                    exportPngBtn.disabled = false;
+                    exportPngBtn.textContent = "↓ Export PNG (transparent)";
+                }
+            });
+        }
+
         const isEditMode = {{ edit_mode|yesno:"true,false" }};
         if (!isEditMode) {
             const presetType = new URLSearchParams(window.location.search).get('preset');

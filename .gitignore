@@ -56,3 +56,22 @@ models/fit_body_discipline*
 *.gguf
 *.sqlite3-shm
 *.sqlite3-wal
+
+# Session / runtime artifacts (not part of the codebase)
+.claude/
+.watchdog.pid
+pyspy_dumps/
+gunicorn.log
+watchdog.log
+media_gen.log
+*.tmp.[0-9]*.*
+
+# Large data / model artifacts kept off-repo (move to a release bucket if needed)
+data/
+var/
+static/models/
+static/video/
+djangoscrap/static/audio/
+composition_audio_sources/
+training/chan_anon/
+training/fit_lora/adapters/

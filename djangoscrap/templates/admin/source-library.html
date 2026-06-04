@@ -116,30 +116,16 @@
           <form id="deleteSourcesForm" method="POST" action="{% url 'delete_buckets' %}">
             {% csrf_token %}
 
-            <!-- Tile view -->
-            <div id="sourceLibTileGrid">
-              {% for source in sources %}
-              <div class="src-tile" data-source-name="{{ source.name|lower }}" data-file-count="{{ source.file_count }}"
-                   data-href="{% url 'bucket_contents' source.name %}">
-                {% if source.thumbnail_url %}
-                <img data-src="{{ source.thumbnail_url }}" alt="{{ source.name }} preview"
-                     class="src-tile-thumb js-lazy-source-thumb" loading="lazy" decoding="async">
-                {% else %}
-                <div class="src-tile-placeholder">📁</div>
-                {% endif %}
-                <input type="checkbox" class="src-tile-cb source-select"
-                       name="buckets" value="{{ source.name }}" title="Select {{ source.name }}">
-                <div class="src-tile-footer">
-                  <div class="src-tile-name" title="{{ source.name }}">{{ source.name }}</div>
-                  <div class="src-tile-meta">{{ source.file_count_label|default:source.file_count }}</div>
-                </div>
-              </div>
-              {% empty %}
-              <p class="text-muted">No sources found yet.</p>
-              {% endfor %}
-            </div>
+            <!-- Folder data: sent once as compact JSON; tiles/rows are built on
+                 demand by JS (windowed render-on-scroll) so first paint is fast
+                 even with hundreds of folders. -->
+            {{ sources_json|json_script:"sourceLibData" }}
 
-            <!-- List view -->
+            <!-- Tile view (populated by JS) -->
+            <div id="sourceLibTileGrid"></div>
+            <p id="sourceLibTileEmpty" class="text-muted" style="display:none;">No sources match your search.</p>
+
+            <!-- List view (populated by JS) -->
             <div id="sourceLibTableWrap" style="display:none;">
               <div class="table-responsive">
                 <table class="table table-sm table-bordered align-middle">
@@ -155,36 +141,13 @@
                       <th class="source-action-column">Action</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {% for source in sources %}
-                    <tr class="source-row" data-source-name="{{ source.name|lower }}" data-file-count="{{ source.file_count }}">
-                      <td class="text-center">
-                        <input type="checkbox" class="source-row-cb source-select" name="buckets" value="{{ source.name }}" title="Select {{ source.name }}">
-                      </td>
-                      <td>
-                        {% if source.thumbnail_url %}
-                        <img data-src="{{ source.thumbnail_url }}" alt="{{ source.name }} preview"
-                             class="source-preview-thumb js-lazy-source-thumb" loading="lazy" decoding="async">
-                        {% else %}
-                        <div class="source-preview-placeholder d-flex align-items-center justify-content-center bg-light text-muted">-</div>
-                        {% endif %}
-                      </td>
-                      <td>{{ source.name }}</td>
-                      <td>{{ source.file_count_label|default:source.file_count }}</td>
-                      <td>{{ source.updated_at|date:"d/m/Y H:i" }}</td>
-                      <td>
-                        <a href="{% url 'bucket_contents' source.name %}" class="btn btn-primary btn-sm">Open Source</a>
-                      </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                      <td colspan="6" class="text-muted">No sources found yet.</td>
-                    </tr>
-                    {% endfor %}
-                  </tbody>
+                  <tbody id="sourceLibTableBody"></tbody>
                 </table>
               </div>
             </div>
+
+            <!-- Sentinel: scrolled into view → render the next window of items. -->
+            <div id="sourceLibSentinel" style="height:1px;"></div>
           </form>
 
           <form id="dedupeSourcesForm" method="POST" action="{% url 'dedupe_source_folders' %}" class="d-none">
@@ -201,44 +164,169 @@
     const SRC_LIB_KEY = 'sourceLibViewMode';
     const tileGrid    = document.getElementById('sourceLibTileGrid');
     const tableWrap   = document.getElementById('sourceLibTableWrap');
+    const tableBody   = document.getElementById('sourceLibTableBody');
+    const tileEmpty   = document.getElementById('sourceLibTileEmpty');
+    const sentinel    = document.getElementById('sourceLibSentinel');
     const btnList     = document.getElementById('srcLibViewList');
     const btnTile     = document.getElementById('srcLibViewTile');
     const searchInput = document.getElementById('sourceSearchInput');
     const selectedCountNode = document.getElementById('selectedSourcesCount');
     const selectVisibleCheckbox = document.getElementById('selectVisibleSourcesCheckbox');
 
-    // All checkboxes (both tile and row — same name="buckets", same value)
-    // We keep a canonical Set of selected source names.
+    // Full dataset (compact JSON, sent once).
+    let DATA = [];
+    try { DATA = JSON.parse(document.getElementById('sourceLibData').textContent) || []; } catch (e) { DATA = []; }
+
+    // Canonical selection set (shared by tile + row checkboxes).
     const selectedSources = new Set();
 
-    const allTiles = () => Array.from(document.querySelectorAll('#sourceLibTileGrid .src-tile'));
-    const allRows  = () => Array.from(document.querySelectorAll('#sourceLibTableWrap .source-row'));
-    const visibleTiles = () => allTiles().filter(t => t.style.display !== 'none');
-    const visibleRows  = () => allRows().filter(r => r.style.display !== 'none');
+    // Windowed rendering state.
+    const WINDOW = 120;            // how many items to append per batch
+    let currentView = 'tile';      // 'tile' | 'list'
+    let filtered = DATA;           // dataset after search filter
+    let rendered = 0;              // how many of `filtered` are in the DOM
+
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+
+    // ── Element builders ──────────────────────────────────────────────
+    function buildTile(item) {
+      const tile = document.createElement('div');
+      tile.className = 'src-tile';
+      tile.dataset.sourceName = item.name_lower;
+      tile.dataset.fileCount = item.count;
+      tile.dataset.href = item.href;
+      const sel = selectedSources.has(item.name);
+      if (sel) tile.classList.add('src-tile-selected');
+      const thumb = item.thumb
+        ? `<img data-src="${esc(item.thumb)}" alt="${esc(item.name)} preview" class="src-tile-thumb js-lazy-source-thumb" loading="lazy" decoding="async">`
+        : `<div class="src-tile-placeholder">📁</div>`;
+      tile.innerHTML =
+        thumb +
+        `<input type="checkbox" class="src-tile-cb source-select" name="buckets" value="${esc(item.name)}" title="Select ${esc(item.name)}"${sel ? ' checked' : ''}>` +
+        `<div class="src-tile-footer">` +
+          `<div class="src-tile-name" title="${esc(item.name)}">${esc(item.name)}</div>` +
+          `<div class="src-tile-meta">${esc(item.count_label)}</div>` +
+        `</div>`;
+      return tile;
+    }
+
+    function buildRow(item) {
+      const tr = document.createElement('tr');
+      tr.className = 'source-row';
+      tr.dataset.sourceName = item.name_lower;
+      tr.dataset.fileCount = item.count;
+      const sel = selectedSources.has(item.name);
+      if (sel) tr.classList.add('table-active');
+      const prev = item.thumb
+        ? `<img data-src="${esc(item.thumb)}" alt="${esc(item.name)} preview" class="source-preview-thumb js-lazy-source-thumb" loading="lazy" decoding="async">`
+        : `<div class="source-preview-placeholder d-flex align-items-center justify-content-center bg-light text-muted">-</div>`;
+      tr.innerHTML =
+        `<td class="text-center"><input type="checkbox" class="source-row-cb source-select" name="buckets" value="${esc(item.name)}" title="Select ${esc(item.name)}"${sel ? ' checked' : ''}></td>` +
+        `<td>${prev}</td>` +
+        `<td>${esc(item.name)}</td>` +
+        `<td>${esc(item.count_label)}</td>` +
+        `<td>${esc(item.updated)}</td>` +
+        `<td><a href="${esc(item.href)}" class="btn btn-primary btn-sm">Open Source</a></td>`;
+      return tr;
+    }
+
+    // ── Lazy thumbnail loading (shared observer) ──────────────────────
+    const loadThumb = (img) => {
+      if (!img || img.dataset.loaded === '1') return;
+      const src = img.getAttribute('data-src');
+      if (!src) return;
+      img.src = src;
+      img.dataset.loaded = '1';
+    };
+    const thumbObserver = ('IntersectionObserver' in window)
+      ? new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            loadThumb(entry.target);
+            thumbObserver.unobserve(entry.target);
+          });
+        }, { rootMargin: '300px 0px' })
+      : null;
+
+    function observeThumbs(container) {
+      const imgs = container.querySelectorAll('.js-lazy-source-thumb');
+      if (thumbObserver) imgs.forEach((img) => thumbObserver.observe(img));
+      else imgs.forEach(loadThumb);
+    }
+
+    // ── Windowed render ───────────────────────────────────────────────
+    function renderNextBatch() {
+      if (rendered >= filtered.length) return;
+      const end = Math.min(rendered + WINDOW, filtered.length);
+      const frag = document.createDocumentFragment();
+      if (currentView === 'tile') {
+        for (let i = rendered; i < end; i++) frag.appendChild(buildTile(filtered[i]));
+        tileGrid.appendChild(frag);
+        observeThumbs(tileGrid);
+      } else {
+        for (let i = rendered; i < end; i++) frag.appendChild(buildRow(filtered[i]));
+        tableBody.appendChild(frag);
+        observeThumbs(tableBody);
+      }
+      rendered = end;
+    }
+
+    function resetRender() {
+      tileGrid.innerHTML = '';
+      tableBody.innerHTML = '';
+      rendered = 0;
+      if (tileEmpty) tileEmpty.style.display = filtered.length ? 'none' : '';
+      // Fill at least the first window; keep appending while the sentinel is
+      // still on screen (short lists / tall viewports).
+      renderNextBatch();
+      maybeFillViewport();
+      updateSelectedCount();
+    }
+
+    function maybeFillViewport() {
+      if (!sentinel) return;
+      let guard = 0;
+      while (rendered < filtered.length && guard < 50) {
+        const r = sentinel.getBoundingClientRect();
+        if (r.top > window.innerHeight + 200) break;
+        renderNextBatch();
+        guard++;
+      }
+    }
+
+    if (sentinel && 'IntersectionObserver' in window) {
+      new IntersectionObserver((entries) => {
+        if (entries.some((e) => e.isIntersecting)) renderNextBatch();
+      }, { rootMargin: '400px 0px' }).observe(sentinel);
+    }
+
+    // ── Selection helpers ─────────────────────────────────────────────
+    const renderedTiles = () => Array.from(tileGrid.querySelectorAll('.src-tile'));
+    const renderedRows  = () => Array.from(tableBody.querySelectorAll('.source-row'));
 
     const updateSelectedCount = () => {
       if (selectedCountNode) selectedCountNode.textContent = String(selectedSources.size);
       if (selectVisibleCheckbox) {
-        const vis = visibleRows();
-        const selVis = vis.filter(r => {
+        const rows = renderedRows();
+        const sel = rows.filter(r => {
           const cb = r.querySelector('.source-row-cb');
           return cb && selectedSources.has(cb.value);
         }).length;
-        selectVisibleCheckbox.checked = vis.length > 0 && selVis === vis.length;
-        selectVisibleCheckbox.indeterminate = selVis > 0 && selVis < vis.length;
+        selectVisibleCheckbox.checked = rows.length > 0 && sel === rows.length;
+        selectVisibleCheckbox.indeterminate = sel > 0 && sel < rows.length;
       }
     };
 
-    const syncAllUI = () => {
-      // Sync tile checkboxes + border
-      allTiles().forEach(tile => {
+    const syncRenderedUI = () => {
+      renderedTiles().forEach(tile => {
         const cb = tile.querySelector('.src-tile-cb');
         if (!cb) return;
         cb.checked = selectedSources.has(cb.value);
         tile.classList.toggle('src-tile-selected', cb.checked);
       });
-      // Sync row checkboxes + row highlight
-      allRows().forEach(row => {
+      renderedRows().forEach(row => {
         const cb = row.querySelector('.source-row-cb');
         if (!cb) return;
         cb.checked = selectedSources.has(cb.value);
@@ -247,89 +335,85 @@
       updateSelectedCount();
     };
 
-    // View toggle
+    // ── View toggle ───────────────────────────────────────────────────
     const setView = (mode) => {
-      const isTile = mode !== 'list';
-      if (tileGrid)  tileGrid.style.display  = isTile ? 'grid'  : 'none';
-      if (tableWrap) tableWrap.style.display  = isTile ? 'none'  : '';
+      currentView = mode === 'list' ? 'list' : 'tile';
+      const isTile = currentView === 'tile';
+      if (tileGrid)  tileGrid.style.display  = isTile ? 'grid' : 'none';
+      if (tableWrap) tableWrap.style.display = isTile ? 'none' : '';
       if (btnList) btnList.classList.toggle('active', !isTile);
       if (btnTile) btnTile.classList.toggle('active', isTile);
-      try { localStorage.setItem(SRC_LIB_KEY, mode); } catch(e) {}
+      try { localStorage.setItem(SRC_LIB_KEY, currentView); } catch(e) {}
+      resetRender();   // rebuild in the active view (only that view holds DOM)
     };
     if (btnList) btnList.addEventListener('click', () => setView('list'));
     if (btnTile) btnTile.addEventListener('click', () => setView('tile'));
 
-    // Search — filter both tiles and rows
+    // ── Search — filters the dataset, then re-renders ─────────────────
+    let searchTimer = null;
     if (searchInput) {
       searchInput.addEventListener('input', () => {
-        const q = searchInput.value.trim().toLowerCase();
-        allTiles().forEach(t => {
-          t.style.display = (!q || (t.dataset.sourceName || '').includes(q)) ? '' : 'none';
-        });
-        allRows().forEach(r => {
-          r.style.display = (!q || (r.dataset.sourceName || '').includes(q)) ? '' : 'none';
-        });
-        updateSelectedCount();
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+          const q = searchInput.value.trim().toLowerCase();
+          filtered = q ? DATA.filter(d => d.name_lower.includes(q)) : DATA;
+          resetRender();
+        }, 120);
       });
     }
 
-    // Tile click: navigate to source (checkbox click toggles selection only)
-    document.addEventListener('click', (e) => {
+    // ── Tile click → navigate (checkbox toggles selection only) ───────
+    tileGrid.addEventListener('click', (e) => {
       if (e.target.closest('.src-tile-cb')) return;
-      const tile = e.target.closest('#sourceLibTileGrid .src-tile');
+      const tile = e.target.closest('.src-tile');
       if (!tile) return;
       const href = tile.getAttribute('data-href');
       if (href) window.location.href = href;
     });
 
-    // Tile checkbox direct change
-    document.addEventListener('change', (e) => {
-      const cb = e.target.closest('#sourceLibTileGrid .src-tile-cb');
+    // ── Checkbox changes (delegated) ──────────────────────────────────
+    tileGrid.addEventListener('change', (e) => {
+      const cb = e.target.closest('.src-tile-cb');
       if (!cb) return;
-      if (cb.checked) { selectedSources.add(cb.value); } else { selectedSources.delete(cb.value); }
-      syncAllUI();
+      if (cb.checked) selectedSources.add(cb.value); else selectedSources.delete(cb.value);
+      syncRenderedUI();
+    });
+    tableBody.addEventListener('change', (e) => {
+      const cb = e.target.closest('.source-row-cb');
+      if (!cb) return;
+      if (cb.checked) selectedSources.add(cb.value); else selectedSources.delete(cb.value);
+      syncRenderedUI();
     });
 
-    // Row checkbox change
-    document.addEventListener('change', (e) => {
-      const cb = e.target.closest('#sourceLibTableWrap .source-row-cb');
-      if (!cb) return;
-      if (cb.checked) { selectedSources.add(cb.value); } else { selectedSources.delete(cb.value); }
-      syncAllUI();
-    });
-
-    // Select all / clear
+    // ── Select all / clear (operate on the CURRENT FILTERED set, not just
+    //    what's rendered, so "select all" means all matches). ───────────
     const selectAllBtn = document.getElementById('selectAllSourcesBtn');
     const clearBtn     = document.getElementById('clearSourcesBtn');
     if (selectAllBtn) {
       selectAllBtn.addEventListener('click', () => {
-        visibleTiles().forEach(t => { const cb = t.querySelector('.src-tile-cb'); if (cb) selectedSources.add(cb.value); });
-        visibleRows().forEach(r => { const cb = r.querySelector('.source-row-cb'); if (cb) selectedSources.add(cb.value); });
-        syncAllUI();
+        filtered.forEach(d => selectedSources.add(d.name));
+        syncRenderedUI();
       });
     }
     if (clearBtn) {
-      clearBtn.addEventListener('click', () => { selectedSources.clear(); syncAllUI(); });
+      clearBtn.addEventListener('click', () => { selectedSources.clear(); syncRenderedUI(); });
     }
     if (selectVisibleCheckbox) {
       selectVisibleCheckbox.addEventListener('change', () => {
         const checked = selectVisibleCheckbox.checked;
-        visibleRows().forEach(r => {
-          const cb = r.querySelector('.source-row-cb');
-          if (!cb) return;
-          if (checked) { selectedSources.add(cb.value); } else { selectedSources.delete(cb.value); }
-        });
-        syncAllUI();
+        filtered.forEach(d => { if (checked) selectedSources.add(d.name); else selectedSources.delete(d.name); });
+        syncRenderedUI();
       });
     }
 
-    // Delete / dedupe confirm
+    // ── Delete / dedupe confirm ───────────────────────────────────────
     const deleteBtn = document.getElementById('deleteSourcesBtn');
     const dedupeBtn = document.getElementById('dedupeSourcesBtn');
     if (deleteBtn) {
       deleteBtn.addEventListener('click', (e) => {
         if (!selectedSources.size) { e.preventDefault(); alert('Please select at least one source to delete.'); return; }
-        if (!confirm(`Delete ${selectedSources.size} selected source(s)? This removes all files inside them.`)) e.preventDefault();
+        if (!confirm(`Delete ${selectedSources.size} selected source(s)? This removes all files inside them.`)) { e.preventDefault(); return; }
+        ensureSelectedInputs();
       });
     }
     if (dedupeBtn) {
@@ -338,47 +422,37 @@
       });
     }
 
-    // Refresh snapshot
+    // The delete form posts name="buckets". With windowed rendering a selected
+    // folder may not have a checkbox in the DOM, so inject hidden inputs for
+    // every selected name right before submit.
+    const deleteForm = document.getElementById('deleteSourcesForm');
+    function ensureSelectedInputs() {
+      if (!deleteForm) return;
+      deleteForm.querySelectorAll('input.js-selected-bucket').forEach(n => n.remove());
+      selectedSources.forEach(name => {
+        if (deleteForm.querySelector(`.source-select[value="${CSS.escape(name)}"]:checked`)) return;
+        const inp = document.createElement('input');
+        inp.type = 'hidden'; inp.name = 'buckets'; inp.value = name;
+        inp.className = 'js-selected-bucket';
+        deleteForm.appendChild(inp);
+      });
+    }
+
+    // ── Refresh snapshot (counts for ALL folders, from the dataset) ────
     const refreshForm = document.getElementById('refreshSourcesForm');
     const snapshotInput = document.getElementById('sourceLibrarySnapshot');
     if (refreshForm && snapshotInput) {
       refreshForm.addEventListener('submit', () => {
         const snap = {};
-        allTiles().forEach(t => { const name = t.dataset.sourceName; const count = Number(t.dataset.fileCount || 0); if (name) snap[name] = count; });
+        DATA.forEach(d => { snap[d.name_lower] = Number(d.count || 0); });
         snapshotInput.value = JSON.stringify(snap);
       });
     }
 
-    // Progressive lazy thumbnail loading
-    const lazyThumbs = Array.from(document.querySelectorAll('.js-lazy-source-thumb'));
-    const loadThumb = (img) => {
-      if (!img || img.dataset.loaded === '1') return;
-      const src = img.getAttribute('data-src');
-      if (!src) return;
-      img.src = src;
-      img.dataset.loaded = '1';
-    };
-    if ('IntersectionObserver' in window) {
-      const observer = new IntersectionObserver((entries) => {
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting) return;
-          loadThumb(entry.target);
-          observer.unobserve(entry.target);
-        });
-      }, { rootMargin: '300px 0px' });
-      lazyThumbs.forEach((img) => observer.observe(img));
-    } else {
-      lazyThumbs.slice(0, 40).forEach(loadThumb);
-      setTimeout(() => lazyThumbs.slice(40).forEach(loadThumb), 120);
-    }
-
-    // Init view (default tile)
-    try {
-      const saved = localStorage.getItem(SRC_LIB_KEY);
-      setView(saved === 'list' ? 'list' : 'tile');
-    } catch(e) { setView('tile'); }
-
-    syncAllUI();
+    // ── Init ──────────────────────────────────────────────────────────
+    let initial = 'tile';
+    try { const saved = localStorage.getItem(SRC_LIB_KEY); if (saved === 'list') initial = 'list'; } catch(e) {}
+    setView(initial);
   })();
 </script>
 

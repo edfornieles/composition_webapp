@@ -343,11 +343,18 @@
                                             <td class="text-nowrap">
                                                 <a href="{% url 'bucket_contents' bucket_name %}?download={{ obj.Key|urlencode }}"
                                                    class="btn btn-sm btn-success" target="_blank">Download</a>
-                                                <form method="POST" action="{% url 'delete_source_files' bucket_name %}" class="d-inline">
-                                                    {% csrf_token %}
-                                                    <input type="hidden" name="selected_files" value="{{ obj.Key }}">
-                                                    <button type="submit" class="btn btn-sm btn-danger">Delete</button>
-                                                </form>
+                                                {# Nested <form> here would be silently dropped by the HTML5
+                                                   parser because this row is inside #fileSelectionForm — and the
+                                                   surviving hidden input would leak its `selected_files` value
+                                                   into the outer form, causing every bulk action (Delete selected,
+                                                   Trim borders, Remove white BG, etc.) to operate on every row
+                                                   instead of the user's selection. Use a plain button + JS
+                                                   submission so the per-row Delete posts only this one file. #}
+                                                <button type="button"
+                                                        class="btn btn-sm btn-danger row-delete-btn"
+                                                        data-key="{{ obj.Key }}"
+                                                        data-delete-url="{% url 'delete_source_files' bucket_name %}"
+                                                        title="Delete {{ obj.Key }}">Delete</button>
                                             </td>
                                         </tr>
                                         {% empty %}
@@ -788,6 +795,39 @@
 
         if (btnList) btnList.addEventListener('click', () => setSourceView('list'));
         if (btnTile) btnTile.addEventListener('click', () => setSourceView('tile'));
+
+        // Per-row Delete: build a fresh form containing ONLY this file's key
+        // and submit. Cannot reuse the existing #fileSelectionForm — it has
+        // tile-view checkboxes that would also be sent. Cannot use a nested
+        // form in the row markup — HTML5 parser drops nested form opening
+        // tags, leaking the hidden input into the outer form (the original
+        // bug). A throwaway dynamic form is the cleanest fix.
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.row-delete-btn');
+            if (!btn) return;
+            const key = btn.dataset.key;
+            const url = btn.dataset.deleteUrl;
+            if (!key || !url) return;
+            if (!confirm(`Delete "${key}"?`)) return;
+            const csrfInput = document.querySelector('#fileSelectionForm input[name="csrfmiddlewaretoken"]');
+            if (!csrfInput) { alert('CSRF token missing — refresh the page and try again.'); return; }
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = url;
+            form.style.display = 'none';
+            const csrfClone = document.createElement('input');
+            csrfClone.type = 'hidden';
+            csrfClone.name = 'csrfmiddlewaretoken';
+            csrfClone.value = csrfInput.value;
+            const fileInput = document.createElement('input');
+            fileInput.type = 'hidden';
+            fileInput.name = 'selected_files';
+            fileInput.value = key;
+            form.appendChild(csrfClone);
+            form.appendChild(fileInput);
+            document.body.appendChild(form);
+            form.submit();
+        });
 
         // Also sync tile when any table checkbox changes
         const origUpdateSelectedRows = updateSelectedRows;

@@ -8,8 +8,9 @@
   .live-grid .cell iframe { width: 100%; height: 100%; border: 0; display: block; }
   .live-grid .cell .label { position: absolute; top: 4px; left: 6px; color: rgba(255,255,255,0.55); font-size: 10px; font-family: monospace; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,0.8); z-index: 4; }
   .live-grid .cell.empty { display: flex; align-items: center; justify-content: center; color: #444; font-family: monospace; font-size: 12px; }
-  .cell-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 3; pointer-events: none; transition: opacity 1.5s ease; }
+  .cell-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 3; pointer-events: none; transition: opacity 0.6s ease; }
   .cell-poster.faded { opacity: 0; }
+  .cell-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 2; pointer-events: none; }
 
   /* Ready toggle */
   .ready-toggle { width: 20px; height: 20px; cursor: pointer; accent-color: #16a34a; }
@@ -144,9 +145,14 @@
       <div class="live-grid">
         {% for cell_at in cells_by_slot %}
           {% if cell_at %}
-            <div class="cell" data-iframe-src="{% url 'composition_live_by_id' cell_at.id %}?muted=1&lite=1">
+            <div class="cell" data-standalone="{% url 'composition_live_by_id' cell_at.id %}?muted=1">
               <span class="label">{{ forloop.counter }} · {{ cell_at.name|truncatechars:24 }}</span>
-              {% if cell_at.list_thumbnail_src %}<img class="cell-poster" src="{{ cell_at.list_thumbnail_src }}" alt="" loading="eager">{% endif %}
+              {% if cell_at.list_thumbnail_src %}<img class="cell-poster" src="{{ cell_at.list_thumbnail_src }}" alt="" loading="lazy">{% endif %}
+              {% if cell_at.preview_video_url %}
+                <video class="cell-video" data-src="{{ cell_at.preview_video_url }}"
+                       muted loop playsinline preload="none"
+                       {% if cell_at.list_thumbnail_src %}poster="{{ cell_at.list_thumbnail_src }}"{% endif %}></video>
+              {% endif %}
             </div>
           {% else %}
             <div class="cell empty">cell {{ forloop.counter }} empty</div>
@@ -162,29 +168,72 @@
 <script>
 const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
 
-// ── Click-to-play live preview: posters are the default thumbnail
-// (same approach as /composition-view/, which "works great"). The full
-// live render is one click away — clicking a cell opens its standalone
-// page. We avoid loading 9 simultaneous iframes that each spawn their
-// own continuous animation loop on the single dev-server worker;
-// instead the grid shows pre-rendered NFT posters (or the fallback
-// thumbnail endpoint) immediately and reliably. ─────────────────────
+// ── Animated 3×3 preview, the cheap way ──────────────────────────────
+// The OLD design embedded 9 live iframes, each re-running the full
+// composition render loop on the single dev worker — that crashed the
+// page. Instead we loop the PRE-RENDERED preview_10s MP4 clips: the
+// server only serves a static file, and the browser only decodes a
+// small muted clip. To keep even the browser light:
+//   • preload="none" + src attached lazily (no network until needed)
+//   • IntersectionObserver: only load/play a clip while its cell is
+//     actually on screen; pause + release when it scrolls away
+//   • staggered start so 9 decoders don't all spin up in one frame
+//   • cells without a ready clip keep their static poster
+//   • clicking any cell still opens the full live standalone render
 (function () {
-  var cells = Array.from(document.querySelectorAll('.live-grid .cell[data-iframe-src]'));
+  var cells = Array.from(document.querySelectorAll('.live-grid .cell[data-standalone]'));
   cells.forEach(function (cell) {
-    // Make the entire cell a click target that opens the composition's
-    // standalone live page (so you can still see the animated render
-    // by just clicking the thumbnail).
-    var src = cell.getAttribute('data-iframe-src');
-    if (!src) return;
-    // The standalone page is the iframe src with ?lite=1 stripped.
-    var standalone = src.replace(/[?&]lite=1\b/, '');
-    if (!standalone.includes('?')) standalone = standalone.replace(/\?$/, '');
-    cell.style.cursor = 'pointer';
-    cell.addEventListener('click', function () {
-      window.open(standalone, '_blank');
-    });
+    var standalone = cell.getAttribute('data-standalone');
+    if (standalone) {
+      cell.style.cursor = 'pointer';
+      cell.addEventListener('click', function () { window.open(standalone, '_blank'); });
+    }
   });
+
+  var videos = Array.from(document.querySelectorAll('.live-grid .cell-video[data-src]'));
+  if (!videos.length) return;
+
+  function startVideo(video, delay) {
+    if (!video.src) video.src = video.getAttribute('data-src');
+    setTimeout(function () {
+      var p = video.play();
+      if (p && p.catch) p.catch(function () {});
+      var poster = video.parentElement.querySelector('.cell-poster');
+      if (poster) {
+        // Fade the still poster out once the clip is actually playing.
+        video.addEventListener('playing', function () { poster.classList.add('faded'); }, { once: true });
+      }
+    }, delay);
+  }
+
+  function stopVideo(video) {
+    try { video.pause(); } catch (e) {}
+    // Drop the buffered data so 9 offscreen clips don't sit in memory.
+    video.removeAttribute('src');
+    video.load();
+    var poster = video.parentElement.querySelector('.cell-poster');
+    if (poster) poster.classList.remove('faded');
+  }
+
+  if (!('IntersectionObserver' in window)) {
+    // Old browser: just start them all, staggered.
+    videos.forEach(function (v, i) { startVideo(v, i * 250); });
+    return;
+  }
+
+  var stagger = 0;
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      var video = entry.target;
+      if (entry.isIntersecting) {
+        startVideo(video, (stagger++ % videos.length) * 220);
+      } else {
+        stopVideo(video);
+      }
+    });
+  }, { threshold: 0.25 });
+
+  videos.forEach(function (v) { io.observe(v); });
 })();
 
 // ── Ready toggle (AJAX) ──────────────────────────────────────────────────────

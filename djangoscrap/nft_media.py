@@ -277,6 +277,92 @@ def capture_composition_still(composition, *, storage_path: str | None = None, s
             pass
 
 
+def capture_composition_still_png(
+    composition,
+    *,
+    size: int = 1080,
+    random_offset: bool = True,
+    transparent: bool = True,
+) -> bytes:
+    """Capture a composition still as PNG bytes.
+
+    When transparent=True (default) the page's solid backdrop fills (body and
+    .stage are #000) are stripped and Playwright omits its default canvas, so
+    the result has a genuine alpha channel wherever no image layer covers the
+    frame — the PNG opens in Photoshop with an unlocked transparent layer
+    rather than a locked flat fill.
+    """
+    import random as _random
+    from playwright.sync_api import sync_playwright
+
+    renders_dir = Path(settings.MEDIA_ROOT) / "renders"
+    renders_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = renders_dir / f"still_png_{composition.id}_{uuid.uuid4().hex[:8]}.png"
+
+    try:
+        with sync_playwright() as playwright:
+            browser = _launch_chromium(playwright)
+            context = browser.new_context(viewport={"width": size, "height": size})
+            if transparent:
+                # Strip the page's solid black background-COLOR (body/.stage use
+                # background:#000) so the screenshot's alpha shows through where no
+                # image layer covers the frame. Use an init script (runs before
+                # page scripts on EVERY navigation) rather than a post-load
+                # add_style_tag: these pages auto-navigate / refresh, which
+                # destroys the execution context and makes add_style_tag race and
+                # throw ("Execution context was destroyed"). Leave background-image
+                # intact — some composition types paint imagery into .stage that
+                # way, and removing it would yield an empty (all-alpha-0) PNG.
+                context.add_init_script(
+                    "(()=>{const c='html,body{background-color:transparent !important}"
+                    ".stage{background-color:transparent !important}';"
+                    "const f=()=>{if(document.getElementById('__pngxf'))return;"
+                    "const s=document.createElement('style');s.id='__pngxf';"
+                    "s.textContent=c;(document.head||document.documentElement).appendChild(s);};"
+                    "if(document.readyState==='loading')"
+                    "document.addEventListener('DOMContentLoaded',f);else f();})();"
+                )
+            page = context.new_page()
+            page.goto(
+                capture_url_for_composition(composition, capture_kind="still"),
+                wait_until="domcontentloaded",
+                timeout=120000,
+            )
+            _wait_for_render_ready(page)
+            if random_offset:
+                offset_ms = _random.randint(3000, 20000)
+                page.wait_for_timeout(offset_ms)
+            page.screenshot(
+                path=str(tmp_path),
+                type="png",
+                omit_background=transparent,
+            )
+            context.close()
+            browser.close()
+        raw = tmp_path.read_bytes()
+        if transparent:
+            # Guarantee an alpha channel so the PNG always opens in Photoshop as
+            # an unlocked layer (Layer 0) rather than a locked Background. PNG
+            # screenshots can come back as RGB when the frame is fully covered,
+            # in which case omit_background alone leaves no alpha; force RGBA.
+            try:
+                from PIL import Image as _Image
+                import io as _io2
+                im = _Image.open(_io2.BytesIO(raw))
+                if im.mode != "RGBA":
+                    buf = _io2.BytesIO()
+                    im.convert("RGBA").save(buf, format="PNG")
+                    raw = buf.getvalue()
+            except Exception:
+                pass
+        return raw
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def capture_composition_video(
     composition,
     *,

@@ -221,7 +221,18 @@ def _cached_local_source_media_count(source_dir: Path) -> tuple[int, datetime | 
 
 
 def get_local_sources():
-    return sorted([p for p in LOCAL_SOURCES_ROOT.iterdir() if p.is_dir()])
+    root = LOCAL_SOURCES_ROOT
+    try:
+        mtime = root.stat().st_mtime
+    except OSError:
+        mtime = 0
+    cache_key = f"local_sources_list_{int(mtime)}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    result = sorted([p for p in root.iterdir() if p.is_dir()])
+    cache.set(cache_key, result, 600)
+    return result
 
 
 def get_local_audio_sources():
@@ -377,6 +388,7 @@ def collect_source_assets(source_names, landscape_only: bool = False):
                 "url": media_url,
                 "preview_url": preview_url,
                 "name": file.name,
+                "source_name": source_name,
             }
             # Animated GIFs: probe the loop duration so the overlay layer can
             # hold each clip for exactly one (or N) full loops, eliminating

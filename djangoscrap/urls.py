@@ -132,6 +132,7 @@ urlpatterns = [
     path('composition/<int:composition_id>/delete/', views.composition_delete, name='composition_delete'),
     path('composition/<int:composition_id>/latest-render/', views.composition_latest_render, name='composition_latest_render'),
     path('composition/<int:composition_id>/render-export/', views.render_composition_export, name='render_composition_export'),
+    path('composition/<int:composition_id>/export-png/', views.export_composition_png, name='export_composition_png'),
     path('composition/<int:composition_id>/publish/diff/', views.composition_publish_diff, name='composition_publish_diff'),
     path('composition/<int:composition_id>/publish/release/', views.composition_publish_release, name='composition_publish_release'),
     path('composition/<int:composition_id>/publish/rollback/<int:release_id>/', views.composition_release_rollback, name='composition_release_rollback'),
