@@ -18,19 +18,19 @@
     "types/*.d.ts"
   ],
   "scripts": {
-    "dev": "rollup -w -c build/config.js --environment TARGET:web-umd-dev",
-    "dev:cjs": "rollup -w -c build/config.js --environment TARGET:web-cjs",
+    "dev": "node init && rollup -w -c build/config.js --environment TARGET:web-umd-dev",
+    "dev:cjs": "node init && rollup -w -c build/config.js --environment TARGET:web-cjs",
     "bundle": "node build/build.js",
-    "build": "npm run bundle && webpack",
-    "build:umd": "rollup -w -c build/config.js --environment TARGET:web-umd-dev",
-    "build:amd": "webpack",
+    "build": "node init && npm run bundle && webpack",
+    "build:umd": "node init && rollup -w -c build/config.js --environment TARGET:web-umd-dev",
+    "build:amd": "node init && webpack",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "npm run e2e && npm run unit",
     "unit": "jest tests/unit/",
     "e2e": "node tests/e2e/samples.js test",
     "e2e:update": "node tests/e2e/samples.js update",
-    "build:samples": "node samples/source/index.js generate"
+    "build:samples": "node init && node samples/source/index.js generate"
   },
   "dependencies": {
     "svg.draggable.js": "^2.2.2",
