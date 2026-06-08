@@ -375,6 +375,16 @@
             from { transform: rotateX(0deg); }
             to   { transform: rotateX(360deg); }
         }
+        /* Rotating cube — six faces of the overlay shell each carry an
+           asset, rotating slowly on Y while drifting on X so all six
+           faces become visible over a full cycle. translateZ on each face
+           positions it on the cube's surface relative to the shell's
+           inner size; rotateY is set per-face via CSS custom property
+           --face-rotY in the JS setup. */
+        @keyframes overlayCubeSpin {
+            from { transform: rotateY(0deg) rotateX(15deg); }
+            to   { transform: rotateY(360deg) rotateX(15deg); }
+        }
         /* ── TEXT LAYERS — Paik / Ashley TV-opera-inspired typography ─── */
         .text-layers-container {
             z-index: 95;
@@ -3173,7 +3183,22 @@
                     : compositionBackgroundTransition
             );
             const transitionMode = normalizeTransitionMode(resolvedTransition);
-            const shouldTransition = transitionMode === "fade" || transitionMode === "crossfade";
+            // Melt: slow blur+scale crossfade. Implemented here for bg/fg
+            // layers (the overlay layer has its own melt branch with the
+            // same visual signature so the modes match across layers).
+            const isMelt = transitionMode === "melt";
+            const shouldTransition = transitionMode === "fade" || transitionMode === "crossfade" || isMelt;
+            // Melt duration scales with speed slider: 0.5x speed -> 13s,
+            // 1x speed -> 6.5s, 2x speed -> 3.25s. Plain fade keeps the
+            // original 520 ms.
+            const fadeMs = isMelt
+                ? Math.max(2000, Math.round(6500 / Math.max(0.25, Math.min(3, compositionSpeed || 1))))
+                : 520;
+            // CSS strings used when isMelt is true (filter+transform on top
+            // of the opacity fade). Static so we don't rebuild them per swap.
+            const meltStart = { filter: "blur(36px) saturate(1.6) contrast(0.9)", transform: "scale(1.06)" };
+            const meltEnd   = { filter: "blur(0px) saturate(1) contrast(1)",     transform: "scale(1)" };
+            const meltExit  = { filter: "blur(36px) saturate(1.6) contrast(0.9)", transform: "scale(0.94)" };
             // Track assets whose mount has failed this session (404, undecodable
             // codec, server-side thumbnail failure) so we stop retrying them.
             // A completely broken file would otherwise waste a cycle slot every
@@ -3267,8 +3292,18 @@
                 incoming.style.position = "absolute";
                 incoming.style.inset = "0";
                 incoming.style.opacity = "0";
-                incoming.style.transition = "opacity 520ms ease-in-out";
-                incoming.style.willChange = "opacity";
+                if (isMelt) {
+                    // Combined opacity + filter + transform transition so
+                    // the layer eases in heavily blurred and slightly
+                    // oversized, then sharpens to crisp 1× over fadeMs.
+                    incoming.style.transition = `opacity ${fadeMs}ms ease-in-out, filter ${fadeMs}ms ease-in-out, transform ${fadeMs}ms ease-in-out`;
+                    incoming.style.filter = meltStart.filter;
+                    incoming.style.transform = meltStart.transform;
+                    incoming.style.willChange = "opacity, filter, transform";
+                } else {
+                    incoming.style.transition = `opacity ${fadeMs}ms ease-in-out`;
+                    incoming.style.willChange = "opacity";
+                }
                 const computedPosition = window.getComputedStyle ? window.getComputedStyle(container).position : "";
                 if (!computedPosition || computedPosition === "static") container.style.position = "relative";
                 container.style.overflow = "hidden";
@@ -3287,15 +3322,27 @@
                         const stale = Array.from(container.children).filter((node) => node !== incoming);
                         requestAnimationFrame(() => {
                             incoming.style.opacity = "1";
+                            if (isMelt) {
+                                incoming.style.filter = meltEnd.filter;
+                                incoming.style.transform = meltEnd.transform;
+                            }
                             stale.forEach((node) => {
-                                node.style.transition = "opacity 520ms ease-in-out";
-                                node.style.opacity = "0";
+                                if (isMelt) {
+                                    node.style.transition = `opacity ${fadeMs}ms ease-in-out, filter ${fadeMs}ms ease-in-out, transform ${fadeMs}ms ease-in-out`;
+                                    node.style.willChange = "opacity, filter, transform";
+                                    node.style.opacity = "0";
+                                    node.style.filter = meltExit.filter;
+                                    node.style.transform = meltExit.transform;
+                                } else {
+                                    node.style.transition = `opacity ${fadeMs}ms ease-in-out`;
+                                    node.style.opacity = "0";
+                                }
                             });
                             setTimeout(() => {
                                 stale.forEach((node) => {
                                     if (node && node.parentElement === container) node.remove();
                                 });
-                            }, 560);
+                            }, fadeMs + 80);
                         });
                     },
                 });
@@ -7504,11 +7551,15 @@
             swapWaveLayerCrossfade(ghostA, nextAsset());
             swapWaveLayerCrossfade(ghostB, nextAsset());
 
+            // Slower band rise speeds for the calm-wave mode — bands at
+            // 0.5-0.6 cycled past the eye in ~3-4 seconds which read as
+            // active rather than ambient. Pulled to ~0.30-0.38 so each
+            // band takes ~8-10 seconds to traverse the screen height.
             const specs = [
-                { h: 24, phase: 0.0, z: 3, speed: 0.62, anchorY: -14 },
-                { h: 21, phase: 1.3, z: 4, speed: 0.56, anchorY: -6 },
-                { h: 26, phase: 2.5, z: 5, speed: 0.52, anchorY: 4 },
-                { h: 23, phase: 3.9, z: 6, speed: 0.58, anchorY: 14 },
+                { h: 24, phase: 0.0, z: 3, speed: 0.34, anchorY: -14 },
+                { h: 21, phase: 1.3, z: 4, speed: 0.30, anchorY: -6 },
+                { h: 26, phase: 2.5, z: 5, speed: 0.28, anchorY: 4 },
+                { h: 23, phase: 3.9, z: 6, speed: 0.32, anchorY: 14 },
             ];
             const bands = specs.map((spec) => {
                 const pane = document.createElement("div");
@@ -7548,38 +7599,44 @@
             };
             bands.forEach((band) => assignBandAsset(band));
 
+            // Calmer base/ghost styling: high-frequency vibration terms
+            // (sin(t*8+) cycled every ~0.7s) read as restless jitter, not
+            // calm. Slowed those to sin(t*1.5) so the micro-motion is at the
+            // edge of perceptibility — eyes settle on it as "still" rather
+            // than "twitching." Also pulled drift amplitudes back so the
+            // image doesn't wander as far per second.
             const styleBase = (tSec) => {
-                const driftX = Math.sin(tSec * 0.03) * 2.2;
-                const driftY = Math.cos(tSec * 0.027) * 2.0;
-                const scale = 1.026 + (Math.sin(tSec * 0.034) * 0.022);
-                const vibX = Math.sin(tSec * 8.2) * 0.35;
-                const vibY = Math.cos(tSec * 7.6) * 0.28;
-                const sat = 0.66 + (Math.sin(tSec * 0.05) * 0.08);
-                const bright = 0.76 + (Math.cos(tSec * 0.05) * 0.06);
+                const driftX = Math.sin(tSec * 0.018) * 1.6;
+                const driftY = Math.cos(tSec * 0.016) * 1.5;
+                const scale = 1.022 + (Math.sin(tSec * 0.022) * 0.016);
+                const vibX = Math.sin(tSec * 1.5) * 0.18;
+                const vibY = Math.cos(tSec * 1.3) * 0.14;
+                const sat = 0.66 + (Math.sin(tSec * 0.03) * 0.06);
+                const bright = 0.76 + (Math.cos(tSec * 0.03) * 0.04);
                 base.style.transform = `translate(${(driftX + vibX).toFixed(2)}%, ${(driftY + vibY).toFixed(2)}%) scale(${scale.toFixed(3)})`;
-                base.style.filter = `blur(1.3px) saturate(${sat.toFixed(3)}) brightness(${bright.toFixed(3)}) contrast(0.9)`;
+                base.style.filter = `blur(1.5px) saturate(${sat.toFixed(3)}) brightness(${bright.toFixed(3)}) contrast(0.9)`;
                 base.style.opacity = "0.76";
             };
             const styleGhosts = (tSec) => {
-                const ax = Math.sin((tSec * 0.06) + 0.8) * 7.5;
-                const ay = Math.cos((tSec * 0.052) + 0.3) * 6.2;
-                const as = 1.08 + (Math.sin((tSec * 0.05) + 0.5) * 0.08);
-                const ar = Math.sin((tSec * 0.03) + 0.2) * 2.8;
-                const avx = Math.sin((tSec * 10.2) + 0.3) * 0.42;
-                const avy = Math.cos((tSec * 9.6) + 1.1) * 0.36;
+                const ax = Math.sin((tSec * 0.035) + 0.8) * 5.6;
+                const ay = Math.cos((tSec * 0.030) + 0.3) * 4.7;
+                const as = 1.07 + (Math.sin((tSec * 0.030) + 0.5) * 0.06);
+                const ar = Math.sin((tSec * 0.018) + 0.2) * 2.0;
+                const avx = Math.sin((tSec * 1.6) + 0.3) * 0.22;
+                const avy = Math.cos((tSec * 1.5) + 1.1) * 0.19;
                 ghostA.style.transform = `translate(${(ax + avx).toFixed(2)}%, ${(ay + avy).toFixed(2)}%) rotate(${ar.toFixed(2)}deg) scale(${as.toFixed(3)})`;
-                ghostA.style.filter = `blur(3.2px) saturate(${(0.94 + Math.sin(tSec * 0.06) * 0.22).toFixed(3)}) brightness(${(0.88 + Math.cos(tSec * 0.07) * 0.12).toFixed(3)}) contrast(0.94)`;
-                ghostA.style.opacity = (0.16 + ((Math.sin((tSec * 0.08) + 0.9) + 1) * 0.08)).toFixed(3);
+                ghostA.style.filter = `blur(3.4px) saturate(${(0.94 + Math.sin(tSec * 0.035) * 0.16).toFixed(3)}) brightness(${(0.88 + Math.cos(tSec * 0.04) * 0.08).toFixed(3)}) contrast(0.94)`;
+                ghostA.style.opacity = (0.16 + ((Math.sin((tSec * 0.045) + 0.9) + 1) * 0.07)).toFixed(3);
 
-                const bx = Math.cos((tSec * 0.047) + 1.7) * 9.2;
-                const by = Math.sin((tSec * 0.05) + 1.1) * 5.8;
-                const bs = 1.12 + (Math.cos((tSec * 0.045) + 0.4) * 0.1);
-                const br = Math.cos((tSec * 0.028) + 1.9) * 3.6;
-                const bvx = Math.sin((tSec * 8.9) + 1.5) * 0.38;
-                const bvy = Math.cos((tSec * 8.1) + 0.2) * 0.33;
+                const bx = Math.cos((tSec * 0.028) + 1.7) * 6.9;
+                const by = Math.sin((tSec * 0.030) + 1.1) * 4.3;
+                const bs = 1.10 + (Math.cos((tSec * 0.026) + 0.4) * 0.07);
+                const br = Math.cos((tSec * 0.016) + 1.9) * 2.6;
+                const bvx = Math.sin((tSec * 1.4) + 1.5) * 0.20;
+                const bvy = Math.cos((tSec * 1.3) + 0.2) * 0.17;
                 ghostB.style.transform = `translate(${(bx + bvx).toFixed(2)}%, ${(by + bvy).toFixed(2)}%) rotate(${br.toFixed(2)}deg) scale(${bs.toFixed(3)})`;
-                ghostB.style.filter = `blur(4.1px) saturate(${(0.86 + Math.cos(tSec * 0.065) * 0.2).toFixed(3)}) brightness(${(0.82 + Math.sin(tSec * 0.06) * 0.1).toFixed(3)}) contrast(0.9)`;
-                ghostB.style.opacity = (0.12 + ((Math.cos((tSec * 0.075) + 1.4) + 1) * 0.08)).toFixed(3);
+                ghostB.style.filter = `blur(4.3px) saturate(${(0.86 + Math.cos(tSec * 0.04) * 0.14).toFixed(3)}) brightness(${(0.82 + Math.sin(tSec * 0.035) * 0.08).toFixed(3)}) contrast(0.9)`;
+                ghostB.style.opacity = (0.12 + ((Math.cos((tSec * 0.045) + 1.4) + 1) * 0.07)).toFixed(3);
             };
             const styleAmbient = (tSec) => {
                 ambience.forEach((a, idx) => {
@@ -7622,20 +7679,24 @@
                 bands.forEach((band) => styleBand(band, tSec));
             }, Math.max(90, Math.floor(170 / Math.max(0.25, compositionSpeed))));
 
+            // Stretched all asset-swap intervals roughly 2× so the visual
+            // refresh rate is lower — a calm scene should change less.
+            // Also lengthened the base crossfade so swaps melt rather than
+            // pop. The eye registers stillness at ~10 s+ stimulus intervals.
             setInterval(() => {
                 const band = bands[Math.floor(Math.random() * bands.length)];
                 assignBandAsset(band);
-            }, Math.max(3400, Math.floor(7000 / Math.max(0.25, compositionSpeed))));
+            }, Math.max(7000, Math.floor(14000 / Math.max(0.25, compositionSpeed))));
 
             setInterval(() => {
-                swapWaveLayerCrossfade(base, nextAsset(), 620);
-            }, Math.max(4200, Math.floor(7600 / Math.max(0.25, compositionSpeed))));
+                swapWaveLayerCrossfade(base, nextAsset(), 1400);
+            }, Math.max(9000, Math.floor(16000 / Math.max(0.25, compositionSpeed))));
             setInterval(() => {
-                swapWaveLayerCrossfade(ghostA, nextAsset());
-            }, Math.max(2200, Math.floor(4200 / Math.max(0.25, compositionSpeed))));
+                swapWaveLayerCrossfade(ghostA, nextAsset(), 1100);
+            }, Math.max(5000, Math.floor(9000 / Math.max(0.25, compositionSpeed))));
             setInterval(() => {
-                swapWaveLayerCrossfade(ghostB, nextAsset());
-            }, Math.max(2600, Math.floor(5000 / Math.max(0.25, compositionSpeed))));
+                swapWaveLayerCrossfade(ghostB, nextAsset(), 1100);
+            }, Math.max(6000, Math.floor(11000 / Math.max(0.25, compositionSpeed))));
         }
 
         function setupAngerSurgeMode() {
@@ -9304,6 +9365,7 @@
                 if (compact === "liquidmirror" || compact === "liquid" || compact === "mirror" || compact === "ripple" || compact === "liquidwarp") return "liquid_mirror";
                 if (compact === "liquidmirrorrotate" || compact === "liquidrotate" || compact === "rippleratate" || compact === "ripplerotate" || compact === "liquidspin" || compact === "spinliquid") return "liquid_mirror_rotate";
                 if (compact === "liquidmirrorrotatevertical" || compact === "liquidrotatevertical" || compact === "liquidspinvertical" || compact === "spinliquidvertical") return "liquid_mirror_rotate_vertical";
+                if (compact === "rotatingcube" || compact === "cube" || compact === "spinningcube" || compact === "rotatecube" || compact === "3dcube" || compact === "cuberotate" || compact === "cubespin") return "rotating_cube";
                 if (compact === "circlerotate" || compact === "circle") return "circle_rotate";
                 if (compact === "circlerotatemirror" || compact === "circlemirror") return "circle_rotate_mirror";
                 if (compact === "mash" || compact === "glitchmash" || compact === "overlaymash") return "mash";
@@ -10209,6 +10271,223 @@
                 }
                 return;
             }
+            if (resolvedOverlayEffect === "rotating_cube") {
+                // Mirrors the composition-type rotating-cube implementation
+                // (setupRotatingCubeMode) but scoped to the overlay shell:
+                //   • Six faces, each pre-seeded with a DIFFERENT asset
+                //     (selection-avoidance — no two faces show the same
+                //     image at once when the pool has enough variety)
+                //   • Isometric initial pose (rotateX(-22deg) rotateY(-32deg))
+                //     applied SYNCHRONOUSLY so the very first paint shows
+                //     three visible faces, not one edge-on sliver
+                //   • Continuous yaw on Y at ~30°/s × overlaySpeed
+                //   • Gentle X-tilt oscillation (-18° ± 12°) so the top and
+                //     bottom faces drift in and out of visibility
+                //   • Per-face shading tied to facing direction — front-
+                //     facing faces are bright, side faces dim, the back
+                //     face nearly black. Recomputed each tick.
+                //   • Render-mode (?render=1) freezes the cube at its initial
+                //     pose so poster captures get a clean 3-face cube.
+                const shell = buildOverlayShell();
+                overlayLayer.appendChild(shell.wrapper);
+                shell.inner.style.perspective = "1100px";
+                shell.inner.style.perspectiveOrigin = "50% 50%";
+                shell.inner.style.position = "relative";
+                shell.inner.style.transformStyle = "preserve-3d";
+
+                // Cube edge length follows the shell's actual rendered
+                // size. translateZ(half-edge) puts each face on the cube's
+                // surface. Use 100% — the cube fills the shell — and
+                // translate by 50% so the depth offset is half the edge.
+                const ring = document.createElement("div");
+                ring.style.cssText = (
+                    "position:absolute;top:50%;left:50%;width:0;height:0;" +
+                    "transform-style:preserve-3d;will-change:transform;"
+                );
+                shell.inner.appendChild(ring);
+
+                // Measure the shell BEFORE building face transforms — the
+                // half-edge needs a concrete pixel length, not a percentage,
+                // because CSS translateZ() does not accept % values (browsers
+                // silently treat them as 0, which collapses all six faces
+                // onto the same plane → the bug that produced a blank dark
+                // rectangle instead of a cube).
+                const measured = shell.inner.getBoundingClientRect();
+                const edge = Math.max(
+                    50,
+                    Math.min(measured.width || 0, measured.height || 0) ||
+                    Math.min(window.innerWidth, window.innerHeight) * 0.44
+                );
+                const halfEdge = edge / 2;
+
+                // Face transforms now use the concrete halfEdge length so
+                // each face actually sits on the cube's surface.
+                const faceSpecs = [
+                    { name: "front",  transform: `translateZ(${halfEdge}px)` },
+                    { name: "back",   transform: `rotateY(180deg) translateZ(${halfEdge}px)` },
+                    { name: "right",  transform: `rotateY(90deg) translateZ(${halfEdge}px)` },
+                    { name: "left",   transform: `rotateY(-90deg) translateZ(${halfEdge}px)` },
+                    { name: "top",    transform: `rotateX(90deg) translateZ(${halfEdge}px)` },
+                    { name: "bottom", transform: `rotateX(-90deg) translateZ(${halfEdge}px)` },
+                ];
+
+                // Selection-avoidance picker — same logic as the
+                // composition-mode pickFaceAsset. Avoids both blocked
+                // indices (already taken by another face) and a specified
+                // index to avoid (used during swap cycle to avoid the
+                // face's own previous asset).
+                let cursor = 0;
+                const pickFaceAsset = (blocked, avoidIdx) => {
+                    if (!overlayAssets.length) return { asset: null, idx: -1 };
+                    if (overlayAssets.length === 1) return { asset: overlayAssets[0], idx: 0 };
+                    const deny = new Set(blocked || []);
+                    if (avoidIdx >= 0) deny.add(avoidIdx);
+                    let candidates = [];
+                    for (let i = 0; i < overlayAssets.length; i++) {
+                        if (!deny.has(i)) candidates.push(i);
+                    }
+                    if (!candidates.length) {
+                        for (let i = 0; i < overlayAssets.length; i++) {
+                            if (i !== avoidIdx) candidates.push(i);
+                        }
+                    }
+                    if (!candidates.length) candidates = [0];
+                    let pickedIdx = candidates[0];
+                    if (compositionSourcePlaybackMode === "random") {
+                        pickedIdx = candidates[Math.floor(Math.random() * candidates.length)];
+                    } else {
+                        const start = cursor % overlayAssets.length;
+                        for (let off = 0; off < overlayAssets.length; off++) {
+                            const probe = (start + off) % overlayAssets.length;
+                            if (candidates.includes(probe)) { pickedIdx = probe; break; }
+                        }
+                        cursor = pickedIdx + 1;
+                    }
+                    return { asset: overlayAssets[pickedIdx], idx: pickedIdx };
+                };
+
+                const faces = [];
+                for (let i = 0; i < faceSpecs.length; i++) {
+                    const spec = faceSpecs[i];
+                    const face = document.createElement("div");
+                    face.style.cssText = (
+                        "position:absolute;top:0;left:0;" +
+                        `width:${edge}px;height:${edge}px;` +
+                        `margin-top:-${halfEdge}px;margin-left:-${halfEdge}px;` +
+                        "transform-style:preserve-3d;backface-visibility:hidden;" +
+                        "overflow:hidden;will-change:transform,opacity;" +
+                        `transform:${spec.transform};`
+                    );
+                    const media = document.createElement("div");
+                    // Force object-fit:cover on whatever img/video lands
+                    // inside this face — the cube only looks right when
+                    // each face is fully covered edge-to-edge. The user's
+                    // overlay_fit setting (free / framed / square / etc.)
+                    // would otherwise letterbox the image inside the face,
+                    // showing visible borders + watermarks at the cube's
+                    // edges. Mirrors .cube-face-media in the composition-
+                    // mode CSS.
+                    media.className = "cube-face-media";
+                    media.style.cssText = "position:absolute;inset:0;overflow:hidden;";
+                    const shade = document.createElement("div");
+                    let baseDarkness = 0.18;
+                    if (spec.name === "top" || spec.name === "bottom") baseDarkness = 0.28;
+                    if (spec.name === "back") baseDarkness = 0.34;
+                    shade.style.cssText = (
+                        "position:absolute;inset:0;pointer-events:none;" +
+                        "mix-blend-mode:multiply;will-change:opacity;" +
+                        `background:linear-gradient(135deg, rgba(0,0,0,${(baseDarkness * 0.55).toFixed(3)}), rgba(0,0,0,${baseDarkness.toFixed(3)}));` +
+                        "opacity:0.55;"
+                    );
+                    face.appendChild(media);
+                    face.appendChild(shade);
+                    ring.appendChild(face);
+
+                    const blocked = new Set(faces.map((f) => f.idx).filter((idx) => idx >= 0));
+                    const picked = pickFaceAsset(blocked, -1);
+                    if (picked.asset) {
+                        mountAsset(media, picked.asset, false);
+                        // No applyMountedMediaFit here — the .cube-face-media
+                        // class on the container forces object-fit:cover on
+                        // any img/video child via CSS, which is what we want
+                        // regardless of the user's overlay_fit setting.
+                    }
+                    faces.push({ media, shade, spec, idx: picked.idx });
+                }
+
+                // Initial isometric pose — applied SYNCHRONOUSLY so the
+                // first paint shows three faces visible. Without this the
+                // side/top/bottom faces are edge-on until the first rAF
+                // tick lands, which Playwright captures as a "single
+                // angled image" instead of a cube.
+                ring.style.transform = "rotateX(-22deg) rotateY(-32deg)";
+                faces.forEach((f) => {
+                    const seedYaw = -32 * Math.PI / 180;
+                    let facing;
+                    switch (f.spec.name) {
+                        case "front":  facing = Math.cos(seedYaw); break;
+                        case "back":   facing = -Math.cos(seedYaw); break;
+                        case "right":  facing = Math.sin(seedYaw); break;
+                        case "left":   facing = -Math.sin(seedYaw); break;
+                        default:       facing = 0;
+                    }
+                    const litness = (facing + 1) / 2;
+                    f.shade.style.opacity = (0.7 - litness * 0.5).toFixed(3);
+                });
+
+                // Render mode (poster capture): freeze the cube at the
+                // initial pose. No animation loop.
+                if (renderMode) return;
+
+                // Continuous spin: yaw on Y, slow oscillating pitch on X.
+                // Recompute per-face shading so the lighting reads as a
+                // single fixed source the cube tumbles past.
+                trackOverlayInterval(setInterval(() => {
+                    if (!ring.isConnected) return;
+                    const tSec = Date.now() / 1000;
+                    const spinY = tSec * 30 * Math.max(0.25, overlaySpeed);
+                    const tiltX = -18 + Math.sin(tSec * 0.25) * 12;
+                    ring.style.transform = `rotateX(${tiltX.toFixed(2)}deg) rotateY(${(spinY % 360).toFixed(2)}deg)`;
+                    const yawRad = (spinY * Math.PI) / 180;
+                    faces.forEach((f) => {
+                        let facing;
+                        switch (f.spec.name) {
+                            case "front":  facing = Math.cos(yawRad); break;
+                            case "back":   facing = -Math.cos(yawRad); break;
+                            case "right":  facing = Math.sin(yawRad); break;
+                            case "left":   facing = -Math.sin(yawRad); break;
+                            default:       facing = 0;
+                        }
+                        const litness = (facing + 1) / 2;
+                        f.shade.style.opacity = (0.7 - litness * 0.5).toFixed(3);
+                    });
+                }, 80));
+
+                // Periodically refresh each face with a fresh asset,
+                // avoiding both the face's own previous asset AND any
+                // asset currently displayed on another face. Staggered
+                // so no two faces ever update on the same tick.
+                if (overlayAssets.length > 1) {
+                    const perFaceInterval = Math.max(2200, Math.floor(8000 / Math.max(0.25, overlaySpeed)));
+                    faces.forEach((face, i) => {
+                        setTimeout(() => {
+                            trackOverlayInterval(setInterval(() => {
+                                if (!face.media.isConnected) return;
+                                const blocked = new Set(
+                                    faces.filter((f) => f !== face).map((f) => f.idx).filter((idx) => idx >= 0)
+                                );
+                                const picked = pickFaceAsset(blocked, face.idx);
+                                if (picked.asset) {
+                                    mountAsset(face.media, picked.asset, false);
+                                    // .cube-face-media class handles cover styling.
+                                    face.idx = picked.idx;
+                                }
+                            }, perFaceInterval));
+                        }, Math.floor((perFaceInterval / faces.length) * i));
+                    });
+                }
+                return;
+            }
             // === Video ping-pong for video-only overlay pools ====================
             // Each mount() that creates a fresh <video> spawns a new GPU decoder.
             // Even with explicit src clear + load() on the old element, Chrome
@@ -10454,6 +10733,40 @@
                             }
                             if (candidate) mount(candidate);
                         }, minHoldMs);
+                    } else if (isMelt) {
+                        // Single-asset melt: there's nothing to cycle to, but
+                        // the user picked "melt" expecting the image to fade
+                        // in and out — like a slow heartbeat. Re-run the
+                        // same melt animation on the same shell in reverse
+                        // (1 → 0 with blur+scale-down, hold, 0 → 1 with
+                        // blur+scale-up, hold, repeat). Matches the user's
+                        // intuition that "melt = fades in and out" without
+                        // requiring multiple source files.
+                        const holdMs = Math.max(800, Math.round(meltDurationMs * 0.4));
+                        const pulseLoop = () => {
+                            if (!shell.wrapper.isConnected) return;
+                            // Fade out + blur + shrink slightly.
+                            shell.wrapper.style.transition = `opacity ${meltDurationMs}ms ease-in-out`;
+                            shell.wrapper.style.opacity = "0";
+                            shell.inner.style.transition = `filter ${meltDurationMs}ms ease-in-out, transform ${meltDurationMs}ms ease-in-out`;
+                            shell.inner.style.filter = "blur(36px) saturate(1.6) contrast(0.9)";
+                            shell.inner.style.transform = "scale(0.94)";
+                            setTimeout(() => {
+                                if (!shell.wrapper.isConnected) return;
+                                // Hold in the dark, then fade back in clean.
+                                setTimeout(() => {
+                                    if (!shell.wrapper.isConnected) return;
+                                    shell.wrapper.style.opacity = "1";
+                                    shell.inner.style.filter = "blur(0px) saturate(1) contrast(1)";
+                                    shell.inner.style.transform = "scale(1)";
+                                    setTimeout(pulseLoop, meltDurationMs + holdMs);
+                                }, holdMs);
+                            }, meltDurationMs);
+                        };
+                        // Start the first pulse after holding the initial
+                        // reveal for `holdMs` so the user actually sees the
+                        // image before it fades out.
+                        setTimeout(pulseLoop, holdMs + meltDurationMs);
                     }
                 };
                 // waitForVideoReady delays the reveal callback until the new
