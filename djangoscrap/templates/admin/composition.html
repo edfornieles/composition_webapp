@@ -607,6 +607,7 @@
                                                     <option value="liquid_mirror" {% if selected_overlay_effect == 'liquid_mirror' %}selected{% endif %}>Liquid mirror</option>
                                                     <option value="liquid_mirror_rotate" {% if selected_overlay_effect == 'liquid_mirror_rotate' %}selected{% endif %}>Liquid mirror + rotate</option>
                                                     <option value="liquid_mirror_rotate_vertical" {% if selected_overlay_effect == 'liquid_mirror_rotate_vertical' %}selected{% endif %}>Liquid mirror + rotate (vertical)</option>
+                                                    <option value="rotating_cube" {% if selected_overlay_effect == 'rotating_cube' %}selected{% endif %}>Rotating cube (6 faces)</option>
                                                     <option value="circle_rotate" {% if selected_overlay_effect == 'circle_rotate' %}selected{% endif %}>Circle rotate</option>
                                                     <option value="circle_rotate_mirror" {% if selected_overlay_effect == 'circle_rotate_mirror' %}selected{% endif %}>Circle rotate mirror</option>
                                                     <option value="mash" {% if selected_overlay_effect == 'mash' %}selected{% endif %}>Mash</option>
@@ -1159,6 +1160,58 @@
                                                                 data-url="{% url 'composition_nft_media_archive_reinstate' composition.id 'collector_45s' %}" data-path="{{ a.path }}">↑</button>
                                                             <button type="button" class="btn btn-outline-danger btn-xs py-0 px-1 nft-archive-delete-btn"
                                                                 data-url="{% url 'composition_nft_media_archive_delete' composition.id 'collector_45s' %}" data-path="{{ a.path }}">✕</button>
+                                                        </div>
+                                                        {% endfor %}
+                                                    </details>
+                                                    {% endif %}
+                                                </div>
+                                                {% endwith %}
+                                                <!-- Shareable looping GIF (6 s, 480x480, palette-optimised).
+                                                     Not part of the "Generate / Force Regenerate" default
+                                                     trio — explicit regen via the ↺ button on this tile so a
+                                                     casual save doesn't burn an extra ~30 s of GIF render. -->
+                                                {% with row=nft_media.assets.preview_gif %}
+                                                <div style="flex:1;padding:10px;min-width:0;border-left:1px solid #dee2e6;">
+                                                    <div class="d-flex align-items-center justify-content-between mb-1">
+                                                        <span class="text-muted small font-weight-bold text-uppercase" style="font-size:0.7rem;letter-spacing:0.05em;">GIF</span>
+                                                        {% if row.stale %}<span class="badge badge-warning" style="font-size:0.6rem;">stale</span>
+                                                        {% elif row.ready %}<span class="badge badge-success" style="font-size:0.6rem;">ready</span>
+                                                        {% else %}<span class="badge badge-secondary" style="font-size:0.6rem;">{{ row.status|default:"missing" }}</span>{% endif %}
+                                                    </div>
+                                                    <div style="position:relative;padding-bottom:100%;background:#111;border-radius:3px;overflow:hidden;">
+                                                        {% if row.url %}
+                                                        <img src="{{ row.url }}" alt="GIF"
+                                                             style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">
+                                                        {% else %}
+                                                        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+                                                            <button type="button" class="btn btn-outline-light btn-sm nft-media-regen-btn"
+                                                                data-url="{% url 'composition_generate_nft_media' composition.id %}" data-kind="preview_gif" data-label="GIF">↺</button>
+                                                        </div>
+                                                        {% endif %}
+                                                    </div>
+                                                    {% if row.generated_at %}<div class="text-muted mt-1" style="font-size:0.65rem;">{{ row.generated_at|date:"d M Y H:i" }}</div>{% endif %}
+                                                    {% if row.error %}<div class="text-danger mt-1" style="font-size:0.65rem;">{{ row.error|truncatechars:60 }}</div>{% endif %}
+                                                    {% if row.url %}
+                                                    <div class="d-flex mt-1" style="gap:4px;">
+                                                        <a href="{{ row.url }}" download class="btn btn-outline-secondary btn-xs py-0 px-1" style="font-size:0.65rem;">↓</a>
+                                                        <button type="button" class="btn btn-outline-danger btn-xs py-0 px-1 nft-media-delete-btn" style="font-size:0.65rem;"
+                                                            data-url="{% url 'composition_nft_media_delete' composition.id 'preview_gif' %}" data-label="GIF">✕</button>
+                                                        <button type="button" class="btn btn-outline-primary btn-xs py-0 px-1 nft-media-regen-btn" style="font-size:0.65rem;"
+                                                            data-url="{% url 'composition_generate_nft_media' composition.id %}" data-kind="preview_gif" data-label="GIF">↺</button>
+                                                    </div>
+                                                    {% endif %}
+                                                    {% if row.archive %}
+                                                    <details class="mt-1" style="font-size:0.65rem;">
+                                                        <summary class="text-muted" style="cursor:pointer;">{{ row.archive|length }} archived</summary>
+                                                        {% for a in row.archive %}
+                                                        <div class="d-flex align-items-center mt-1" style="gap:4px;">
+                                                            <img src="{{ a.url }}" style="width:28px;height:28px;object-fit:cover;border-radius:2px;flex-shrink:0;" alt="">
+                                                            <span class="text-muted">{{ a.generated_at|slice:":10" }}</span>
+                                                            <a href="{{ a.url }}" download class="btn btn-outline-secondary btn-xs py-0 px-1">↓</a>
+                                                            <button type="button" class="btn btn-outline-success btn-xs py-0 px-1 nft-archive-reinstate-btn"
+                                                                data-url="{% url 'composition_nft_media_archive_reinstate' composition.id 'preview_gif' %}" data-path="{{ a.path }}">↑</button>
+                                                            <button type="button" class="btn btn-outline-danger btn-xs py-0 px-1 nft-archive-delete-btn"
+                                                                data-url="{% url 'composition_nft_media_archive_delete' composition.id 'preview_gif' %}" data-path="{{ a.path }}">✕</button>
                                                         </div>
                                                         {% endfor %}
                                                     </details>
