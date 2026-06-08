@@ -42,22 +42,34 @@ def setup_django():
     django.setup()
 
 
-def find_missing(kind: str) -> list[int]:
+def find_missing(kind: str, *, require_kind_ready: str | None = None) -> list[int]:
+    """Compositions with a URL that don't yet have a `ready` asset of `kind`.
+
+    If `require_kind_ready` is given, the result is further filtered to only
+    compositions that already have a `ready` asset of THAT kind. Useful for
+    e.g. "generate GIFs only for compositions that already have a 45s
+    collector" — pass kind="preview_gif", require_kind_ready="collector_45s".
+    """
     from djangoscrap.models import Composition, CompositionMediaAsset
     has_ready = set(
         CompositionMediaAsset.objects
         .filter(kind=kind, status="ready")
         .values_list("composition_id", flat=True)
     )
-    ids = list(
+    qs = (
         Composition.objects
         .exclude(url__isnull=True)
         .exclude(url__exact="")
         .exclude(id__in=has_ready)
-        .order_by("id")
-        .values_list("id", flat=True)
     )
-    return ids
+    if require_kind_ready:
+        required = set(
+            CompositionMediaAsset.objects
+            .filter(kind=require_kind_ready, status="ready")
+            .values_list("composition_id", flat=True)
+        )
+        qs = qs.filter(id__in=required)
+    return list(qs.order_by("id").values_list("id", flat=True))
 
 
 def premark_rendering(composition_id: int, kind: str):
@@ -116,16 +128,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--concurrency", type=int, default=2, help="parallel captures (default 2)")
     parser.add_argument("--kind", default="preview_10s",
-                        choices=["poster", "preview_10s", "collector_45s"],
+                        choices=["poster", "preview_10s", "collector_45s", "preview_gif"],
                         help="which media kind to generate (default preview_10s)")
     parser.add_argument("--limit", type=int, default=0,
                         help="stop after N compositions (0 = all)")
+    parser.add_argument("--require-kind-ready", default=None,
+                        choices=["poster", "preview_10s", "collector_45s", "preview_gif"],
+                        help="restrict to compositions that already have this OTHER kind ready "
+                             "(e.g. --kind preview_gif --require-kind-ready collector_45s)")
     parser.add_argument("--dry-run", action="store_true",
                         help="just print what would be done")
     args = parser.parse_args()
 
     setup_django()
-    missing = find_missing(args.kind)
+    missing = find_missing(args.kind, require_kind_ready=args.require_kind_ready)
     if args.limit:
         missing = missing[:args.limit]
 
