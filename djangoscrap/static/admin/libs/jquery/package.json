@@ -68,7 +68,7 @@
   },
   "scripts": {
     "build": "npm install && grunt",
-    "start": "grunt watch",
+    "start": "node api.js && grunt watch",
     "test:browserless": "grunt && grunt test:slow",
     "test:browser": "grunt && grunt karma:main",
     "test": "grunt && grunt test:slow && grunt karma:main",
