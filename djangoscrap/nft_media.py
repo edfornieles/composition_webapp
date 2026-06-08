@@ -40,7 +40,48 @@ MEDIA_KINDS = {
         "include_audio": True,
         "use_screencast": True,
     },
+    # Shareable looping GIF. Settings tuned for these abstract compositions:
+    #   • 6 s — enough motion to read, keeps file size shareable
+    #   • 480×480 — sweet spot. 720 inflates file to ~15 MB, 360 looks too coarse
+    #   • 18 fps — smooth perception, higher fps doesn't help GIFs and bloats output
+    #   • use_screencast — CDP JPEG frames give the cleanest input for palette gen
+    #   • include_audio = False (GIFs have no audio track)
+    # The two-pass ffmpeg palette pipeline is what actually makes these look good;
+    # see capture_composition_video — when extension is "gif" it swaps the final
+    # mux step for palettegen + paletteuse with bayer dither.
+    "preview_gif": {
+        "duration": 6,
+        "extension": "gif",
+        "content_type": "image/gif",
+        "size": (480, 480),
+        "fps": 18,
+        "include_audio": False,
+        "use_screencast": True,
+    },
 }
+
+
+def _composition_filename_slug(composition) -> str:
+    """Return a safe, filename-friendly slug derived from the composition's
+    title (preferring composition.name, then composition.title, then
+    composition.url) — falling back to "composition_<id>" if every source
+    is empty. Used as the prefix on every generated media file so a user
+    downloading "two of us" gets "two_of_us_preview_gif.gif" instead of
+    a generic "preview_gif.gif".
+    """
+    from django.utils.text import slugify
+    raw = (
+        (getattr(composition, "name", None) or "").strip()
+        or (getattr(composition, "title", None) or "").strip()
+        or (getattr(composition, "url", "") or "").strip("/")
+        or ""
+    )
+    slug = slugify(raw).replace("-", "_")
+    # Trim to a reasonable filesystem length (some filesystems / NFT
+    # marketplaces choke past 200 chars). Leave headroom for the kind
+    # suffix + extension + archive timestamp.
+    slug = slug[:80].strip("_")
+    return slug or f"composition_{int(composition.id)}"
 
 
 def _source_root() -> Path:
@@ -404,7 +445,12 @@ def capture_composition_video(
     renders_dir = Path(settings.MEDIA_ROOT) / "renders"
     renders_dir.mkdir(parents=True, exist_ok=True)
     temp_capture_dir = Path(tempfile.mkdtemp(prefix="capture_", dir=str(renders_dir)))
-    output_path = renders_dir / f"render_{composition.id}_{aspect_preset}_{duration_seconds}s_{uuid.uuid4().hex[:8]}.mp4"
+    # Output extension follows the storage_path's extension (mp4 for clips,
+    # gif for the looping preview kind). Falls back to mp4 if the storage
+    # path doesn't carry one — the existing kinds always do.
+    output_ext = Path(storage_path).suffix.lstrip(".").lower() or "mp4"
+    is_gif_output = output_ext == "gif"
+    output_path = renders_dir / f"render_{composition.id}_{aspect_preset}_{duration_seconds}s_{uuid.uuid4().hex[:8]}.{output_ext}"
     audio_temp_path = None
 
     try:
@@ -492,6 +538,52 @@ def capture_composition_video(
                     cf.write(f"duration {dur:.6f}\n")
                 # ffmpeg concat demuxer requires a trailing entry without duration
                 cf.write(f"file '{frame_list[-1][0]}'\n")
+
+            if is_gif_output:
+                # Two-pass palette pipeline. The naive single-pass GIF
+                # encoder dithers gradients to noise; with palettegen first
+                # then paletteuse, abstract compositions look clean.
+                #
+                #   stats_mode=full     — analyse every frame's pixels (best
+                #                          palette for varying motion)
+                #   max_colors=256      — GIF format limit
+                #   dither=bayer:5      — ordered dither; less obvious than
+                #                          the sierra2 default on soft
+                #                          gradients common in these comps
+                #   diff_mode=rectangle — only re-encode changed regions
+                #                          frame-to-frame; significant size win
+                #   loop=0              — infinite loop (sharing default)
+                palette_path = temp_capture_dir / "palette.png"
+                vf_chain = f"fps={fps},scale={size[0]}:{size[1]}:flags=lanczos"
+                # Pass 1 — generate palette from the concat input.
+                pass1 = [
+                    "ffmpeg", "-y",
+                    "-f", "concat", "-safe", "0",
+                    "-i", str(concat_file),
+                    "-t", str(duration_seconds),
+                    "-vf", f"{vf_chain},palettegen=max_colors=256:stats_mode=full",
+                    str(palette_path),
+                ]
+                r1 = subprocess.run(pass1, capture_output=True, text=True)
+                if r1.returncode != 0 or not palette_path.exists():
+                    raise RuntimeError(r1.stderr or r1.stdout or "ffmpeg palettegen failed")
+                # Pass 2 — apply palette to produce the final GIF.
+                pass2 = [
+                    "ffmpeg", "-y",
+                    "-f", "concat", "-safe", "0",
+                    "-i", str(concat_file),
+                    "-i", str(palette_path),
+                    "-filter_complex",
+                    f"[0:v]{vf_chain}[v];"
+                    f"[v][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
+                    "-loop", "0",
+                    "-t", str(duration_seconds),
+                    str(output_path),
+                ]
+                r2 = subprocess.run(pass2, capture_output=True, text=True)
+                if r2.returncode != 0:
+                    raise RuntimeError(r2.stderr or r2.stdout or "ffmpeg paletteuse failed")
+                return _store_file(output_path, storage_path)
 
             ffmpeg_cmd = [
                 "ffmpeg", "-y",
@@ -678,6 +770,15 @@ def generate_composition_media_assets(composition, *, force: bool = False, kinds
 
         asset._nft_media_skipped = False
 
+        # Files get the composition title as a filename prefix so a user
+        # downloading "two of us" gets "two_of_us_preview_gif.gif" instead
+        # of a generic "preview_gif.gif". The folder remains
+        # composition_<id> so two compositions with similar titles never
+        # collide on disk. Computed once per kind because we use it twice
+        # (archive and live path).
+        name_slug = _composition_filename_slug(composition)
+        comp_dir = f"nft/generated/composition_{int(composition.id)}"
+
         # Archive the existing file before overwriting
         if asset.file and asset.file.name and asset.status == "ready":
             try:
@@ -685,7 +786,7 @@ def generate_composition_media_assets(composition, *, force: bool = False, kinds
                 if default_storage.exists(old_name):
                     ts = timezone.now().strftime("%Y%m%d_%H%M%S")
                     ext = Path(old_name).suffix
-                    archive_path = f"nft/generated/composition_{int(composition.id)}/archive/{kind}_{ts}{ext}"
+                    archive_path = f"{comp_dir}/archive/{name_slug}_{kind}_{ts}{ext}"
                     with default_storage.open(old_name, "rb") as src:
                         default_storage.save(archive_path, ContentFile(src.read()))
                     archive = list(asset.archive or [])
@@ -703,7 +804,7 @@ def generate_composition_media_assets(composition, *, force: bool = False, kinds
         asset.save(update_fields=["duration_seconds", "aspect_preset", "status", "error_message", "archive", "updated_at"])
         try:
             ext = spec["extension"]
-            storage_path = f"nft/generated/composition_{int(composition.id)}/{kind}.{ext}"
+            storage_path = f"{comp_dir}/{name_slug}_{kind}.{ext}"
             if kind == "poster":
                 rel_path = capture_composition_still(composition, storage_path=storage_path)
             else:
