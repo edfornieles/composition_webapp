@@ -1,6 +1,4 @@
 # Environment
-.env
-.env.local
 .env.*.local
 
 # Python
@@ -37,7 +35,6 @@ Thumbs.db
 
 # IDE
 .idea/
-.vscode/
 *.code-workspace
 
 # Logs & temp
@@ -75,3 +72,9 @@ djangoscrap/static/audio/
 composition_audio_sources/
 training/chan_anon/
 training/fit_lora/adapters/
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+.gitignore
+config.bat
+node_modules

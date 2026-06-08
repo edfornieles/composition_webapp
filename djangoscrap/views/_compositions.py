@@ -551,6 +551,9 @@ def add_composition(request, composition_id=None):
         elif overlay_effect_alias in {"liquidmirrorrotatevertical", "liquidrotatevertical",
                                       "liquidspinvertical", "spinliquidvertical"}:
             overlay_effect = "liquid_mirror_rotate_vertical"
+        elif overlay_effect_alias in {"rotatingcube", "cube", "spinningcube",
+                                      "rotatecube", "3dcube", "cuberotate", "cubespin"}:
+            overlay_effect = "rotating_cube"
         elif overlay_effect_alias in {"kaleidoquad", "kaleido4"}:
             overlay_effect = "kaleido_quad"
         elif overlay_effect_alias in {"kaleidoocta", "kaleido8"}:
@@ -3148,7 +3151,7 @@ def composition_generate_media_single(request, composition_id):
 
     comp = get_object_or_404(Composition, id=composition_id)
     kinds_param = (request.POST.get("kinds") or "poster,preview_10s").strip()
-    kinds = [k.strip() for k in kinds_param.split(",") if k.strip() in ("poster", "preview_10s", "collector_45s")]
+    kinds = [k.strip() for k in kinds_param.split(",") if k.strip() in ("poster", "preview_10s", "collector_45s", "preview_gif")]
     if not kinds:
         return JsonResponse({"error": "No valid kinds specified."}, status=400)
     force = request.POST.get("force") == "1"
@@ -3204,7 +3207,12 @@ def composition_media_status(request, composition_id):
     comp = get_object_or_404(Composition, id=composition_id)
     assets = {a.kind: a for a in comp.media_assets.all()}
     result = {}
-    for kind, label in [("poster", "poster"), ("preview_10s", "clip")]:
+    for kind, label in [
+        ("poster", "poster"),
+        ("preview_10s", "clip"),
+        ("collector_45s", "collector"),
+        ("preview_gif", "gif"),
+    ]:
         asset = assets.get(kind)
         if asset:
             result[label] = {"status": asset.status, "error": asset.error_message or ""}

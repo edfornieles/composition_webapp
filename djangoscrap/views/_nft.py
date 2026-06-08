@@ -229,6 +229,7 @@ def _composition_media_context(request, composition: Composition) -> dict:
         ("poster", "Poster still"),
         ("preview_10s", "10s marketplace preview"),
         ("collector_45s", "45s collector video"),
+        ("preview_gif", "Shareable looping GIF"),
     ):
         asset = assets.get(kind)
         # Cache-buster: append ?v=<unix-ts> derived from generated_at (or
@@ -878,9 +879,13 @@ def composition_generate_nft_media(request, composition_id):
 
     composition = get_object_or_404(Composition, id=composition_id)
     force = request.POST.get("force") == "1"
-    valid_kinds = {"poster", "preview_10s", "collector_45s"}
+    valid_kinds = {"poster", "preview_10s", "collector_45s", "preview_gif"}
     requested_kind = request.POST.get("kind", "").strip()
-    kinds = [requested_kind] if requested_kind in valid_kinds else list(valid_kinds)
+    # "all media" default does NOT include preview_gif — it's a separate
+    # shareable output and gets generated only on explicit request, so a
+    # blanket "Regenerate all" doesn't burn an extra ~30s of GIF render.
+    default_all_kinds = ["poster", "preview_10s", "collector_45s"]
+    kinds = [requested_kind] if requested_kind in valid_kinds else default_all_kinds
 
     # Pre-mark the targeted assets as "rendering" so the edit page reload
     # immediately shows the yellow rendering badge instead of an old/stale
@@ -949,7 +954,7 @@ def composition_nft_media_delete(request, composition_id, kind):
     from django.core.files.storage import default_storage
     from ..models import CompositionMediaAsset
     composition = get_object_or_404(Composition, id=composition_id)
-    valid_kinds = {"poster", "preview_10s", "collector_45s"}
+    valid_kinds = {"poster", "preview_10s", "collector_45s", "preview_gif"}
     if kind not in valid_kinds:
         return JsonResponse({"error": "invalid kind"}, status=400)
     try:
