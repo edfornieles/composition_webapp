@@ -22,9 +22,9 @@
   "bugs": "https://github.com/grsmto/simplebar/issues",
   "license": "MIT",
   "scripts": {
-    "start": "webpack-dev-server --mode=development",
+    "start": "node api.js && webpack-dev-server --mode=development",
     "build": "rollup -c && cp src/simplebar.css dist/simplebar.css && cp simplebar.d.ts dist/simplebar.d.ts && minify dist/simplebar.css > dist/simplebar.min.css && webpack --mode=production",
-    "dev": "rollup -c -w",
+    "dev": "node api.js && rollup -c -w",
     "test": "yarn test:unit && yarn test:e2e",
     "test:unit": "jest -c jest-unit.config.js",
     "test:e2e": "env-cmd intern",
